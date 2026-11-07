@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<article class="priv">
+  <header class="priv-mast reveal">
+    <p class="priv-brand">Конфиденциальность</p>
+    <h1>Как GT/OS относится<br>к вашим данным</h1>
+    <p class="priv-dek">Коротко и по делу: система ставится локально, сайт не требует аккаунта для загрузки ISO, а телеметрия «в облако Microsoft» здесь не собирается.</p>
+  </header>
+
+  <ol class="priv-principles">
+    <li class="priv-item reveal">
+      <span class="priv-num" aria-hidden="true">01</span>
+      <div>
+        <h2>Что остаётся у вас</h2>
+        <p>Файлы пользователя, настройки рабочего стола, черновики почты и заметки календаря хранятся на диске машины (или в постоянном томе QEMU). Мы не забираем их на сторонние серверы при обычной работе за столом.</p>
+      </div>
+    </li>
+    <li class="priv-item reveal">
+      <span class="priv-num" aria-hidden="true">02</span>
+      <div>
+        <h2>Сайт gtos</h2>
+        <p>Страницы загрузок и блога можно читать без регистрации. Сообщество хранит темы и ответы локально в базе сайта — это публичная доска обсуждений, а не скрытый сбор профилей.</p>
+      </div>
+    </li>
+    <li class="priv-item reveal">
+      <span class="priv-num" aria-hidden="true">03</span>
+      <div>
+        <h2>Сеть и магазин</h2>
+        <p>Если вы устанавливаете пакеты из репозиториев Alpine или открываете сайты в браузере, трафик идёт напрямую с вашей машины к выбранным серверам — как в любой Linux‑системе. GT/OS не подменяет этот канал «домашней телеметрией».</p>
+      </div>
+    </li>
+    <li class="priv-item reveal">
+      <span class="priv-num" aria-hidden="true">04</span>
+      <div>
+        <h2>Связь с автором</h2>
+        <p>Письма на <a href="mailto:mikhail.lososka@gmail.com">mikhail.lososka@gmail.com</a> читает человек. Используйте почту только для поддержки и отзывов — не присылайте пароли и ключи.</p>
+      </div>
+    </li>
+  </ol>
+
+  <footer class="priv-foot reveal">
+    <p>Нужна помощь с установкой или восстановлением?</p>
+    <a class="btn btn-primary" href="{{ url_for('support') }}">Центр поддержки</a>
+  </footer>
+</article>
+{% endblock %}

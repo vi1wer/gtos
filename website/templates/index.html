@@ -1,0 +1,345 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="hero" data-hero>
+  <div class="hero-media" aria-hidden="true">
+    <img src="{{ url_for('static', filename='img/wallpaper.jpg') }}" alt="" class="hero-photo">
+    <div class="hero-veil"></div>
+    <div class="hero-ring" data-ring></div>
+  </div>
+
+  <div class="hero-content">
+    <p class="hero-brand">GT/OS</p>
+    <h1 class="hero-title">Рабочий стол,<br>который чувствуется своим.</h1>
+    <p class="hero-lead">Повседневная операционная система: сеть, файлы, браузер, почта и привычный стол — без лишнего шума.</p>
+    <div class="hero-cta">
+      <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать GT/OS {{ release.id }}</a>
+      <a class="btn btn-quiet" href="{{ url_for('product') }}">Узнать больше</a>
+    </div>
+  </div>
+</section>
+
+<section class="marquee" aria-hidden="true">
+  <div class="marquee-track">
+    <span>Рабочий стол</span><span>Пуск</span><span>Проводник</span><span>Браузер</span>
+    <span>Уведомления</span><span>Магазин GT</span><span>Медиаплеер</span><span>Параметры</span>
+    <span>Рабочий стол</span><span>Пуск</span><span>Проводник</span><span>Браузер</span>
+    <span>Уведомления</span><span>Магазин GT</span><span>Медиаплеер</span><span>Параметры</span>
+  </div>
+</section>
+
+<section class="band">
+  <div class="band-inner reveal">
+    <p class="band-kicker">Почему GT/OS</p>
+    <h2>Система целиком — не картинка поверх пустоты.</h2>
+  </div>
+</section>
+
+<section class="home-pillars">
+  <article class="home-pillar reveal">
+    <div class="home-pillar-mark" aria-hidden="true">01</div>
+    <h3>Настоящая система</h3>
+    <p>Под рабочим столом — полноценная ОС: файлы остаются на месте, сеть работает, терминал отвечает по‑честному.</p>
+  </article>
+  <article class="home-pillar reveal">
+    <div class="home-pillar-mark" aria-hidden="true">02</div>
+    <h3>Свой интерфейс</h3>
+    <p>Пуск, док, параметры и магазин собраны специально для GT/OS — плавно, понятно, со своим зелёным акцентом.</p>
+  </article>
+  <article class="home-pillar reveal">
+    <div class="home-pillar-mark" aria-hidden="true">03</div>
+    <h3>Привычный вход</h3>
+    <p>Свой пользователь, уведомления, документы и приложения — как за обычным компьютером, а не в демо‑окне.</p>
+  </article>
+</section>
+
+<section class="split reveal">
+  <div class="split-copy">
+    <p class="band-kicker">Терминал</p>
+    <h2>Терминал показывает, что система живая.</h2>
+    <p>Команды выполняются по‑настоящему: версия системы, время работы, имя компьютера — без подделок.</p>
+    <ul class="tick-list">
+      <li>Обычные команды в привычной строке</li>
+      <li>Тёмная тема в стиле GT</li>
+      <li>Компьютер называется GT-Desktop</li>
+    </ul>
+  </div>
+  <div class="split-stage term-stage">
+    <div class="fake-window">
+      <div class="fake-bar"><i></i><i></i><i></i><span>Терминал</span></div>
+      <pre class="fake-term">misha@gt-os:~$ neofetch
+   ██████╗ ████████╗   Система: GT/OS {{ release.id }}
+  ██╔════╝ ╚══██╔══╝   Компьютер: GT-Desktop
+  ██║  ███╗   ██║      Стол: GT Desktop
+  ██║   ██║   ██║      Терминал: готов
+  ╚██████╔╝   ██║
+   ╚═════╝    ╚═╝
+misha@gt-os:~$ <span class="blink">█</span></pre>
+    </div>
+  </div>
+</section>
+
+<section class="split split-flip reveal">
+  <div class="split-copy">
+    <p class="band-kicker">Проводник</p>
+    <h2>Файлы как дома — боковая панель и живые папки.</h2>
+    <p>Домашняя, Документы, Загрузки, Изображения. Назад, вперёд, вверх, поиск и превью.</p>
+    <ul class="tick-list">
+      <li>Ваши папки в домашнем каталоге</li>
+      <li>Свободное место на диске</li>
+      <li>Удобная сетка с иконками</li>
+    </ul>
+  </div>
+  <div class="split-stage files-stage">
+    <div class="fake-window">
+      <div class="fake-bar"><i></i><i></i><i></i><span>Файлы</span></div>
+      <div class="fake-files">
+        <aside>
+          <b class="on">Домашняя папка</b>
+          <span>Документы</span>
+          <span>Загрузки</span>
+          <span>Изображения</span>
+          <em>Свободно 2.1 ГБ</em>
+        </aside>
+        <div class="fake-grid">
+          <div><s></s>Документы</div>
+          <div><s></s>Загрузки</div>
+          <div><s></s>Медиаплеер</div>
+          <div><s></s>Проекты</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="gallery">
+  <div class="gallery-head reveal">
+    <p class="band-kicker">Рабочий стол</p>
+    <h2>Детали, из которых складывается ощущение ОС.</h2>
+  </div>
+  <div class="home-feature-grid">
+    <article class="home-feature reveal">
+      <div class="home-feature-icon hf-dock" aria-hidden="true"></div>
+      <h3>Док GT</h3>
+      <p>Выезжает при старте. Пуск открывается только с зелёной кнопки.</p>
+    </article>
+    <article class="home-feature reveal">
+      <div class="home-feature-icon hf-notify" aria-hidden="true"></div>
+      <h3>Уведомления</h3>
+      <p>Сообщения справа: сеть, обновления, установка из магазина.</p>
+    </article>
+    <article class="home-feature reveal">
+      <div class="home-feature-icon hf-settings" aria-hidden="true"></div>
+      <h3>Параметры</h3>
+      <p>Система, сеть, оформление, пароль и блокировка — простым языком.</p>
+    </article>
+    <article class="home-feature reveal">
+      <div class="home-feature-icon hf-store" aria-hidden="true"></div>
+      <h3>Магазин</h3>
+      <p>Карточки приложений и установка в один клик.</p>
+    </article>
+  </div>
+</section>
+
+<section class="home-stats reveal">
+  <div class="home-stat">
+    <strong>{{ release.id }}</strong>
+    <span>Текущая версия</span>
+  </div>
+  <div class="home-stat">
+    <strong>Full HD</strong>
+    <span>Комфортный экран</span>
+  </div>
+  <div class="home-stat">
+    <strong>Свой стол</strong>
+    <span>Не чужая оболочка</span>
+  </div>
+  <div class="home-stat">
+    <strong>USB</strong>
+    <span>Установка с флешки</span>
+  </div>
+</section>
+
+<section class="home-journey">
+  <div class="home-journey-head reveal">
+    <p class="band-kicker">Как это работает</p>
+    <h2>От включения до рабочего стола — понятный путь.</h2>
+  </div>
+  <ol class="home-journey-list">
+    <li class="reveal">
+      <strong>1</strong>
+      <div>
+        <h3>Загрузка</h3>
+        <p>Система стартует с образа и готовит рабочий стол.</p>
+      </div>
+    </li>
+    <li class="reveal">
+      <strong>2</strong>
+      <div>
+        <h3>Экран</h3>
+        <p>Картинка на весь монитор, удобное разрешение Full HD.</p>
+      </div>
+    </li>
+    <li class="reveal">
+      <strong>3</strong>
+      <div>
+        <h3>Ваш пользователь</h3>
+        <p>Создаётся обычная учётная запись с домашней папкой.</p>
+      </div>
+    </li>
+    <li class="reveal">
+      <strong>4</strong>
+      <div>
+        <h3>Рабочий стол</h3>
+        <p>Пуск, док, окна и привычные действия мышью.</p>
+      </div>
+    </li>
+    <li class="reveal">
+      <strong>5</strong>
+      <div>
+        <h3>Приложения</h3>
+        <p>Файлы, браузер, почта, настройки, магазин и другое.</p>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<section class="quote-block reveal">
+  <blockquote>«Свой стол. Своя система. Свой ритм.»</blockquote>
+  <p>Философия GT/OS</p>
+</section>
+
+<section class="apps-band">
+  <div class="apps-head reveal">
+    <p class="band-kicker">Приложения</p>
+    <h2>Всё нужное уже на столе.</h2>
+  </div>
+  <div class="apps-grid">
+    <div class="app-chip reveal">
+      <i class="os-ico os-files" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><path d="M8 14h12l4 4h16a4 4 0 0 1 4 4v14a4 4 0 0 1-4 4H8a4 4 0 0 1-4-4V18a4 4 0 0 1 4-4Z" fill="url(#fgrad)"/><path d="M8 12h11l3 3H8a2 2 0 0 1-2-2V14a2 2 0 0 1 2-2Z" fill="#f0c94a"/><defs><linearGradient id="fgrad" x1="4" y1="14" x2="4" y2="40"><stop stop-color="#ffe082"/><stop offset="1" stop-color="#f9a825"/></linearGradient></defs></svg>
+      </i>Файлы
+    </div>
+    <div class="app-chip reveal">
+      <i class="os-ico os-term" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="6" y="8" width="36" height="32" rx="5" fill="#16352e" stroke="#2e8f5a" stroke-width="2"/><text x="12" y="30" fill="#6ee7b7" font-family="Consolas,monospace" font-size="14" font-weight="700">&gt;_</text></svg>
+      </i>Терминал
+    </div>
+    <div class="app-chip reveal">
+      <i class="os-ico os-settings" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="9" y="9" width="30" height="30" rx="8" fill="#78909c" transform="rotate(22 24 24)"/><rect x="9" y="9" width="30" height="30" rx="8" fill="#90a4ae"/><circle cx="24" cy="24" r="7" fill="#1c262e" stroke="#cfd8dc" stroke-width="3"/></svg>
+      </i>Параметры
+    </div>
+    <div class="app-chip reveal">
+      <i class="os-ico os-store" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="10" y="20" width="28" height="18" rx="4" fill="none" stroke="#e8eef2" stroke-width="2.4"/><path d="M16 20v-3a8 8 0 0 1 16 0v3" fill="none" stroke="#e8eef2" stroke-width="2.4"/><path d="M18 28h12" stroke="#3be182" stroke-width="2.2" stroke-linecap="round"/></svg>
+      </i>Магазин
+    </div>
+    <div class="app-chip reveal">
+      <i class="os-ico os-mail" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="7" y="12" width="34" height="24" rx="3" fill="#b9e2f2" stroke="#5b8fa8" stroke-width="2"/><path d="M9 14 24 26 39 14" fill="none" stroke="#3d6f8a" stroke-width="2.2" stroke-linejoin="round"/></svg>
+      </i>Почта
+    </div>
+    <div class="app-chip reveal">
+      <i class="os-ico os-notes" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="12" y="6" width="24" height="36" rx="3" fill="#fffaf0"/><path d="M16 16h16M16 22h16M16 28h12" stroke="#b45309" stroke-width="2" stroke-linecap="round"/><path d="M28 6v8h8" fill="#f0c94a"/></svg>
+      </i>Заметки
+    </div>
+    <div class="app-chip reveal">
+      <i class="os-ico os-cal" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><rect x="8" y="10" width="32" height="30" rx="4" fill="#ffffff"/><rect x="8" y="10" width="32" height="9" fill="#ef4444"/><text x="24" y="34" text-anchor="middle" fill="#111827" font-family="Segoe UI,sans-serif" font-size="14" font-weight="700">24</text><path d="M15 8v6M33 8v6" stroke="#eceff1" stroke-width="2.5" stroke-linecap="round"/></svg>
+      </i>Календарь
+    </div>
+    <div class="app-chip reveal">
+      <i class="os-ico os-music" aria-hidden="true">
+        <svg viewBox="0 0 48 48"><circle cx="16" cy="34" r="6" fill="#e23b8c"/><circle cx="34" cy="30" r="6" fill="#e23b8c"/><path d="M22 34V14l18-4v20" fill="none" stroke="#f8bbd0" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><path d="M22 18l18-4" stroke="#fce4ec" stroke-width="2"/></svg>
+      </i>Медиаплеер
+    </div>
+  </div>
+</section>
+
+<section class="day-band">
+  <div class="day-head reveal">
+    <p class="band-kicker">Обычный день</p>
+    <h2>Как выглядит работа за GT/OS.</h2>
+    <p class="day-lead">Не список «есть / нет» — живой сценарий: от включения до спокойного вечера.</p>
+  </div>
+  <div class="day-grid">
+    <article class="day-card reveal">
+      <span class="day-time">Утро</span>
+      <h3>Сели и поехали</h3>
+      <p>Включили ПК, вошли в свой профиль, открыли почту и документы. Рабочий стол уже на месте.</p>
+    </article>
+    <article class="day-card reveal">
+      <span class="day-time">День</span>
+      <h3>Несколько окон сразу</h3>
+      <p>Браузер рядом с файлами, заметки сбоку, поиск по Win+S — без прыжков между чужими меню.</p>
+    </article>
+    <article class="day-card reveal">
+      <span class="day-time">Вечер</span>
+      <h3>Свой ритм</h3>
+      <p>Музыка в медиаплеере, спокойные уведомления, блокировка экрана — и всё ещё ваш стол GT.</p>
+    </article>
+  </div>
+</section>
+
+<section class="cta-panel reveal">
+  <div class="cta-panel-inner">
+    <div class="cta-panel-copy">
+      <p class="band-kicker">Готово к установке</p>
+      <h2>Поставьте GT/OS и сядьте за свой стол.</h2>
+      <p>Образ {{ release.id }} уже собран: запишите на флешку, загрузитесь с USB и пройдите короткий установщик. Через пару минут — Пуск, файлы и привычный рабочий стол.</p>
+      <div class="hero-cta">
+        <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать GT/OS {{ release.id }}</a>
+        <a class="btn btn-quiet" href="{{ url_for('product') }}">Смотреть возможности</a>
+      </div>
+    </div>
+    <div class="cta-panel-side" aria-hidden="true">
+      <div class="cta-pack">
+        <div class="cta-iso">
+          <span class="cta-iso-mark">GT</span>
+          <strong>GT/OS {{ release.id }}</strong>
+          <em>ISO · x86_64</em>
+          <small>официальный образ</small>
+        </div>
+        <div class="cta-key">
+          <span class="cta-key-head"></span>
+          <span class="cta-key-shaft"></span>
+          <span class="cta-key-bit"></span>
+          <span class="cta-key-label">USB</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="faq">
+  <div class="faq-head reveal">
+    <p class="band-kicker">FAQ · {{ release.id }}</p>
+    <h2>Коротко по делу.</h2>
+  </div>
+  <details class="reveal">
+    <summary>Как установить GT/OS на компьютер?</summary>
+    <p>Скачайте ISO {{ release.id }}, запишите на USB через Ventoy или Rufus (режим&nbsp;DD), загрузитесь с флешки и откройте «Установка GT/OS».</p>
+  </details>
+  <details class="reveal">
+    <summary>Что нового в {{ release.id }}?</summary>
+    <p>GT Media Player, Bluetooth в Параметрах, бэкапы в Контрольном центре и рамки окон как у оболочки. Подробнее — в <a href="{{ url_for('whats_new') }}">Что нового</a>.</p>
+  </details>
+  <details class="reveal">
+    <summary>Есть ли настоящий браузер?</summary>
+    <p>Да — Firefox из Магазина и встроенный браузер оболочки. Firefox открывается отдельным окном поверх рабочего стола.</p>
+  </details>
+  <details class="reveal">
+    <summary>Где бэкапы и Bluetooth?</summary>
+    <p>Бэкапы — Контрольный центр → «Бэкапы». Bluetooth — Параметры → «Bluetooth и устройства». Больше ответов — в <a href="{{ url_for('support') }}">поддержке</a>.</p>
+  </details>
+</section>
+
+<section class="closer reveal">
+  <div class="closer-copy">
+    <h2>Готовы сесть за стол GT?</h2>
+    <p>Скачайте образ {{ release.id }} и установите на свой компьютер.</p>
+  </div>
+  <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать GT/OS</a>
+</section>
+{% endblock %}

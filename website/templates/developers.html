@@ -1,0 +1,65 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<section class="dev">
+  <header class="dev-hero">
+    <p class="dev-brand">GT/OS</p>
+    <h1>Мастерская</h1>
+    <p class="dev-lead">Сначала дерево исходников — потом сборка и QEMU. ISO для установки на ПК — на <a href="{{ url_for('download') }}">Скачать</a>.</p>
+  </header>
+
+  <div class="dev-body">
+    <section class="dev-block">
+      <h2>1. Исходники</h2>
+      {% if source.ready %}
+      <p class="dev-get">
+        <a class="dev-btn" href="{{ url_for('download_file', name=source.filename) }}">Скачать GTOS-source.zip</a>
+        <span>{{ source.size_label }}</span>
+      </p>
+      {% else %}
+      <p>Архив исходников ещё не собран на этом сервере (<code>python pack_source.py</code>).</p>
+      {% endif %}
+      <pre class="dev-code"># распакуйте архив и зайдите в каталог
+cd GTOS</pre>
+    </section>
+
+    <section class="dev-block">
+      <h2>2. Сборка</h2>
+      <p>Нужны Python 3 и сеть (первая сборка тянет пакеты Alpine). Затем:</p>
+      <pre class="dev-code">python build.py
+python refresh_ui.py          # только QML / сессия
+python make_iso.py --version {{ release.id }}</pre>
+    </section>
+
+    <section class="dev-block">
+      <h2>3. QEMU</h2>
+      <pre class="dev-code">python run.py</pre>
+      <p>Поднимает GTK 1920×1080, сеть и диск <code>out/gtos-data.qcow2</code>. Нужен <code>qemu-system-x86_64</code>.</p>
+    </section>
+
+    <section class="dev-facts" aria-label="Ресурсы QEMU">
+      <div>
+        <strong>10 ГБ</strong>
+        <span>ОЗУ</span>
+      </div>
+      <div>
+        <strong>16 ГБ</strong>
+        <span>диск данных</span>
+      </div>
+      <div>
+        <strong>РУС / ENG</strong>
+        <span>X11 · Win+Пробел</span>
+      </div>
+    </section>
+
+    <section class="dev-block">
+      <h2>Карта дерева</h2>
+      <dl class="dev-paths">
+        <div><dt>Оболочка</dt><dd><code>qml/Main.qml</code></dd></div>
+        <div><dt>Сессия</dt><dd><code>build.py</code></dd></div>
+        <div><dt>Сайт</dt><dd><code>website/app.py</code> · :5050</dd></div>
+        <div><dt>Диск QEMU</dt><dd><code>out/gtos-data.qcow2</code></dd></div>
+      </dl>
+    </section>
+  </div>
+</section>
+{% endblock %}

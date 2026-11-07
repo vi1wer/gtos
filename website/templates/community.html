@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="comm-page">
+  <header class="comm-top">
+    <div class="comm-top-inner">
+      <p class="comm-eyebrow reveal">Сообщество GT/OS</p>
+      <h1 class="reveal">Пишите темы — ответы видят все</h1>
+      <p class="comm-lead reveal">Сообщения сохраняются в общей базе. Любой может открыть тему и ответить.</p>
+      <div class="comm-top-actions reveal">
+        <a class="btn btn-primary" href="#new">Новая тема</a>
+        <a class="btn btn-quiet" href="#board">К обсуждениям</a>
+      </div>
+    </div>
+  </header>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="comm-flash-wrap">
+    {% for category, message in messages %}
+    <p class="comm-flash comm-flash-{{ category }}">{{ message }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <div class="comm-layout">
+    <section class="comm-board" id="board">
+      <header class="comm-board-head">
+        <h2>Доска обсуждений</h2>
+        <p>{{ threads|length }} тем · ответы хранятся у всех посетителей сайта</p>
+      </header>
+
+      {% if not threads %}
+      <p class="comm-empty">Пока тихо — создайте первую тему справа или ниже.</p>
+      {% endif %}
+
+      {% for t in threads %}
+      <article class="comm-thread reveal">
+        <div class="comm-thread-meta">
+          <span class="comm-avatar" aria-hidden="true">{{ avatar_letter(t.author) }}</span>
+          <div>
+            <strong><a class="comm-thread-link" href="{{ url_for('community_thread', thread_id=t.id) }}">{{ t.title }}</a></strong>
+            <p class="comm-who">{{ t.author }} · {{ format_when(t.updated_at) }} · {{ t.reply_count }} ответов</p>
+          </div>
+        </div>
+        <p>{{ t.body[:220] }}{% if t.body|length > 220 %}…{% endif %}</p>
+        <a class="comm-reply" href="{{ url_for('community_thread', thread_id=t.id) }}">Открыть и ответить</a>
+      </article>
+      {% endfor %}
+    </section>
+
+    <aside class="comm-side">
+      <div class="comm-side-block reveal" id="new">
+        <h3>Новая тема</h3>
+        <form class="comm-form" method="post" action="{{ url_for('community') }}">
+          <label class="comm-hp" aria-hidden="true">Сайт <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+          <label>Имя
+            <input type="text" name="author" maxlength="40" placeholder="Как вас называть" required>
+          </label>
+          <label>Заголовок
+            <input type="text" name="title" maxlength="120" placeholder="О чём тема" required>
+          </label>
+          <label>Текст
+            <textarea name="body" rows="6" maxlength="4000" placeholder="Опишите вопрос или идею" required></textarea>
+          </label>
+          <button class="btn btn-primary btn-block" type="submit">Опубликовать</button>
+        </form>
+      </div>
+      <div class="comm-side-block reveal">
+        <h3>Сейчас в фокусе</h3>
+        <ul class="comm-focus">
+          <li><a href="{{ url_for('download') }}">GT/OS {{ release.id }} ISO</a></li>
+          <li><a href="{{ url_for('changelog') }}">Список изменений</a></li>
+          <li><a href="{{ url_for('blog') }}">Блог</a></li>
+          <li><a href="{{ url_for('support') }}">Поддержка</a></li>
+        </ul>
+      </div>
+      <div class="comm-side-block reveal">
+        <h3>Правила</h3>
+        <p>По делу, без спама. Укажите версию ISO, если пишете о баге.</p>
+      </div>
+    </aside>
+  </div>
+</div>
+{% endblock %}

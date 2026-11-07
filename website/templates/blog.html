@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="blog-page">
+  <header class="blog-mast reveal">
+    <div>
+      <p class="blog-eyebrow">Блог GT/OS</p>
+      <h1>Живые записи о системе</h1>
+      <p class="blog-deck">Рассказы о выпусках и решениях — не сухой список изменений. Читайте целиком, а журнал версий смотрите в <a href="{{ url_for('changelog') }}">Изменениях</a>.</p>
+    </div>
+    <p class="blog-count">{{ posts|length }} {{ 'пост' if posts|length == 1 else ('поста' if posts|length < 5 else 'постов') }}</p>
+  </header>
+
+  {% if featured %}
+  <a class="blog-feature reveal" href="{{ url_for('blog_post', slug=featured.slug) }}">
+    {% if featured.cover %}
+    <figure class="blog-feature-cover">
+      <img src="{{ url_for('static', filename=featured.cover) }}" alt="">
+    </figure>
+    {% endif %}
+    <div class="blog-feature-copy">
+      <p class="blog-kicker">Свежий пост · <time datetime="{{ featured.date }}">{{ featured.date_label }}</time></p>
+      <h2>{{ featured.title }}</h2>
+      <p>{{ featured.excerpt }}</p>
+      <span class="blog-more">Читать полностью →</span>
+    </div>
+  </a>
+  {% endif %}
+
+  {% set rest = posts[1:] if featured and posts|length > 1 else (posts if not featured else []) %}
+  {% if rest %}
+  <section class="blog-rest">
+    <h2 class="blog-rest-title reveal">Ещё записи</h2>
+    <div class="blog-grid">
+      {% for post in rest %}
+      <a class="blog-card reveal" href="{{ url_for('blog_post', slug=post.slug) }}">
+        {% if post.cover %}
+        <figure class="blog-card-cover">
+          <img src="{{ url_for('static', filename=post.cover) }}" alt="">
+        </figure>
+        {% else %}
+        <div class="blog-card-cover blog-card-cover-empty" aria-hidden="true"></div>
+        {% endif %}
+        <div class="blog-card-body">
+          <p class="blog-card-meta"><time datetime="{{ post.date }}">{{ post.date_label }}</time>{% if post.tags %} · {{ post.tags[0] }}{% endif %}</p>
+          <h3>{{ post.title }}</h3>
+          <p>{{ post.excerpt }}</p>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% elif not featured %}
+  <p class="blog-empty">Постов пока нет.</p>
+  {% endif %}
+</div>
+{% endblock %}

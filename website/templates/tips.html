@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="tips-hero">
+  <div class="tips-hero-inner reveal">
+    <p class="tips-brand">GT/OS · Советы</p>
+    <h1>Жесты, которые<br>ускоряют день</h1>
+    <p class="tips-lead">Пуск, поиск, окна и проводник — без охоты по меню. Запомните пару сочетаний, и стол начнёт отвечать привычкой.</p>
+  </div>
+</section>
+
+<section class="tips-sheet" aria-label="Сочетания клавиш">
+  <ol class="tips-rail">
+    <li class="tips-row reveal">
+      <kbd class="tips-key">Win</kbd>
+      <div>
+        <h2>Открыть Пуск</h2>
+        <p>Зелёная кнопка GT на доке или клавиша Win. Остальные иконки дока запускают приложения напрямую.</p>
+      </div>
+    </li>
+    <li class="tips-row reveal">
+      <kbd class="tips-key">Win+S</kbd>
+      <div>
+        <h2>Поиск</h2>
+        <p>Быстро найти приложение или файл, не открывая проводник вручную.</p>
+      </div>
+    </li>
+    <li class="tips-row reveal">
+      <kbd class="tips-key">Win+D</kbd>
+      <div>
+        <h2>Рабочий стол</h2>
+        <p>Свернуть окна и вернуться к иконкам на столе.</p>
+      </div>
+    </li>
+    <li class="tips-row reveal">
+      <kbd class="tips-key">Alt+Tab</kbd>
+      <div>
+        <h2>Переключение окон</h2>
+        <p>Как привыкли в Windows. Тайлинг и прилипание к краям — в Параметрах.</p>
+      </div>
+    </li>
+    <li class="tips-row reveal">
+      <kbd class="tips-key">ПКМ</kbd>
+      <div>
+        <h2>Свойства и архивы</h2>
+        <p>В проводнике: свойства файла, «Сжать в архив» и «Распаковать».</p>
+      </div>
+    </li>
+    <li class="tips-row reveal">
+      <kbd class="tips-key tips-key-wide">Параметры</kbd>
+      <div>
+        <h2>Питание и сеть</h2>
+        <p>Режимы батареи, крышка ноутбука, Wi‑Fi/Ethernet и диагностика живут в Параметрах, а не в отдельных окнах.</p>
+      </div>
+    </li>
+  </ol>
+</section>
+
+<section class="tips-foot">
+  <div class="tips-foot-inner reveal">
+    <p>Перед крупным обновлением — точка в Контрольном центре → GT Recovery. С нуля — ISO на USB через Ventoy или Rufus.</p>
+    <div class="tips-foot-links">
+      <a href="{{ url_for('support') }}">Центр поддержки</a>
+      <a href="{{ url_for('download') }}">Скачать ISO</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

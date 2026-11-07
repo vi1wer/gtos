@@ -1,0 +1,146 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="prod">
+  <header class="prod-hero">
+    <div class="prod-hero-bg" style="background-image:url('{{ url_for('static', filename='img/wallpaper.jpg') }}')" aria-hidden="true"></div>
+    <div class="prod-hero-veil" aria-hidden="true"></div>
+    <div class="prod-hero-inner reveal">
+      <p class="prod-kicker">Продукт · {{ release.id }}</p>
+      <h1>GT/OS — рабочий стол,<br>который ощущается своим.</h1>
+      <p class="prod-lead">
+        Операционная среда <strong>Glukhov Mikhail</strong>: Пуск, док, Параметры, магазин,
+        медиа и обслуживание системы — без браузерной оболочки поверх.
+      </p>
+    </div>
+  </header>
+
+  <section class="prod-section">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">Внутри GT/OS</p>
+      <h2 class="prod-h2">Из чего состоит система</h2>
+
+      <div class="prod-stack" role="list">
+        <article class="prod-layer" role="listitem">
+          <h3>Рабочий стол GT</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Пуск, док, виртуальные столы, уведомления и привычные жесты Win — как у большой ОС, на своём UI.</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Окна оболочки и внешние программы</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Встроенные приложения — с chrome GT/OS. Firefox и другие X11‑окна получают ту же тёмную рамку, а не «чужой Linux».</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Параметры и Контрольный центр</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Сеть, питание, Bluetooth, безопасность, обновления — в Параметрах. Устройства, диагностика, Recovery и бэкапы — в Контрольном центре.</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Настоящая основа</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Под столом — Linux и Qt 6: файлы, сеть, apk‑магазин и постоянный том пользователя между перезапусками.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="prod-section prod-section-alt">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">Философия</p>
+      <h2 class="prod-h2">Не копировать чужую систему,<br>а собирать свою привычку.</h2>
+      <p class="prod-copy">
+        GT/OS растёт выпусками: сначала стол и Пуск, потом обслуживание ПК, затем повседневные инструменты —
+        медиа, беспроводные устройства, бэкапы. Changelog остаётся журналом, блог — рассказом для людей.
+      </p>
+    </div>
+  </section>
+
+  <section class="prod-section">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">GT/OS {{ release.id }}</p>
+      <h2 class="prod-h2">Что важно в текущем выпуске</h2>
+      <div class="prod-stack" role="list">
+        <article class="prod-layer" role="listitem">
+          <h3>GT Media Player</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Аудио и видео: воспроизведение, пауза, стоп, перемотка, громкость, длительность. Открытие файлов из Проводника.</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Bluetooth</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Параметры → Bluetooth: поиск, сопряжение, подключение и список устройств. Без адаптера — понятный статус, без «тихой» лжи.</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Бэкапы</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Контрольный центр → Бэкапы: копии пользовательских данных и восстановление. Recovery по‑прежнему рядом для точек системы.</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Магазин и Firefox</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Сторонние программы со своими иконками. Firefox стартует надёжно; после перезагрузки пропавшие пакеты догружаются из кэша.</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Питание и сеть</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>GT Power Manager в Параметры → Питание. Сеть: Wi‑Fi/Ethernet, IP/DNS, диагностика — без отдельного «кабинета».</p>
+        </article>
+        <article class="prod-layer" role="listitem">
+          <h3>Обслуживание ПК</h3>
+          <div class="prod-rule" aria-hidden="true"></div>
+          <p>Update Engine с откатом, Security, диагностика, архивы и шрифты — инструменты, которыми пользуются, а не витрина.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="prod-section">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">Развитие GT/OS</p>
+      <h2 class="prod-h2">История выпусков</h2>
+
+      <ol class="prod-timeline">
+        <li class="prod-tl-item is-past">
+          <span class="prod-tl-ver">1.0</span>
+          <span class="prod-tl-dot" aria-hidden="true"></span>
+          <span class="prod-tl-label">Первый<br>ISO</span>
+        </li>
+        <li class="prod-tl-item is-past">
+          <span class="prod-tl-ver">1.2</span>
+          <span class="prod-tl-dot" aria-hidden="true"></span>
+          <span class="prod-tl-label">Жесты<br>как в Windows</span>
+        </li>
+        <li class="prod-tl-item is-past">
+          <span class="prod-tl-ver">1.5</span>
+          <span class="prod-tl-dot" aria-hidden="true"></span>
+          <span class="prod-tl-label">Магазин<br>и панель</span>
+        </li>
+        <li class="prod-tl-item is-past">
+          <span class="prod-tl-ver">1.5.2</span>
+          <span class="prod-tl-dot" aria-hidden="true"></span>
+          <span class="prod-tl-label">Питание,<br>сеть, архивы</span>
+        </li>
+        <li class="prod-tl-item is-now">
+          <span class="prod-tl-ver">{{ release.id }}</span>
+          <span class="prod-tl-dot" aria-hidden="true"></span>
+          <span class="prod-tl-label">Медиа,<br>BT, бэкапы</span>
+        </li>
+      </ol>
+    </div>
+  </section>
+
+  <section class="prod-footer reveal">
+    <div class="prod-footer-inner">
+      <div class="prod-footer-brand">
+        <span class="logo-mark">GT</span>
+        <div>
+          <strong>GT/OS {{ release.id }}</strong>
+          <p>Скачайте образ и сядьте за свой стол.</p>
+        </div>
+      </div>
+      <p class="prod-footer-co">Glukhov Mikhail</p>
+      <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать GT/OS</a>
+    </div>
+  </section>
+</div>
+{% endblock %}

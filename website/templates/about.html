@@ -1,0 +1,99 @@
+﻿{% extends "base.html" %}
+{% block content %}
+<div class="about">
+  <header class="about-hero">
+    <div class="about-hero-bg" style="background-image:url('{{ url_for('static', filename='img/wallpaper.jpg') }}')" aria-hidden="true"></div>
+    <div class="about-hero-veil" aria-hidden="true"></div>
+    <div class="about-hero-inner reveal">
+      <p class="prod-kicker">О нас</p>
+      <h1>Мы создаём собственный<br>цифровой мир.</h1>
+      <p class="about-lead">
+        <strong>Glukhov Mikhail</strong> — независимый разработчик,
+        создающий программное обеспечение и собственные цифровые проекты.
+      </p>
+    </div>
+  </header>
+
+  <section class="prod-section">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">Начало</p>
+      <h2 class="prod-h2">Откуда взялся GT/OS</h2>
+      <article class="about-card">
+        <h3>Идея GT/OS</h3>
+        <p>
+          GT/OS появилась как эксперимент: можно ли создать собственную операционную среду
+          со своим рабочим столом, оконной системой и приложениями?
+        </p>
+        <p>
+          Эксперимент постепенно превратился в отдельный проект, который продолжает
+          развиваться и меняться.
+        </p>
+      </article>
+    </div>
+  </section>
+
+  <section class="prod-section prod-section-alt">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">Наш подход</p>
+      <h2 class="prod-h2">Как мы работаем</h2>
+      <div class="about-pillars">
+        <article class="about-pillar">
+          <span class="about-pillar-num">01</span>
+          <h3>Эксперименты</h3>
+          <p>Проверяем идеи на практике.</p>
+        </article>
+        <article class="about-pillar">
+          <span class="about-pillar-num">02</span>
+          <h3>Собственный подход</h3>
+          <p>Создаём свои компоненты и интерфейсы.</p>
+        </article>
+        <article class="about-pillar">
+          <span class="about-pillar-num">03</span>
+          <h3>Развитие</h3>
+          <p>Улучшаем систему шаг за шагом.</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="prod-section">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">Шире, чем одна ОС</p>
+      <h2 class="prod-h2">Не только операционная система</h2>
+      <p class="prod-copy">
+        GT/OS — продукт Glukhov Mikhail. Цель — исследовать идеи,
+        создавать программные продукты и превращать эксперименты в работающие решения.
+      </p>
+    </div>
+  </section>
+
+  <section class="prod-section prod-section-alt">
+    <div class="prod-section-inner reveal">
+      <p class="prod-kicker">Проект сегодня</p>
+      <div class="about-now">
+        <h2 class="about-now-ver">GT/OS {{ release.id }}</h2>
+        <div class="prod-rule about-now-rule" aria-hidden="true"></div>
+        <p class="prod-copy">
+          Control Center, Diagnostics, Update Engine с безопасным откатом, Security и Recovery.
+          Выпуск 1.5 остаётся в архиве загрузок.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="about-cta reveal">
+    <div class="about-cta-inner">
+      <p class="prod-kicker">Сообщество</p>
+      <h2 class="prod-h2">Хочешь стать частью истории?</h2>
+      <p class="prod-copy">
+        Следи за развитием GT/OS, тестируй сборки и делись обратной связью.
+      </p>
+      <div class="about-cta-actions">
+        <a class="btn btn-primary" href="{{ url_for('product') }}">Перейти к GT/OS →</a>
+        <a class="btn btn-quiet" href="{{ url_for('download') }}">Скачать</a>
+        <a class="btn btn-quiet" href="{{ url_for('support') }}">Написать нам</a>
+      </div>
+    </div>
+  </section>
+</div>
+{% endblock %}

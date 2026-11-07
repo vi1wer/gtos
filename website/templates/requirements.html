@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="req-hero">
+  <div class="req-hero-bg" aria-hidden="true"></div>
+  <div class="req-hero-inner reveal">
+    <p class="req-brand">Системные требования · x86_64</p>
+    <h1>Что нужно,<br>чтобы поставить GT/OS</h1>
+    <p class="req-lead">Минимум — чтобы образ завелся. Рекомендуем — чтобы день за столом был спокойным. Архитектура только x86_64.</p>
+  </div>
+</section>
+
+<section class="req-compare" aria-label="Минимум и рекомендуем">
+  <div class="req-compare-head reveal">
+    <span class="req-col-label">Компонент</span>
+    <span class="req-col-label">Минимум</span>
+    <span class="req-col-label req-col-accent">Рекомендуем</span>
+  </div>
+  <div class="req-rows">
+    <div class="req-row reveal">
+      <strong>Процессор</strong>
+      <span>x86_64, 2 ядра</span>
+      <span class="req-rec">4 ядра и выше</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>ОЗУ</strong>
+      <span>2 ГБ</span>
+      <span class="req-rec">4–8 ГБ</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Накопитель</strong>
+      <span>8 ГБ свободно</span>
+      <span class="req-rec">16 ГБ+ SSD</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Загрузка</strong>
+      <span>USB 2.0, BIOS/UEFI</span>
+      <span class="req-rec">USB 3.0, Ventoy или Rufus (DD)</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Экран</strong>
+      <span>1024×768</span>
+      <span class="req-rec">1920×1080 и выше</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Сеть</strong>
+      <span>Не обязательна для установки</span>
+      <span class="req-rec">Ethernet или Wi‑Fi для магазина и обновлений</span>
+    </div>
+  </div>
+</section>
+
+<section class="req-aside">
+  <div class="req-aside-inner">
+    <div class="req-aside-block reveal">
+      <p class="req-aside-kicker">Виртуальная машина</p>
+      <h2>QEMU</h2>
+      <p>Для проверки образа хватит 2 ГБ ОЗУ гостю. В репозитории — <code>python run.py</code>.</p>
+      <a href="{{ url_for('developers') }}">Разработчикам →</a>
+    </div>
+    <div class="req-aside-block req-aside-release reveal">
+      <p class="req-aside-kicker">Текущий образ</p>
+      <h2>GT/OS {{ release.id }}</h2>
+      <p>{{ release.size_label }} · {{ release.filename }}</p>
+      <a class="btn btn-primary" href="{{ url_for('download') }}">Перейти к загрузке</a>
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="gallery-hero">
+  <p class="band-kicker">Галерея</p>
+  <h1>Как выглядит GT/OS {{ release.id }}</h1>
+  <p class="gallery-lead">Рабочий стол, Пуск, параметры и магазин — зелёный акцент и спокойный тёмный интерфейс.</p>
+</section>
+
+<section class="gallery-grid">
+  <article class="gallery-card reveal">
+    <div class="gallery-shot gallery-shot-desk"></div>
+    <h3>Рабочий стол</h3>
+    <p>Иконки, док и верхняя панель с временем и уведомлениями.</p>
+  </article>
+  <article class="gallery-card reveal">
+    <div class="gallery-shot gallery-shot-start"></div>
+    <h3>Меню Пуск</h3>
+    <p>Категории, частое и недавно установленное в стиле Deepin / GT.</p>
+  </article>
+  <article class="gallery-card reveal">
+    <div class="gallery-shot gallery-shot-store"></div>
+    <h3>Магазин GT</h3>
+    <p>Сторонние приложения с карточкой «О приложении».</p>
+  </article>
+  <article class="gallery-card reveal">
+    <div class="gallery-shot gallery-shot-settings"></div>
+    <h3>Параметры</h3>
+    <p>Система, сеть, персонализация и учётные записи в одном месте.</p>
+  </article>
+</section>
+
+<section class="gallery-cta">
+  <h2>Попробуйте сами</h2>
+  <p>Скачайте ISO {{ release.id }} и запустите в QEMU или на USB.</p>
+  <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать GT/OS {{ release.id }}</a>
+</section>
+{% endblock %}

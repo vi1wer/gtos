@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="ms-dl">
+  <header class="ms-dl-hero">
+    <div class="ms-dl-hero-inner">
+      <p class="get-kicker" style="margin-bottom:14px">Для пользователей</p>
+      <h1>Скачать GT/OS {{ iso.id }}</h1>
+      <p class="ms-dl-release">ISO‑образ · установка на ПК · x86_64</p>
+      <p class="ms-dl-intro">
+        Скачайте официальный образ. ISO грузится в Legacy BIOS; для UEFI удобнее Ventoy.
+        Установка через Пуск → «Установка GT/OS» копирует систему на диск и ставит GRUB.
+        Зеркало на GitHub: <a href="https://github.com/vi1wer/gtos/releases">github.com/vi1wer/gtos/releases</a>.
+        Раздел для разработчиков (QEMU, исходники) — отдельно.
+      </p>
+      <p style="margin-top:14px">
+        <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ url_for('developers') }}">Для разработчиков →</a>
+      </p>
+    </div>
+  </header>
+
+  <section class="ms-dl-option" id="iso">
+    <div class="ms-dl-option-inner">
+      <h2>1. Скачайте ISO</h2>
+      <div class="ms-dl-select-block">
+        <label for="edition">Выберите выпуск</label>
+        <select id="edition" data-release-select>
+          {% for r in releases %}
+          <option
+            value="{{ r.id }}"
+            data-url="{{ url_for('download_file', name=r.filename) if r.ready else '' }}"
+            data-name="{{ r.name }}"
+            data-size="{{ r.size_label }}"
+            data-bytes="{{ r.size_bytes_label }}"
+            data-ready="{{ '1' if r.ready else '0' }}"
+            data-summary="{{ r.summary }}"
+            data-tag="{{ r.tag }}"
+            {% if r.current %}selected{% endif %}
+          >{{ r.label }} — {{ r.size_label }} · {{ r.tag }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <p class="ms-dl-rel-summary" data-rel-summary>{{ iso.summary }}</p>
+      <div class="ms-dl-download-row">
+        <a class="ms-dl-btn" id="dlBtn" href="{% if iso.ready %}{{ url_for('download_file', name=iso.filename) }}{% else %}#{% endif %}" {% if not iso.ready %}aria-disabled="true"{% endif %}>Скачать ISO</a>
+        <p class="ms-dl-filehint" data-filehint>
+          {% if iso.ready %}<code>{{ iso.name }}</code> · {{ iso.size_label }}{% if iso.size_bytes_label %} <span class="ms-dl-bytes">({{ iso.size_bytes_label }})</span>{% endif %}
+          {% else %}ISO пока собирается…{% endif %}
+        </p>
+      </div>
+
+      <h2>2. Запишите образ на флешку</h2>
+      <p>Нужна USB‑флешка от 2 ГБ.</p>
+      <h4>Рекомендуется: Ventoy</h4>
+      <ol>
+        <li>Установите <strong>Ventoy</strong> на флешку (данные на ней будут стёрты при установке Ventoy).</li>
+        <li>Скопируйте файл <code>GTOS-*.iso</code> на флешку как обычный файл.</li>
+        <li>Загрузитесь с флешки и выберите GT/OS в меню Ventoy.</li>
+      </ol>
+      <details class="ms-dl-details">
+        <summary>Альтернатива: Rufus / balenaEtcher</summary>
+        <div class="ms-dl-details-body">
+          <ol>
+            <li>Откройте Rufus или balenaEtcher.</li>
+            <li>Выберите ISO и флешку.</li>
+            <li>В Rufus предпочтителен режим <strong>DD‑образ</strong>.</li>
+            <li>Дождитесь окончания записи.</li>
+          </ol>
+        </div>
+      </details>
+
+      <h2>3. Установите на компьютер</h2>
+      <ol>
+        <li>Вставьте флешку и включите ПК. Откройте Boot Menu (обычно F12, F10, Esc или F2).</li>
+        <li>Выберите USB‑накопитель и дождитесь рабочего стола GT/OS (живой сеанс).</li>
+        <li>В меню <strong>Пуск → Установка GT/OS</strong> откройте графический установщик.</li>
+        <li>Выберите язык, диск, создайте пользователя и подтвердите установку загрузчика.</li>
+        <li>После завершения извлеките флешку и перезагрузитесь с жёсткого диска.</li>
+      </ol>
+      <p class="ms-dl-warn">
+        <strong>Важно.</strong> Установка удалит данные на выбранном диске. Сделайте резервную копию заранее.
+        Нужен 64‑разрядный ПК (x86_64), рекомендуется от 4 ГБ ОЗУ и 16 ГБ свободного места.
+      </p>
+
+      <h2>Системные требования</h2>
+      <table class="ms-dl-table">
+        <tbody>
+          <tr><th>Процессор</th><td>x86_64</td></tr>
+          <tr><th>Память</th><td>от 4 ГБ</td></tr>
+          <tr><th>Диск</th><td>от 16 ГБ</td></tr>
+          <tr><th>Загрузка</th><td>USB · Legacy BIOS (Isolinux); UEFI — через Ventoy</td></tr>
+          <tr><th>Интерфейс</th><td>Русский / English</td></tr>
+        </tbody>
+      </table>
+      <h2 id="archive">Архив выпусков</h2>
+      <p>Предыдущие ISO остаются доступны для скачивания.</p>
+      <div class="ms-dl-archive">
+        {% for r in archives %}
+        <div class="ms-dl-archive-row">
+          <div>
+            <strong>{{ r.label }}</strong>
+            <span class="ms-dl-tag">{{ r.tag }}</span>
+            <p>{{ r.summary }}</p>
+          </div>
+          <div class="ms-dl-archive-meta">
+            <code>{{ r.name }}</code>
+            <span>{{ r.size_label }}</span>
+            {% if r.ready %}
+            <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ url_for('download_file', name=r.filename) }}">Скачать {{ r.id }}</a>
+            {% else %}
+            <span class="ms-dl-filehint">ещё собирается…</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <p class="ms-dl-footnote">
+        Вопросы? <a href="{{ url_for('support') }}">Поддержка</a> ·
+        исходники и QEMU — в разделе <a href="{{ url_for('developers') }}">Для разработчиков</a>.
+      </p>
+    </div>
+  </section>
+</div>
+{% endblock %}

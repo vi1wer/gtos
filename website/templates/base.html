@@ -1,0 +1,103 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GT/OS — настольная операционная система от Glukhov Mikhail. Скачайте официальный образ.">
+  <title>{{ title }}</title>
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/gt-mark.svg') }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Sora:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/site.css') }}">
+</head>
+<body class="page-{{ page }}">
+  <header class="nav-shell" data-nav>
+    <a class="logo" href="{{ url_for('home') }}" aria-label="GT/OS">
+      <img class="logo-clover" src="{{ url_for('static', filename='img/gt-mark.svg') }}" width="36" height="36" alt="">
+      <span class="logo-text">GT/OS</span>
+    </a>
+    <nav class="nav-links" aria-label="Основное меню">
+      <a href="{{ url_for('home') }}" class="{{ 'is-active' if page == 'home' else '' }}">Главная</a>
+      <a href="{{ url_for('product') }}" class="{{ 'is-active' if page == 'product' else '' }}">Продукт</a>
+      <a href="{{ url_for('blog') }}" class="{{ 'is-active' if page == 'blog' else '' }}">Блог</a>
+      <a href="{{ url_for('community') }}" class="{{ 'is-active' if page == 'community' else '' }}">Сообщество</a>
+      <a href="{{ url_for('download') }}" class="{{ 'is-active' if page == 'download' else '' }}">Скачать</a>
+      <a href="{{ url_for('changelog') }}" class="{{ 'is-active' if page == 'changelog' else '' }}">Изменения</a>
+      <a href="{{ url_for('developers') }}" class="{{ 'is-active' if page == 'developers' else '' }}">Разработчикам</a>
+      <a href="{{ url_for('support') }}" class="{{ 'is-active' if page == 'support' else '' }}">Поддержка</a>
+      <div class="nav-more {{ 'is-active' if page in ['about', 'tips', 'requirements', 'privacy', 'accessibility', 'whats-new'] else '' }}" data-nav-more>
+        <button type="button" class="nav-more-btn" data-nav-more-btn aria-expanded="false" aria-haspopup="true">
+          Ещё
+          <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <div class="nav-more-panel" role="menu">
+          <a href="{{ url_for('whats_new') }}" role="menuitem" class="{{ 'is-active' if page == 'whats-new' else '' }}">Что нового</a>
+          <a href="{{ url_for('tips') }}" role="menuitem" class="{{ 'is-active' if page == 'tips' else '' }}">Советы</a>
+          <a href="{{ url_for('requirements') }}" role="menuitem" class="{{ 'is-active' if page == 'requirements' else '' }}">Требования</a>
+          <a href="{{ url_for('accessibility') }}" role="menuitem" class="{{ 'is-active' if page == 'accessibility' else '' }}">Доступность</a>
+          <a href="{{ url_for('privacy') }}" role="menuitem" class="{{ 'is-active' if page == 'privacy' else '' }}">Конфиденциальность</a>
+          <a href="{{ url_for('about') }}" role="menuitem" class="{{ 'is-active' if page == 'about' else '' }}">О нас</a>
+        </div>
+      </div>
+    </nav>
+    <a class="nav-cta" href="{{ url_for('download') }}">Скачать GT/OS</a>
+    <button class="nav-toggle" type="button" aria-label="Меню" data-nav-toggle>
+      <span></span><span></span>
+    </button>
+  </header>
+
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer site-footer-v2">
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <img class="logo-clover" src="{{ url_for('static', filename='img/gt-mark.svg') }}" width="40" height="40" alt="">
+          <div>
+            <strong>GT/OS</strong>
+            <p>Рабочий стол, в котором всё на своих местах — как в Windows, на своём ядре.</p>
+          </div>
+        </div>
+        <div class="footer-cta-wrap">
+          <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать {{ release.id if release is defined else '1.5.4' }}</a>
+          <a class="btn btn-quiet" href="{{ url_for('support') }}">Нужна помощь?</a>
+        </div>
+      </div>
+      <div class="footer-cols footer-cols-v2">
+        <div>
+          <h4>Продукт</h4>
+          <a href="{{ url_for('product') }}">Обзор GT/OS</a>
+          <a href="{{ url_for('whats_new') }}">Что нового</a>
+          <a href="{{ url_for('download') }}">Скачать ISO</a>
+          <a href="{{ url_for('requirements') }}">Системные требования</a>
+          <a href="{{ url_for('changelog') }}">Список изменений</a>
+        </div>
+        <div>
+          <h4>Помощь</h4>
+          <a href="{{ url_for('support') }}">Центр поддержки</a>
+          <a href="{{ url_for('tips') }}">Советы и жесты</a>
+          <a href="{{ url_for('accessibility') }}">Специальные возможности</a>
+          <a href="mailto:mikhail.lososka@gmail.com">Написать на почту</a>
+        </div>
+        <div>
+          <h4>Компания</h4>
+          <a href="{{ url_for('about') }}">О Glukhov Mikhail</a>
+          <a href="{{ url_for('privacy') }}">Конфиденциальность</a>
+          <a href="{{ url_for('blog') }}">Блог</a>
+          <a href="{{ url_for('community') }}">Сообщество</a>
+          <a href="{{ url_for('developers') }}">Разработчикам</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p class="footer-copy">© 2026 Glukhov Mikhail · GT/OS {% if release is defined %}{{ release.id }}{% else %}1.5.6{% endif %}</p>
+        <p class="footer-meta">Для ПК · x86_64</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="{{ url_for('static', filename='js/site.js') }}"></script>
+</body>
+</html>

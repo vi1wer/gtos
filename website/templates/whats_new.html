@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="util">
+  <header class="util-hero reveal">
+    <p class="util-kicker">Что нового · {{ release.id }}</p>
+    <h1>Повседневный слой: медиа, Bluetooth, бэкапы и спокойные окна.</h1>
+    <p class="util-lead">
+      В {{ release.id }} мы довели до ума то, чем пользуются каждый день: настоящий медиаплеер,
+      живой Bluetooth в Параметрах, бэкапы в Контрольном центре и рамки внешних окон как у оболочки GT/OS.
+    </p>
+  </header>
+
+  <div class="util-grid">
+    <article class="util-card reveal">
+      <h3>GT Media Player</h3>
+      <p>Play/Pause, Stop, перемотка, громкость, имя файла и длительность. Медиа из Проводника открывается сразу в плеере — без заглушки «скоро будет».</p>
+      <a href="{{ url_for('blog_post', slug='gtos-1-5-3-everyday') }}">Читать в блоге →</a>
+    </article>
+    <article class="util-card reveal">
+      <h3>Bluetooth в Параметрах</h3>
+      <p>Включение, поиск устройств, сопряжение, подключение и отключение через bluetoothctl. Нет адаптера (часто в QEMU) — система честно об этом скажет.</p>
+      <a href="{{ url_for('product') }}">Обзор продукта →</a>
+    </article>
+    <article class="util-card reveal">
+      <h3>Бэкапы</h3>
+      <p>В Контрольном центре появился раздел «Бэкапы»: копия Документов, Загрузок и рабочего стола — и восстановление одним действием.</p>
+      <a href="{{ url_for('support') }}">Как пользоваться →</a>
+    </article>
+    <article class="util-card reveal">
+      <h3>Окна и Firefox</h3>
+      <p>Рамки Firefox и других внешних программ совпадают с заголовком «Параметров». Firefox снова реально стартует; эмулятору — 14&nbsp;ГБ ОЗУ.</p>
+      <a href="{{ url_for('download') }}">Скачать ISO →</a>
+    </article>
+  </div>
+
+  <div class="util-cta reveal">
+    <p>Полный список пунктов — в журнале версий. Архивный образ {{ '1.5.2' }} остаётся на странице загрузки.</p>
+    <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center;margin-top:8px">
+      <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать GT/OS {{ release.id }}</a>
+      <a class="btn btn-quiet" href="{{ url_for('changelog') }}">Список изменений</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

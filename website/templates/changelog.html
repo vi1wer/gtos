@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<header class="cl-top reveal">
+  <div class="cl-top-row">
+    <div class="cl-top-copy">
+      <p class="cl-brand">GT/OS · Изменения</p>
+      <h1>Журнал выпусков</h1>
+      <p class="cl-lead">Коротко по каждой сборке. Сейчас актуален <strong>{{ release.id }}</strong>.</p>
+    </div>
+    <div class="cl-head-actions">
+      <a class="btn btn-primary" href="{{ url_for('download') }}">Скачать {{ release.id }}</a>
+      <a class="btn btn-quiet" href="#v{{ release.id | replace('.', '') }}">К текущему</a>
+    </div>
+  </div>
+</header>
+
+<div class="cl-page">
+  <nav class="cl-versions reveal" aria-label="Версии">
+    {% for entry in changelog %}
+    <a class="cl-chip {% if entry.version == release.id %}is-on{% endif %}" href="#v{{ entry.version | replace('.', '') }}">{{ entry.version }}</a>
+    {% endfor %}
+  </nav>
+
+  <div class="cl-feed">
+    {% for entry in changelog %}
+    {% set is_current = entry.version == release.id %}
+    {% if is_current %}
+    <article class="cl-release is-current reveal" id="v{{ entry.version | replace('.', '') }}">
+      <header class="cl-release-head">
+        <div>
+          <p class="cl-ver">{{ entry.version }} · {{ entry.tag }}</p>
+          <h2>{{ entry.title }}</h2>
+        </div>
+        <time>{{ entry.date }}</time>
+      </header>
+      <ul class="cl-items">
+        {% for item in entry.changes %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      <p class="cl-foot"><a href="{{ url_for('download') }}">Скачать {{ entry.version }} →</a></p>
+    </article>
+
+    {% if promo_image %}
+    <figure class="cl-promo reveal">
+      <img src="{{ url_for('static', filename=promo_image) }}" alt="GT/OS {{ release.id }}">
+      <figcaption>Обложка выпуска {{ release.id }}</figcaption>
+    </figure>
+    {% endif %}
+    {% else %}
+    <details class="cl-release reveal" id="v{{ entry.version | replace('.', '') }}">
+      <summary>
+        <span class="cl-ver">{{ entry.version }}</span>
+        <span class="cl-sum-title">{{ entry.title }}</span>
+        <time>{{ entry.date }}</time>
+      </summary>
+      <ul class="cl-items">
+        {% for item in entry.changes %}
+        <li>{{ item }}</li>
+        {% endfor %}
+      </ul>
+      <p class="cl-foot"><a href="{{ url_for('download') }}#archive">Архив ISO →</a></p>
+    </details>
+    {% endif %}
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
