@@ -4314,7 +4314,7 @@ Window {
             }
             defaultDownloadBusy = true
             sys.run("mkdir -p /var/lib/gtos; echo pending >/var/lib/gtos/default-apps-done")
-            notify("Предустановки", "Скачиваем Cursor — IDE по умолчанию для GT/OS…", "ok")
+            notify("Магазин GT", "Установка «" + (app.name || id) + "»…", "ok")
             installStoreApp(app)
             return
         }
@@ -4582,7 +4582,7 @@ Window {
                 pinnedApps = pins
                 saveDesktop()
             }
-            notify("Cursor", "IDE установлена и закреплена в панели задач", "ok")
+            notify("Магазин GT", "«" + app.name + "» установлено", "ok")
         }
         if (storeAutoOpenApp && storeAutoOpenApp.id === app.id) {
             var toOpen = storeAutoOpenApp
