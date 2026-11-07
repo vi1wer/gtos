@@ -143,7 +143,7 @@ def init_community_db() -> None:
             (
                 "QEMU и загрузка с ISO",
                 "alex",
-                "Если зависает на Booting from ROM — проверьте, что не монтируете старый ISO как единственную загрузку. Актуальный образ: 1.5.6.",
+                "Если зависает на Booting from ROM — проверьте, что не монтируете старый ISO как единственную загрузку. Актуальный образ: 1.6.",
             ),
             (
                 "Идеи к 1.6",
@@ -205,10 +205,18 @@ app.jinja_env.globals["render_blog_body"] = render_blog_body
 
 RELEASES = [
     {
-        "id": "1.5.6",
-        "label": "GT/OS Desktop 1.5.6 (x86_64)",
+        "id": "1.6",
+        "label": "GT/OS Desktop 1.6 (x86_64)",
         "tag": "Текущий",
         "current": True,
+        "summary": "UEFI+BIOS, HiDPI, онбординг, обновления «проверить→установить→перезагрузить», SHA256, сон с сетью, звук по умолчанию.",
+        "filename": "GTOS-1.6-x86_64.iso",
+    },
+    {
+        "id": "1.5.6",
+        "label": "GT/OS Desktop 1.5.6 (x86_64)",
+        "tag": "Архив",
+        "current": False,
         "summary": "Ctrl+Alt+Delete, индикатор операций, бэкапы по расписанию, экономия заряда и тихие часы.",
         "filename": "GTOS-1.5.6-x86_64.iso",
     },
@@ -296,9 +304,25 @@ RELEASES = [
 
 CHANGELOG = [
     {
+        "version": "1.6",
+        "date": "7 ноября 2026",
+        "tag": "Текущий",
+        "title": "UEFI, HiDPI и основа «настоящей» ОС",
+        "changes": [
+            "ISO грузится в BIOS и UEFI (El Torito EFI + /EFI/BOOT/BOOTX64.EFI)",
+            "Рядом с каждым ISO — файл .sha256 для проверки образа",
+            "Масштаб интерфейса 100/125/150/200% (HiDPI) в Параметрах",
+            "Первый запуск: 4 шага — учётка, язык, сеть, бэкапы/советы",
+            "Центр обновлений: проверить → установить → установить и перезагрузить",
+            "Сон: после пробуждения сеть и звук поднимаются снова",
+            "Звук по умолчанию: Master/PCM unmuted при старте сеанса",
+            "Safe Mode, Ctrl+Alt+Delete и бэкапы из 1.5.6 сохранены",
+        ],
+    },
+    {
         "version": "1.5.6",
         "date": "3 ноября 2026",
-        "tag": "Текущий",
+        "tag": "Архив",
         "title": "Безопасный стол и повседневные операции",
         "changes": [
             "Ctrl+Alt+Delete: полноэкранный безопасный стол поверх всех окон (также Ctrl+Alt+End / Backspace в QEMU)",
@@ -655,6 +679,13 @@ def human_size(num: int) -> str:
 def release_info(meta: dict) -> dict:
     iso = OUT / meta["filename"]
     size = iso.stat().st_size if iso.is_file() else 0
+    sha_path = Path(str(iso) + ".sha256")
+    sha256 = ""
+    if sha_path.is_file():
+        sha256 = sha_path.read_text(encoding="utf-8", errors="replace").split()[0].strip()
+    elif iso.is_file() and size > 0 and size < 900_000_000:
+        # не считаем SHA на лету для огромных файлов без sidecar — только если есть .sha256
+        sha256 = ""
     return {
         **meta,
         "ready": size > 0,
@@ -663,6 +694,8 @@ def release_info(meta: dict) -> dict:
         "size_bytes_label": f"{size:,} байт".replace(",", " ") if size else "",
         "name": meta["filename"],
         "path": iso,
+        "sha256": sha256,
+        "sha256_file": sha_path.name if sha_path.is_file() else "",
     }
 
 
@@ -939,6 +972,7 @@ def developers():
 @app.route("/files/<path:name>")
 def download_file(name: str):
     allowed = {r["filename"] for r in RELEASES}
+    allowed |= {r["filename"] + ".sha256" for r in RELEASES}
     allowed.add(SOURCE_ZIP)
     if name not in allowed:
         abort(404)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Replace the QML shell and wallpaper inside the built initramfs."""
 
 from __future__ import annotations
@@ -103,9 +103,9 @@ def main() -> None:
     tree["usr/share/gtos/update-channel.example"] = FsNode(
         "reg", 0o100644, "url=\n# example: url=https://example.com/gtos/\n".encode()
     )
-    tree["usr/share/gtos/version"] = FsNode("reg", 0o100644, b"1.5.6\n")
+    tree["usr/share/gtos/version"] = FsNode("reg", 0o100644, b"1.6\n")
     tree["boot"] = FsNode("dir", 0o040755) if "boot" not in tree else tree["boot"]
-    tree["boot/gtos-version"] = FsNode("reg", 0o100644, b"1.5.6\n")
+    tree["boot/gtos-version"] = FsNode("reg", 0o100644, b"1.6\n")
     # Тема рамок Openbox в стиле GT/OS (вместо Clearlooks)
     theme_src = ROOT / "assets" / "openbox" / "GTOS" / "openbox-3"
     if theme_src.is_dir():

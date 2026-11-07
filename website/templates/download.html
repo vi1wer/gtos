@@ -7,10 +7,10 @@
       <h1>Скачать GT/OS {{ iso.id }}</h1>
       <p class="ms-dl-release">ISO‑образ · установка на ПК · x86_64</p>
       <p class="ms-dl-intro">
-        Скачайте официальный образ. ISO грузится в Legacy BIOS; для UEFI удобнее Ventoy.
+        Скачайте официальный образ. ISO грузится в <strong>BIOS и UEFI</strong>.
         Установка через Пуск → «Установка GT/OS» копирует систему на диск и ставит GRUB.
-        Зеркало на GitHub: <a href="https://github.com/vi1wer/gtos/releases">github.com/vi1wer/gtos/releases</a>.
-        Раздел для разработчиков (QEMU, исходники) — отдельно.
+        Рядом с файлом — <code>.sha256</code> для проверки. Зеркало:
+        <a href="https://github.com/vi1wer/gtos/releases">github.com/vi1wer/gtos/releases</a>.
       </p>
       <p style="margin-top:14px">
         <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ url_for('developers') }}">Для разработчиков →</a>
@@ -42,8 +42,12 @@
       <p class="ms-dl-rel-summary" data-rel-summary>{{ iso.summary }}</p>
       <div class="ms-dl-download-row">
         <a class="ms-dl-btn" id="dlBtn" href="{% if iso.ready %}{{ url_for('download_file', name=iso.filename) }}{% else %}#{% endif %}" {% if not iso.ready %}aria-disabled="true"{% endif %}>Скачать ISO</a>
+        {% if iso.sha256_file %}
+        <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ url_for('download_file', name=iso.sha256_file) }}">SHA256</a>
+        {% endif %}
         <p class="ms-dl-filehint" data-filehint>
           {% if iso.ready %}<code>{{ iso.name }}</code> · {{ iso.size_label }}{% if iso.size_bytes_label %} <span class="ms-dl-bytes">({{ iso.size_bytes_label }})</span>{% endif %}
+          {% if iso.sha256 %}<br><span class="ms-dl-bytes">SHA256: <code>{{ iso.sha256 }}</code></span>{% endif %}
           {% else %}ISO пока собирается…{% endif %}
         </p>
       </div>

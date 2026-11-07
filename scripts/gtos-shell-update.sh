@@ -1,4 +1,4 @@
-#!/bin/sh
+﻿#!/bin/sh
 # Обновление оболочки GT/OS: ядро/initrd + QML с носителя или payload.
 # Usage: gtos-shell-update.sh [source_dir]
 # source: каталог с boot/vmlinuz + boot/initrd.gz и опционально qml/Main.qml
@@ -15,7 +15,7 @@ for arg in "$@"; do
         *) SRC=$arg ;;
     esac
 done
-GTOS_VER=${GTOS_VERSION:-1.5.6}
+GTOS_VER=${GTOS_VERSION:-1.6}
 
 # Канал обновлений: /var/lib/gtos/update-channel (url=...)
 channel_url() {
