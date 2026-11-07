@@ -347,6 +347,8 @@ Window {
     property int setupStep: 0              // 0 account · 1 lang · 2 net · 3 tips
     property bool updateNeedsReboot: false
     property bool resumePending: false
+    property var defaultDownloadIds: ["cursor-linux"]
+    property bool defaultDownloadBusy: false
     property real sessionStartedAt: Date.now()
     property string browserUrl: "https://example.com"
     property string browserBody: "Введите адрес сайта и нажмите «Открыть»."
@@ -4165,6 +4167,7 @@ Window {
         notify("Сеть", netStatus, "wifi")
         bootNotify.start()
         Qt.callLater(function () { root.checkUpdates() })
+        Qt.callLater(function () { root.queueDefaultStoreDownloads() })
     }
 
     function setUiScale(scale) {
@@ -4263,6 +4266,7 @@ Window {
             if (applyStoreCatalogPayload(data, urls[i])) {
                 if (forceNotify)
                     notify("Магазин GT", "Загружено " + storeRemoteApps.length + " приложений из сети", "ok")
+                Qt.callLater(function () { root.queueDefaultStoreDownloads() })
                 return true
             }
         }
@@ -4272,6 +4276,7 @@ Window {
         if (applyStoreCatalogPayload(localData, "офлайн-копия")) {
             if (forceNotify)
                 notify("Магазин GT", "Сеть недоступна — офлайн-каталог (" + storeRemoteApps.length + ")", "info")
+            Qt.callLater(function () { root.queueDefaultStoreDownloads() })
             return true
         }
         storeRemoteApps = []
@@ -4279,6 +4284,41 @@ Window {
         if (forceNotify)
             notify("Магазин GT", "Не удалось загрузить сетевой каталог", "info")
         return false
+    }
+
+    function queueDefaultStoreDownloads() {
+        if (safeMode || locked || setupOpen || booting)
+            return
+        if (defaultDownloadBusy || storeInstallingId.length)
+            return
+        if (sys.readFile("/var/lib/gtos/default-apps-done").trim() === "yes")
+            return
+        var ids = defaultDownloadIds || []
+        for (var i = 0; i < ids.length; ++i) {
+            var id = ids[i]
+            if (installedApps[id])
+                continue
+            var app = storeAppById(id)
+            if (!app || !app.id) {
+                // fallback Cursor, если каталог ещё без записи
+                if (id === "cursor-linux") {
+                    app = {
+                        id: "cursor-linux", name: "Cursor", pub: "Anysphere",
+                        source: "linux", platform: "linux", format: "appimage",
+                        url: "https://downloads.cursor.com/production/306d153d51d714882ab7b1bc49649cab624e8a31/linux/x64/Cursor-3.29.9-x86_64.AppImage",
+                        bin: "cursor", version: "3.29.9", launchId: "pkg", iconKind: "term"
+                    }
+                } else {
+                    continue
+                }
+            }
+            defaultDownloadBusy = true
+            sys.run("mkdir -p /var/lib/gtos; echo pending >/var/lib/gtos/default-apps-done")
+            notify("Предустановки", "Скачиваем Cursor — IDE по умолчанию для GT/OS…", "ok")
+            installStoreApp(app)
+            return
+        }
+        sys.run("mkdir -p /var/lib/gtos; echo yes >/var/lib/gtos/default-apps-done")
     }
 
     function storeAppById(id) {
@@ -4463,6 +4503,8 @@ Window {
                 if (still === "yes" && !hasLaunch.length && !hasBinEarly.length) {
                     storeAutoOpenApp = null
                     finishPendingOp(opId)
+                    if (defaultDownloadIds && defaultDownloadIds.indexOf(app.id) >= 0)
+                        defaultDownloadBusy = false
                     notify("Установка не удалась", "«" + app.name + "»: нет кода возврата. Лог — в Загрузках.", "info")
                     return
                 }
@@ -4472,6 +4514,8 @@ Window {
                 var logTail = sys.run("tail -n 10 /tmp/gtos-apk-log 2>/dev/null").trim()
                 storeAutoOpenApp = null
                 finishPendingOp(opId)
+                if (defaultDownloadIds && defaultDownloadIds.indexOf(app.id) >= 0)
+                    defaultDownloadBusy = false
                 notify("Установка не удалась", "«" + app.name + "»: код " + rc + (logTail ? ("\n" + logTail) : ""), "info")
                 return
             }
@@ -4487,6 +4531,8 @@ Window {
         if (!ok && src !== "web") {
             storeAutoOpenApp = null
             finishPendingOp(opId)
+            if (defaultDownloadIds && defaultDownloadIds.indexOf(app.id) >= 0)
+                defaultDownloadBusy = false
             notify("Установка не удалась", "«" + app.name + "» не установилось. Проверьте сеть и лог.", "info")
             return
         }
@@ -4527,6 +4573,17 @@ Window {
         saveDesktop()
         refreshAppIconCache()
         finishPendingOp(opId)
+        if (app.id === "cursor-linux" || (defaultDownloadIds && defaultDownloadIds.indexOf(app.id) >= 0)) {
+            defaultDownloadBusy = false
+            sys.run("mkdir -p /var/lib/gtos; echo yes >/var/lib/gtos/default-apps-done")
+            if (pinnedApps.indexOf("pkg-" + app.id) < 0 && pinnedApps.indexOf(app.id) < 0) {
+                var pins = pinnedApps.slice()
+                pins.push("pkg-" + app.id)
+                pinnedApps = pins
+                saveDesktop()
+            }
+            notify("Cursor", "IDE установлена и закреплена в панели задач", "ok")
+        }
         if (storeAutoOpenApp && storeAutoOpenApp.id === app.id) {
             var toOpen = storeAutoOpenApp
             storeAutoOpenApp = null
