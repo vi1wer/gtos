@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Build GT/OS: Linux kernel + Qt 6 QML shell packed as an initramfs."""
 
 from __future__ import annotations
@@ -836,6 +836,24 @@ else
     echo GTOS_SAFEMODE 0 > /dev/ttyS0
 fi
 export GTOS_SAFEMODE=$SAFEMODE
+# Масштаб UI (HiDPI) — Параметры → Питание/экран или /var/lib/gtos/ui-scale
+UI_SCALE=$(cat /var/lib/gtos/ui-scale 2>/dev/null | tr -d '\r\n' | head -n1)
+case "$UI_SCALE" in
+    1|1.0|1.25|1.5|2|2.0) ;;
+    *) UI_SCALE=1 ;;
+esac
+export QT_SCALE_FACTOR="$UI_SCALE"
+export QT_AUTO_SCREEN_SCALE_FACTOR=0
+echo "GTOS_UI_SCALE $UI_SCALE" > /dev/ttyS0
+# Звук по умолчанию: unmute + разумная громкость
+if command -v amixer >/dev/null 2>&1; then
+    amixer -q set Master unmute 80% 2>/dev/null || true
+    amixer -q sset Master 80% unmute 2>/dev/null || true
+    amixer -q set PCM unmute 80% 2>/dev/null || true
+    amixer -q set Speaker unmute 2>/dev/null || true
+    amixer -q set Headphone unmute 2>/dev/null || true
+    echo GTOS_AUDIO_DEFAULT > /dev/ttyS0
+fi
 # GPU только на реальном железе. QEMU virtio-gpu без VirGL даёт
 # «virtio_gpu: driver missing» и роняет Qt Quick — там software.
 USE_GPU=0
@@ -893,7 +911,7 @@ if [ ! -f /home/misha/Проекты/readme.txt ]; then
     printf '%s\n' 'Проекты GT/OS 1.1' > /home/misha/Проекты/readme.txt
 fi
 chown -R 1000:1000 /home/misha 2>/dev/null || true
-printf '%s\n' 1.5.6 > /var/lib/gtos/version
+printf '%s\n' 1.6 > /var/lib/gtos/version
 # Репозитории Alpine для магазина (установка пакетов из сети)
 mkdir -p /etc/apk /var/lib/gtos/apk-cache
 BRANCH=v3.24
@@ -1102,8 +1120,8 @@ GTOS_KERNEL={kernel_version}
     dunst_cfg = (ROOT / "scripts" / "gtos-dunst.conf").read_text(encoding="utf-8").replace("\r\n", "\n")
     overlay_text(tree, "usr/share/gtos/dunst.conf", dunst_cfg)
     overlay_text(tree, "etc/dunst/dunstrc", dunst_cfg)
-    overlay_text(tree, "usr/share/gtos/version", "1.5.6\n")
-    overlay_text(tree, "boot/gtos-version", "1.5.6\n")
+    overlay_text(tree, "usr/share/gtos/version", "1.6\n")
+    overlay_text(tree, "boot/gtos-version", "1.6\n")
     # канал обновлений по умолчанию (можно переопределить в /var/lib/gtos/update-channel)
     overlay_text(tree, "usr/share/gtos/update-channel.example", "url=\n# пример: url=https://example.com/gtos/\n")
     runuser_sh = (ROOT / "scripts" / "gtos-runuser.sh").read_text(encoding="utf-8").replace("\r\n", "\n")

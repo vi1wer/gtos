@@ -1,4 +1,4 @@
-#!/bin/sh
+﻿#!/bin/sh
 # GT/OS installer: GPT+UEFI и/или MBR+BIOS, rootfs, GRUB
 # Usage: gtos-install.sh <disk> <username> <fullname> <lang> <bootmode>
 # bootmode: auto | uefi | bios | both
@@ -10,7 +10,7 @@ USER_NAME=${2:-misha}
 FULL_NAME=${3:-Misha}
 LANG_CODE=${4:-ru}
 BOOT_MODE=${5:-auto}
-GTOS_VER=${GTOS_VERSION:-1.5.6}
+GTOS_VER=${GTOS_VERSION:-1.6}
 
 if [ -z "$DISK_NAME" ]; then
     echo "ERR: no disk"

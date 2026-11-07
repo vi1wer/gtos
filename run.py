@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Boot GT/OS as a daily desktop: disk persistence + user networking."""
 
 from __future__ import annotations
@@ -115,7 +115,7 @@ def main() -> int:
         "gtk,gl=off,full-screen=off,grab-on-hover=off,zoom-to-fit=on,show-cursor=on,window-close=on",
         "-usb",
         "-device", "usb-tablet",
-        "-name", "GT/OS 1.5.6" + (" Safe" if safe else ""),
+        "-name", "GT/OS 1.6" + (" Safe" if safe else ""),
         "-serial", f"file:{serial_log}",
         "-netdev", "user,id=net0,hostfwd=tcp::2222-:22",
         # romfile= — без PXE option ROM, иначе SeaBIOS зависает на "Booting from ROM"
@@ -130,7 +130,7 @@ def main() -> int:
         args = ["-L", str(bios), *args]
     print(f"QEMU: {qemu}", flush=True)
     mode = "Safe Mode · " if safe else ""
-    print(f"GT/OS 1.5.6 — {mode}1920×1080 · 14 ГБ ОЗУ · диск 16 ГБ · TCG · GTK", flush=True)
+    print(f"GT/OS 1.6 — {mode}1920×1080 · 14 ГБ ОЗУ · диск 16 ГБ · TCG · GTK", flush=True)
     print("Закрой окно QEMU, чтобы выключить систему.", flush=True)
     # Не даём print/кодировке уронить процесс: QEMU уже в args
     try:

@@ -326,8 +326,8 @@ Window {
     property var browserTabs: [{ title: "Новая вкладка", url: "https://example.com", body: "", busy: false }]
     property int browserTab: 0
 
-    // GT/OS 1.5.6
-    property string osVersion: "1.5.6"
+    // GT/OS 1.6
+    property string osVersion: "1.6"
     property bool safeMode: false
     property bool secureDeskOpen: false
     property var pendingOps: []
@@ -343,6 +343,10 @@ Window {
     property int focusEndHour: 8
     property string quickNoteDraft: ""
     property bool quickNoteOpen: false
+    property real uiScale: 1.0             // 1 / 1.25 / 1.5 / 2
+    property int setupStep: 0              // 0 account · 1 lang · 2 net · 3 tips
+    property bool updateNeedsReboot: false
+    property bool resumePending: false
     property real sessionStartedAt: Date.now()
     property string browserUrl: "https://example.com"
     property string browserBody: "Введите адрес сайта и нажмите «Открыть»."
@@ -371,15 +375,15 @@ Window {
     property int wsRenameIndex: -1
     property string wsRenameDraft: ""
     property var updateLog: [
-        { ver: "1.5.6", date: "3 ноя 2026", title: "Безопасный стол, операции, бэкапы", note: "Текущий выпуск" },
+        { ver: "1.6", date: "7 ноя 2026", title: "UEFI, HiDPI, онбординг, обновления", note: "Текущий выпуск" },
+        { ver: "1.5.6", date: "3 ноя 2026", title: "Безопасный стол, операции, бэкапы", note: "Архив" },
         { ver: "1.5.4", date: "1 ноя 2026", title: "Галерея, корзина, магазин Linux/Windows", note: "Архив" },
         { ver: "1.5.3", date: "31 окт 2026", title: "Медиа, Bluetooth, бэкапы", note: "Архив" },
         { ver: "1.5.2", date: "31 окт 2026", title: "Power, Network, Apps", note: "Архив" },
-        { ver: "1.5.1", date: "30 окт 2026", title: "Control Center, Security, Recovery", note: "Архив" },
-        { ver: "1.5", date: "28 окт 2026", title: "Магазин, uptime, рабочие пространства", note: "Архив" }
+        { ver: "1.5.1", date: "30 окт 2026", title: "Control Center, Security, Recovery", note: "Архив" }
     ]
     property bool updateChecking: false
-    property string updateStatus: "Актуальная версия 1.5.6"
+    property string updateStatus: "Актуальная версия 1.6"
     property string updateLastCheck: "ещё не проверяли"
     property bool updateAutoCheck: true
     property string updateDepsStatus: "Зависимости не проверялись"
@@ -4089,15 +4093,15 @@ Window {
         return "file:///usr/share/gtos/lock-wallpaper.jpg"
     }
 
-    function finishSetup() {
+    function finishSetupAccount() {
         var name = setupName.trim()
         if (!name.length) {
             notify("Учётная запись", "Введите имя пользователя", "info")
-            return
+            return false
         }
         if (setupPassword !== setupPassword2) {
             notify("Учётная запись", "Пароли не совпадают", "info")
-            return
+            return false
         }
         var user = name.toLowerCase().replace(/[^a-z0-9_]/g, "")
         if (!user.length)
@@ -4114,24 +4118,72 @@ Window {
         sys.run("mkdir -p /var/lib/gtos /home/" + user
                 + "; printf '%s\\n' '" + name.replace(/'/g, "") + "' > /var/lib/gtos/fullname"
                 + "; printf '%s\\n' '" + user + "' > /var/lib/gtos/username"
-                + "; touch /var/lib/gtos/setup-done"
                 + "; grep -q '^" + user + ":' /etc/passwd || echo '" + user + ":x:1000:1000:" + name.replace(/'/g, "") + ":/home/" + user + ":/bin/sh' >> /etc/passwd"
                 + "; mkdir -p /home/" + user + "/Документы /home/" + user + "/Загрузки /home/" + user + "/Изображения /home/" + user + "/Музыка /home/" + user + "/Видео '/home/" + user + "/Рабочий стол' /home/" + user + "/Проекты /home/" + user + "/Архив /home/" + user + "/.Корзина"
                 + "; chown -R 1000:1000 /home/" + user + " 2>/dev/null || true")
         termCwd = "/home/" + user
         filesPath = "/home/" + user
         notePath = "/home/" + user + "/Документы/заметка.txt"
+        upsertCurrentOsUser()
+        saveDesktop()
+        return true
+    }
+
+    function finishSetup() {
+        if (setupStep === 0) {
+            if (!finishSetupAccount())
+                return
+            setupStep = 1
+            return
+        }
+        if (setupStep === 1) {
+            applyInputLang()
+            saveDesktop()
+            setupStep = 2
+            refreshNetwork()
+            scanWifiNetworks()
+            autoConnectWifi()
+            return
+        }
+        if (setupStep === 2) {
+            refreshNetwork()
+            autoConnectWifi()
+            setupStep = 3
+            return
+        }
+        // step 3 — советы: бэкап по желанию уже мог включить пользователь
+        sys.run("mkdir -p /var/lib/gtos; touch /var/lib/gtos/setup-done; sync")
         setupOpen = false
         locked = false
         lockReveal = false
+        setupStep = 0
         saveDesktop()
-        upsertCurrentOsUser()
         refreshPrompt()
         refreshNetwork()
         autoConnectWifi()
-        notify("Добро пожаловать", "Пользователь " + name + " готов к работе", "ok")
+        notify("Добро пожаловать", "GT/OS " + osVersion + " · " + userFullName, "ok")
         notify("Сеть", netStatus, "wifi")
         bootNotify.start()
+        Qt.callLater(function () { root.checkUpdates() })
+    }
+
+    function setUiScale(scale) {
+        var s = parseFloat(scale)
+        if (!(s === 1 || s === 1.25 || s === 1.5 || s === 2))
+            s = 1
+        uiScale = s
+        sys.run("mkdir -p /var/lib/gtos; printf '%s\\n' '" + s + "' > /var/lib/gtos/ui-scale")
+        saveDesktop()
+        notify("Экран", "Масштаб " + Math.round(s * 100) + "% · применится после перезапуска оболочки", "ok")
+    }
+
+    function onResumeFromSleep() {
+        resumePending = false
+        sys.run("rm -f /tmp/gtos-resume /tmp/gtos-was-asleep 2>/dev/null; true")
+        applySystemVolume()
+        refreshNetwork(true)
+        autoConnectWifi()
+        notify("Питание", "Система проснулась · сеть обновлена", "ok")
     }
 
     function storeCuratedApps() {
@@ -4813,7 +4865,8 @@ Window {
             "autoLockMinutes=" + autoLockMinutes,
             "focusHoursOn=" + (focusHoursOn ? "1" : "0"),
             "focusStartHour=" + focusStartHour,
-            "focusEndHour=" + focusEndHour
+            "focusEndHour=" + focusEndHour,
+            "uiScale=" + uiScale
         ].join("\n")
         // автозагрузка
         var st = []
@@ -4957,6 +5010,17 @@ Window {
             else if (k === "focusHoursOn") focusHoursOn = v === "1"
             else if (k === "focusStartHour") focusStartHour = Math.max(0, Math.min(23, parseInt(v, 10) || 22))
             else if (k === "focusEndHour") focusEndHour = Math.max(0, Math.min(23, parseInt(v, 10) || 8))
+            else if (k === "uiScale") {
+                var us = parseFloat(v)
+                if (us === 1 || us === 1.25 || us === 1.5 || us === 2)
+                    uiScale = us
+            }
+        }
+        var scaleFile = sys.readFile("/var/lib/gtos/ui-scale").trim()
+        if (scaleFile.length) {
+            var sf = parseFloat(scaleFile)
+            if (sf === 1 || sf === 1.25 || sf === 1.5 || sf === 2)
+                uiScale = sf
         }
         refreshDeskIcons()
         applySystemVolume()
@@ -5796,8 +5860,16 @@ Window {
 
     function enterSleep() {
         lockSession()
+        resumePending = true
+        sys.run("mkdir -p /tmp; rm -f /tmp/gtos-resume; touch /tmp/gtos-was-asleep; sync")
         notify("Питание", "Переход в сон…", "info")
-        sys.run("(sleep 0.6; echo mem >/sys/power/state 2>/dev/null || echo freeze >/sys/power/state 2>/dev/null || rtcwake -m mem -s 1 >/dev/null 2>&1 || true) &")
+        // после пробуждения ядро возвращает управление — пишем флаг для оболочки
+        sys.run(
+            "( sleep 0.5; "
+            + "echo mem >/sys/power/state 2>/dev/null || echo freeze >/sys/power/state 2>/dev/null || true; "
+            + "echo done >/tmp/gtos-resume; sync ) &"
+        )
+        resumePollTimer.restart()
     }
 
     function handleLidEvent(closed) {
@@ -6800,11 +6872,13 @@ Window {
         }
     }
 
-    function applySystemUpdates() {
+    function applySystemUpdates(rebootAfter) {
         if (updateApplying)
             return
         checkUpdateDependencies()
         updateApplying = true
+        updateNeedsReboot = !!rebootAfter
+        upsertPendingOp("update", "Обновление системы", "Снимок и установка…", 8, "update")
         updateStatus = "Создаём снимок перед обновлением…"
         var stamp = Qt.formatDateTime(new Date(), "yyyyMMdd-HHmmss")
         sys.run(
@@ -6822,6 +6896,10 @@ Window {
             + "echo done >/tmp/gtos-upd-apply-done ) &"
         )
         updateApplyTimer.restart()
+    }
+
+    function applySystemUpdatesAndReboot() {
+        applySystemUpdates(true)
     }
 
     function rollbackLastUpdate() {
@@ -12961,21 +13039,22 @@ Rectangle {
         }
 
         Rectangle {
-            width: Math.min(520, parent.width - 48)
-            height: Math.min(560, parent.height - 48)
+            width: Math.min(560, parent.width - 48)
+            height: Math.min(640, parent.height - 40)
             radius: 20
             anchors.centerIn: parent
             color: "#e6121a22"
             border.width: 1
             border.color: "#33ffffff"
+            clip: true
 
             Column {
                 anchors.centerIn: parent
                 width: parent.width - 72
-                spacing: 14
+                spacing: 12
 
                 Rectangle {
-                    width: 64; height: 64; radius: 16
+                    width: 56; height: 56; radius: 14
                     anchors.horizontalCenter: parent.horizontalCenter
                     gradient: Gradient {
                         GradientStop { position: 0; color: "#3be182" }
@@ -12984,75 +13063,177 @@ Rectangle {
                     Text {
                         anchors.centerIn: parent
                         text: "GT"; color: "#04140a"
-                        font.pixelSize: 22; font.bold: true; font.family: root.uiFont
+                        font.pixelSize: 20; font.bold: true; font.family: root.uiFont
                     }
                 }
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: "Создание пользователя"
+                    text: root.setupStep === 0 ? "Создание пользователя"
+                        : (root.setupStep === 1 ? "Язык и раскладка"
+                        : (root.setupStep === 2 ? "Сеть" : "Почти готово"))
                     color: "#f4f7f8"
-                    font.pixelSize: 26; font.bold: true; font.family: root.uiFont
+                    font.pixelSize: 24; font.bold: true; font.family: root.uiFont
+                }
+                Text {
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "Шаг " + (root.setupStep + 1) + " из 4 · GT/OS " + root.osVersion
+                    color: "#6b7785"; font.pixelSize: 12
                 }
                 Text {
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.WordWrap
-                    text: "В GT/OS ещё нет учётной записи. Укажите имя и при желании пароль — данные сохранятся на постоянном томе."
+                    text: root.setupStep === 0
+                          ? "Укажите имя и при желании пароль — данные сохранятся на постоянном томе."
+                          : (root.setupStep === 1
+                             ? "Выберите раскладку клавиатуры. Позже смените через Win+Пробел."
+                             : (root.setupStep === 2
+                                ? "Подключите сеть: Ethernet поднимается сам, Wi‑Fi — из быстрых настроек."
+                                : "Включите бэкапы по желанию. Обновления можно проверить сразу после входа."))
                     color: "#9aa7b2"
                     font.pixelSize: 13; font.family: root.uiFont
                 }
 
-                Text { text: "Отображаемое имя"; color: "#7a8a98"; font.pixelSize: 12 }
-                Rectangle {
-                    width: parent.width; height: 46; radius: 12
-                    color: "#0c1216"; border.width: 1; border.color: "#2a3842"
-                    TextInput {
-                        id: setupNameField
-                        anchors.fill: parent; anchors.margins: 12
-                        color: "#f4f7f8"; font.pixelSize: 16; font.family: root.uiFont
-                        text: root.setupName
-                        onTextChanged: root.setupName = text
-                        selectByMouse: true
-                        Text {
-                            anchors.fill: parent; verticalAlignment: Text.AlignVCenter
-                            visible: !setupNameField.text.length
-                            text: "Например, Misha"; color: "#556270"; font.pixelSize: 15
+                // step 0 — account
+                Column {
+                    width: parent.width
+                    spacing: 10
+                    visible: root.setupStep === 0
+                    Text { text: "Отображаемое имя"; color: "#7a8a98"; font.pixelSize: 12 }
+                    Rectangle {
+                        width: parent.width; height: 46; radius: 12
+                        color: "#0c1216"; border.width: 1; border.color: "#2a3842"
+                        TextInput {
+                            id: setupNameField
+                            anchors.fill: parent; anchors.margins: 12
+                            color: "#f4f7f8"; font.pixelSize: 16; font.family: root.uiFont
+                            text: root.setupName
+                            onTextChanged: root.setupName = text
+                            selectByMouse: true
+                            Text {
+                                anchors.fill: parent; verticalAlignment: Text.AlignVCenter
+                                visible: !setupNameField.text.length
+                                text: "Например, Misha"; color: "#556270"; font.pixelSize: 15
+                            }
+                        }
+                    }
+                    Text { text: "Пароль (необязательно)"; color: "#7a8a98"; font.pixelSize: 12 }
+                    Rectangle {
+                        width: parent.width; height: 46; radius: 12
+                        color: "#0c1216"; border.width: 1; border.color: "#2a3842"
+                        TextInput {
+                            id: setupPwdField
+                            anchors.fill: parent; anchors.margins: 12
+                            color: "#f4f7f8"; font.pixelSize: 16; echoMode: TextInput.Password
+                            text: root.setupPassword
+                            onTextChanged: root.setupPassword = text
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width; height: 46; radius: 12
+                        color: "#0c1216"; border.width: 1; border.color: "#2a3842"
+                        TextInput {
+                            id: setupPwd2Field
+                            anchors.fill: parent; anchors.margins: 12
+                            color: "#f4f7f8"; font.pixelSize: 16; echoMode: TextInput.Password
+                            text: root.setupPassword2
+                            onTextChanged: root.setupPassword2 = text
+                            Keys.onReturnPressed: root.finishSetup()
                         }
                     }
                 }
 
-                Text { text: "Пароль (необязательно)"; color: "#7a8a98"; font.pixelSize: 12 }
-                Rectangle {
-                    width: parent.width; height: 46; radius: 12
-                    color: "#0c1216"; border.width: 1; border.color: "#2a3842"
-                    TextInput {
-                        id: setupPwdField
-                        anchors.fill: parent; anchors.margins: 12
-                        color: "#f4f7f8"; font.pixelSize: 16; echoMode: TextInput.Password
-                        text: root.setupPassword
-                        onTextChanged: root.setupPassword = text
-                        Text {
-                            anchors.fill: parent; verticalAlignment: Text.AlignVCenter
-                            visible: !setupPwdField.text.length
-                            text: "Оставьте пустым для входа без пароля"; color: "#556270"; font.pixelSize: 13
+                // step 1 — language
+                Column {
+                    width: parent.width
+                    spacing: 8
+                    visible: root.setupStep === 1
+                    Repeater {
+                        model: [
+                            { id: "ru", title: "Русский", sub: "РУС" },
+                            { id: "en", title: "English (US)", sub: "ENG" }
+                        ]
+                        delegate: Rectangle {
+                            width: parent.width; height: 52; radius: 12
+                            color: root.inputLang === modelData.id ? "#1a2a24" : "#0c1216"
+                            border.width: 1
+                            border.color: root.inputLang === modelData.id ? root.accentColor : "#2a3842"
+                            Column {
+                                anchors.left: parent.left; anchors.leftMargin: 14
+                                anchors.verticalCenter: parent.verticalCenter; spacing: 2
+                                Text { text: modelData.title; color: "#fff"; font.pixelSize: 14; font.bold: true }
+                                Text { text: modelData.sub; color: "#8b98a3"; font.pixelSize: 11 }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: { root.inputLang = modelData.id; root.applyInputLang() }
+                            }
                         }
                     }
                 }
-                Rectangle {
-                    width: parent.width; height: 46; radius: 12
-                    color: "#0c1216"; border.width: 1; border.color: "#2a3842"
-                    TextInput {
-                        id: setupPwd2Field
-                        anchors.fill: parent; anchors.margins: 12
-                        color: "#f4f7f8"; font.pixelSize: 16; echoMode: TextInput.Password
-                        text: root.setupPassword2
-                        onTextChanged: root.setupPassword2 = text
-                        Keys.onReturnPressed: root.finishSetup()
-                        Text {
-                            anchors.fill: parent; verticalAlignment: Text.AlignVCenter
-                            visible: !setupPwd2Field.text.length
-                            text: "Повторите пароль"; color: "#556270"; font.pixelSize: 13
+
+                // step 2 — network
+                Column {
+                    width: parent.width
+                    spacing: 10
+                    visible: root.setupStep === 2
+                    Text {
+                        width: parent.width; wrapMode: Text.WordWrap
+                        text: root.netStatus
+                        color: "#e8eef2"; font.pixelSize: 13
+                    }
+                    Row {
+                        spacing: 8
+                        Rectangle {
+                            width: 160; height: 36; radius: 10; color: "#1a2a24"
+                            Text { anchors.centerIn: parent; text: "Обновить сеть"; color: root.accentColor; font.pixelSize: 12; font.bold: true }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: { root.refreshNetwork(true); root.autoConnectWifi(); root.scanWifiNetworks() }
+                            }
+                        }
+                        Rectangle {
+                            width: 160; height: 36; radius: 10; color: "#1a2a24"
+                            Text { anchors.centerIn: parent; text: "Быстрые настройки"; color: "#e8eef2"; font.pixelSize: 12 }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: root.quickOpen = true
+                            }
+                        }
+                    }
+                }
+
+                // step 3 — tips
+                Column {
+                    width: parent.width
+                    spacing: 10
+                    visible: root.setupStep === 3
+                    Text {
+                        width: parent.width; wrapMode: Text.WordWrap
+                        text: "Рекомендуем: ежедневные бэкапы Документов и проверка обновлений после входа."
+                        color: "#c5d0d8"; font.pixelSize: 13
+                    }
+                    Row {
+                        spacing: 8
+                        Repeater {
+                            model: [
+                                { id: "off", label: "Бэкап выкл" },
+                                { id: "daily", label: "Ежедневно" },
+                                { id: "weekly", label: "Еженедельно" }
+                            ]
+                            delegate: Rectangle {
+                                width: 110; height: 34; radius: 8
+                                color: root.backupSchedule === modelData.id ? root.accentColor : "#1a2a24"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: root.backupSchedule === modelData.id ? "#06210f" : "#e8e8e8"
+                                    font.pixelSize: 11; font.bold: root.backupSchedule === modelData.id
+                                }
+                                MouseArea { anchors.fill: parent; onClicked: root.setBackupSchedule(modelData.id) }
+                            }
                         }
                     }
                 }
@@ -13063,7 +13244,7 @@ Rectangle {
                     color: root.accentColor
                     Text {
                         anchors.centerIn: parent
-                        text: "Создать и войти"
+                        text: root.setupStep < 3 ? "Далее" : "Начать работу"
                         color: "#06210f"; font.pixelSize: 15; font.bold: true; font.family: root.uiFont
                     }
                     MouseArea {
@@ -13074,8 +13255,8 @@ Rectangle {
                 }
             }
         }
-        Component.onCompleted: setupNameField.forceActiveFocus()
-        onVisibleChanged: if (visible) setupNameField.forceActiveFocus()
+        Component.onCompleted: { root.setupStep = 0; setupNameField.forceActiveFocus() }
+        onVisibleChanged: if (visible) { root.setupStep = 0; setupNameField.forceActiveFocus() }
     }
 
     component AppTile: Item {
@@ -14903,6 +15084,41 @@ Rectangle {
                                         root.saveDesktop()
                                         root.notify("Безопасность", modelData.m ? ("Автоблокировка через " + modelData.label) : "Автоблокировка выключена", "ok")
                                     }
+                                }
+                            }
+                        }
+                    }
+
+                    Text { text: "Масштаб интерфейса (HiDPI)"; color: "#a0a0a0"; font.pixelSize: 12; font.family: root.uiFont }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "Текущий: " + Math.round(root.uiScale * 100) + "% · полный эффект после перезапуска оболочки"
+                        color: "#8b98a3"; font.pixelSize: 11
+                    }
+                    Row {
+                        spacing: 8
+                        Repeater {
+                            model: [
+                                { s: 1, label: "100%" },
+                                { s: 1.25, label: "125%" },
+                                { s: 1.5, label: "150%" },
+                                { s: 2, label: "200%" }
+                            ]
+                            delegate: Rectangle {
+                                width: 72; height: 34; radius: 8
+                                color: root.uiScale === modelData.s ? root.accentColor : "#2c2c2c"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.label
+                                    color: root.uiScale === modelData.s ? "#06210f" : "#e8e8e8"
+                                    font.pixelSize: 12
+                                    font.bold: root.uiScale === modelData.s
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.setUiScale(modelData.s)
                                 }
                             }
                         }
@@ -23786,18 +24002,60 @@ Rectangle {
                 Column {
                     anchors.fill: parent; anchors.margins: 24; spacing: 16
                     Text { text: "Центр обновлений GT"; color: "#f4f7f8"; font.pixelSize: 22; font.bold: true }
-                    Text { text: root.updateStatus; color: "#9aa7b2"; font.pixelSize: 13 }
-                    Rectangle {
-                        width: 200; height: 40; radius: 10
-                        color: root.updateChecking ? "#1c262e" : root.accentColor
-                        Text {
-                            anchors.centerIn: parent
-                            text: root.updateChecking ? "Проверка…" : "Проверить обновления"
-                            color: root.updateChecking ? "#9aa7b2" : "#06210f"; font.bold: true; font.pixelSize: 13
-                        }
-                        MouseArea { anchors.fill: parent; enabled: !root.updateChecking; onClicked: root.checkUpdates() }
+                    Text {
+                        width: parent.width
+                        wrapMode: Text.WordWrap
+                        text: "Проверка → установка → перезагрузка. Перед установкой создаётся снимок для отката."
+                        color: "#9aa7b2"; font.pixelSize: 13
                     }
-                    Text { text: "История микропатчей"; color: "#e8eef2"; font.pixelSize: 15; font.bold: true }
+                    Text { text: root.updateStatus; color: "#e8eef2"; font.pixelSize: 14; font.bold: true }
+                    Row {
+                        spacing: 10
+                        Rectangle {
+                            width: 180; height: 40; radius: 10
+                            color: root.updateChecking || root.updateApplying ? "#1c262e" : root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.updateChecking ? "Проверка…" : "1. Проверить"
+                                color: root.updateChecking || root.updateApplying ? "#9aa7b2" : "#06210f"; font.bold: true; font.pixelSize: 13
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !root.updateChecking && !root.updateApplying
+                                onClicked: root.checkUpdates()
+                            }
+                        }
+                        Rectangle {
+                            width: 200; height: 40; radius: 10
+                            color: root.updateApplying ? "#1c262e" : "#1a2a24"
+                            border.width: 1; border.color: root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.updateApplying ? "Установка…" : "2. Установить"
+                                color: root.accentColor; font.bold: true; font.pixelSize: 13
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !root.updateApplying && !root.updateChecking
+                                onClicked: root.applySystemUpdates(false)
+                            }
+                        }
+                        Rectangle {
+                            width: 240; height: 40; radius: 10
+                            color: root.updateApplying ? "#1c262e" : root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.updateApplying ? "Установка…" : "3. Установить и перезагрузить"
+                                color: root.updateApplying ? "#9aa7b2" : "#06210f"; font.bold: true; font.pixelSize: 13
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !root.updateApplying && !root.updateChecking
+                                onClicked: root.applySystemUpdatesAndReboot()
+                            }
+                        }
+                    }
+                    Text { text: "История выпусков"; color: "#e8eef2"; font.pixelSize: 15; font.bold: true }
                     Repeater {
                         model: root.updateLog
                         delegate: Rectangle {
@@ -25951,6 +26209,7 @@ Rectangle {
                 return
             }
             root.updateApplying = false
+            root.finishPendingOp("update")
             var rc = sys.readFile("/tmp/gtos-upd-apply-rc").trim()
             if (rc === "0" || rc === "") {
                 var shellLog = sys.readFile("/tmp/gtos-upd-apply.log")
@@ -25959,12 +26218,37 @@ Rectangle {
                     ? ("Пакеты и оболочка " + root.osVersion + " обновлены")
                     : "Пакеты обновлены · оболочка: носитель не найден (ISO/USB)"
                 root.notify("GT Update Engine", root.updateStatus, "ok")
+                if (root.updateNeedsReboot) {
+                    root.updateNeedsReboot = false
+                    root.notify("Обновление", "Перезагрузка для применения…", "ok")
+                    root.powerAction("reboot")
+                    return
+                }
             } else {
+                root.updateNeedsReboot = false
                 root.updateStatus = "Установка завершилась с кодом " + rc
                 root.notify("GT Update Engine", "Ошибка установки — можно откатить по снимку", "info")
             }
             sys.run("rm -f /tmp/gtos-upd-apply-done")
             root.checkUpdates()
+        }
+    }
+
+    Timer {
+        id: resumePollTimer
+        interval: 2000
+        repeat: true
+        running: false
+        onTriggered: {
+            if (!root.resumePending) {
+                resumePollTimer.stop()
+                return
+            }
+            var done = sys.readFile("/tmp/gtos-resume").trim()
+            if (done === "done") {
+                resumePollTimer.stop()
+                root.onResumeFromSleep()
+            }
         }
     }
 
