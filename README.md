@@ -4,7 +4,6 @@
 
 **Автор:** Glukhov Mikhail  
 **Сайт:** локально `python website/app.py` (порт 5050)  
-**Почта:** mikhail.lososka@gmail.com
 
 ## Скачать
 
