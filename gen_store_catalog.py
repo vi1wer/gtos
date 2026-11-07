@@ -144,6 +144,11 @@ CURATED: list[dict] = [
      "desc": "VPN WireGuard", "iconKind": "settings", "launchId": "pkg"},
 
     # —— Linux (не Alpine): AppImage / .deb ——
+    {"id": "cursor-linux", "apk": "", "name": "Cursor", "pub": "Anysphere", "cat": "Разработка",
+     "desc": "AI-IDE на базе VS Code — скачивается по умолчанию при первом входе", "iconKind": "term",
+     "source": "linux", "platform": "linux", "format": "appimage", "featured": True, "launchId": "pkg",
+     "url": "https://downloads.cursor.com/production/306d153d51d714882ab7b1bc49649cab624e8a31/linux/x64/Cursor-3.29.9-x86_64.AppImage",
+     "bin": "cursor", "version": "3.29.9", "size": 0, "available": True, "defaultDownload": True},
     {"id": "obsidian-linux", "apk": "", "name": "Obsidian", "pub": "Obsidian.md", "cat": "Офис",
      "desc": "База знаний Markdown — Linux AppImage (не Alpine)", "iconKind": "notes",
      "source": "linux", "platform": "linux", "format": "appimage", "featured": True, "launchId": "pkg",
