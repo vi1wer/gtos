@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="a11y-hero">
+  <div class="a11y-hero-inner reveal">
+    <p class="a11y-brand">Специальные возможности</p>
+    <h1>Стол удобнее — без режима<br>«для галочки»</h1>
+    <p class="a11y-lead">GT/OS ещё растёт. Уже сейчас можно опереться на клавиатуру, контрастный акцент, масштаб значков и понятную структуру окон.</p>
+  </div>
+</section>
+
+<section class="a11y-now" aria-label="Уже доступно">
+  <header class="a11y-head reveal">
+    <p class="a11y-kicker">Сейчас</p>
+    <h2>На что можно опереться в {{ release.id }}</h2>
+  </header>
+  <div class="a11y-list">
+    <a class="a11y-row reveal" href="{{ url_for('tips') }}">
+      <em>Клавиатура</em>
+      <strong>Пуск, поиск, окна, калькулятор</strong>
+      <span>Готовые сочетания в советах →</span>
+    </a>
+    <a class="a11y-row reveal" href="{{ url_for('product') }}">
+      <em>Экран</em>
+      <strong>Тема, акцент, значки</strong>
+      <span>Параметры → Оформление →</span>
+    </a>
+    <a class="a11y-row reveal" href="mailto:mikhail.lososka@gmail.com">
+      <em>Сайт</em>
+      <strong>Крупная типографика и контраст</strong>
+      <span>Сообщить о проблеме →</span>
+    </a>
+  </div>
+</section>
+
+<section class="a11y-next">
+  <div class="a11y-next-inner reveal">
+    <p class="a11y-kicker">Дальше</p>
+    <h2>Что планируем после {{ release.id }}</h2>
+    <p class="a11y-next-copy">Усиление экранного диктора, системные масштабы DPI и более явные индикаторы фокуса в оболочке. Если вам важно что‑то раньше — напишите в сообщество.</p>
+    <a href="{{ url_for('community') }}">Обсудить в сообществе →</a>
+  </div>
+</section>
+{% endblock %}

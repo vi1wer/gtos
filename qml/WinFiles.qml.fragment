@@ -1,0 +1,498 @@
+        id: filesPage
+        Item {
+            property string appTitle: ""
+            property string viewMode: "details"
+            property var places: [
+                { name: "Быстрый доступ", path: "fav", icon: "★", group: "top" },
+                { name: "Рабочий стол", path: "/home/misha/Рабочий стол", icon: "▭", group: "qa" },
+                { name: "Загрузки", path: "/home/misha/Загрузки", icon: "↓", group: "qa" },
+                { name: "Документы", path: "/home/misha/Документы", icon: "☰", group: "qa" },
+                { name: "Изображения", path: "/home/misha/Изображения", icon: "▣", group: "qa" },
+                { name: "Музыка", path: "/home/misha/Музыка", icon: "♪", group: "qa" },
+                { name: "Видео", path: "/home/misha/Видео", icon: "▶", group: "qa" },
+                { name: "Этот компьютер", path: "thispc", icon: "💻", group: "pc" },
+                { name: "Локальный диск (C:)", path: "/", icon: "💾", group: "drive" },
+                { name: "Домашняя папка", path: "/home/misha", icon: "⌂", group: "drive" },
+                { name: "Корзина", path: "/home/misha/.Корзина", icon: "⌫", group: "drive" }
+            ]
+
+            Rectangle {
+                anchors.fill: parent
+                color: "#f3f3f3"
+
+                // Ribbon
+                Rectangle {
+                    id: ribbon
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: 78
+                    color: "#ffffff"
+                    Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e5e5e5" }
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.top: parent.top
+                        anchors.topMargin: 6
+                        spacing: 18
+                        Text { text: "Файл"; color: "#0078d4"; font.pixelSize: 13; font.bold: true; font.family: "DejaVu Sans" }
+                        Text { text: "Главная"; color: "#1a1a1a"; font.pixelSize: 13; font.bold: true; font.family: "DejaVu Sans" }
+                        Text { text: "Поделиться"; color: "#605e5c"; font.pixelSize: 13; font.family: "DejaVu Sans" }
+                        Text { text: "Вид"; color: "#605e5c"; font.pixelSize: 13; font.family: "DejaVu Sans" }
+                    }
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 8
+                        spacing: 8
+                        Repeater {
+                            model: [
+                                { t: "Создать", a: "new" },
+                                { t: "Копировать", a: "copy" },
+                                { t: "Вставить", a: "paste" },
+                                { t: "Удалить", a: "del" },
+                                { t: "Переименовать", a: "ren" }
+                            ]
+                            delegate: Rectangle {
+                                width: lab.implicitWidth + 20; height: 28; radius: 4
+                                color: hov.containsMouse ? "#e8e8e8" : "transparent"
+                                Text { id: lab; anchors.centerIn: parent; text: modelData.t; color: "#1a1a1a"; font.pixelSize: 12; font.family: "DejaVu Sans" }
+                                MouseArea {
+                                    id: hov; anchors.fill: parent; hoverEnabled: true
+                                    onClicked: {
+                                        if (modelData.a === "new") root.filesNew("dir")
+                                        else if (modelData.a === "copy") root.filesCopySelected()
+                                        else if (modelData.a === "paste") root.filesPaste()
+                                        else if (modelData.a === "del") root.filesDeleteSelected()
+                                        else if (modelData.a === "ren") root.filesRenameSelected()
+                                    }
+                                }
+                            }
+                        }
+                        Rectangle { width: 1; height: 22; color: "#e5e5e5"; anchors.verticalCenter: parent.verticalCenter }
+                        Rectangle {
+                            width: 90; height: 28; radius: 4
+                            color: viewMode === "details" ? "#cce8ff" : (vh.containsMouse ? "#e8e8e8" : "transparent")
+                            Text { anchors.centerIn: parent; text: "Таблица"; color: "#1a1a1a"; font.pixelSize: 12 }
+                            MouseArea { id: vh; anchors.fill: parent; hoverEnabled: true; onClicked: viewMode = "details" }
+                        }
+                        Rectangle {
+                            width: 90; height: 28; radius: 4
+                            color: viewMode === "icons" ? "#cce8ff" : (vi.containsMouse ? "#e8e8e8" : "transparent")
+                            Text { anchors.centerIn: parent; text: "Значки"; color: "#1a1a1a"; font.pixelSize: 12 }
+                            MouseArea { id: vi; anchors.fill: parent; hoverEnabled: true; onClicked: viewMode = "icons" }
+                        }
+                    }
+                }
+
+                // Nav + address + search
+                Rectangle {
+                    id: navBar
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: ribbon.bottom
+                    height: 40
+                    color: "#f3f3f3"
+                    Row {
+                        id: navBtns
+                        anchors.left: parent.left
+                        anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        Repeater {
+                            model: [
+                                { t: "←", en: root.filesCanBack || root.filesMode === "preview", fn: "back" },
+                                { t: "→", en: root.filesCanFwd, fn: "fwd" },
+                                { t: "↑", en: true, fn: "up" },
+                                { t: "↻", en: true, fn: "ref" }
+                            ]
+                            delegate: Rectangle {
+                                width: 28; height: 28; radius: 4
+                                opacity: modelData.en ? 1 : 0.35
+                                color: nb.containsMouse && modelData.en ? "#e8e8e8" : "transparent"
+                                Text { anchors.centerIn: parent; text: modelData.t; color: "#1a1a1a"; font.pixelSize: 14 }
+                                MouseArea {
+                                    id: nb; anchors.fill: parent; hoverEnabled: true; enabled: modelData.en
+                                    onClicked: {
+                                        if (modelData.fn === "back") root.filesBack()
+                                        else if (modelData.fn === "fwd") root.filesForward()
+                                        else if (modelData.fn === "up") root.filesUp()
+                                        else root.filesRefresh()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        anchors.left: navBtns.right
+                        anchors.leftMargin: 8
+                        anchors.right: searchBox.left
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: 28
+                        radius: 4
+                        color: "#ffffff"
+                        border.width: 1
+                        border.color: "#8a8886"
+                        Text {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            verticalAlignment: Text.AlignVCenter
+                            text: root.filesPath === "/" ? "Этот компьютер › Локальный диск (C:)"
+                                  : (root.filesPath === "fav" ? "Быстрый доступ"
+                                  : (root.filesPath === "thispc" ? "Этот компьютер"
+                                  : root.filesPathLabel()))
+                            color: "#1a1a1a"
+                            font.pixelSize: 12
+                            font.family: "DejaVu Sans"
+                            elide: Text.ElideMiddle
+                        }
+                    }
+                    Rectangle {
+                        id: searchBox
+                        anchors.right: parent.right
+                        anchors.rightMargin: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 200
+                        height: 28
+                        radius: 4
+                        color: "#ffffff"
+                        border.width: 1
+                        border.color: "#8a8886"
+                        TextInput {
+                            anchors.fill: parent
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            verticalAlignment: Text.AlignVCenter
+                            color: "#1a1a1a"
+                            font.pixelSize: 12
+                            text: root.fileQuery
+                            onTextChanged: root.fileQuery = text
+                            selectByMouse: true
+                        }
+                        Text {
+                            anchors.left: parent.left; anchors.leftMargin: 8
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Поиск"
+                            color: "#a19f9d"
+                            font.pixelSize: 12
+                            visible: root.fileQuery.length === 0
+                        }
+                    }
+                }
+
+                // Sidebar
+                Rectangle {
+                    id: side
+                    anchors.left: parent.left
+                    anchors.top: navBar.bottom
+                    anchors.bottom: statusBar.top
+                    width: 220
+                    color: "#f9f9f9"
+                    Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: "#e5e5e5" }
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        clip: true
+                        contentHeight: sideCol.height
+                        Column {
+                            id: sideCol
+                            width: parent.width
+                            spacing: 2
+                            Text { text: "Быстрый доступ"; color: "#605e5c"; font.pixelSize: 11; font.bold: true; leftPadding: 8; topPadding: 4; bottomPadding: 4 }
+                            Repeater {
+                                model: places.filter(function (p) { return p.group === "qa" || p.group === "top" })
+                                delegate: Rectangle {
+                                    width: sideCol.width; height: 32; radius: 4
+                                    color: root.isPlaceActive(modelData.path) ? "#cce8ff" : (ph.containsMouse ? "#ebebeb" : "transparent")
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.left: parent.left; anchors.leftMargin: 10
+                                        text: modelData.icon + "  " + modelData.name
+                                        color: "#1a1a1a"; font.pixelSize: 12; font.family: "DejaVu Sans"
+                                    }
+                                    MouseArea { id: ph; anchors.fill: parent; hoverEnabled: true; onClicked: root.openPlace(modelData.path) }
+                                }
+                            }
+                            Text { text: "Этот компьютер"; color: "#605e5c"; font.pixelSize: 11; font.bold: true; leftPadding: 8; topPadding: 10; bottomPadding: 4 }
+                            Repeater {
+                                model: places.filter(function (p) { return p.group === "pc" || p.group === "drive" })
+                                delegate: Rectangle {
+                                    width: sideCol.width; height: 32; radius: 4
+                                    color: root.isPlaceActive(modelData.path) ? "#cce8ff" : (ph2.containsMouse ? "#ebebeb" : "transparent")
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        anchors.left: parent.left; anchors.leftMargin: 10
+                                        text: modelData.icon + "  " + modelData.name
+                                        color: "#1a1a1a"; font.pixelSize: 12; font.family: "DejaVu Sans"
+                                    }
+                                    MouseArea { id: ph2; anchors.fill: parent; hoverEnabled: true; onClicked: root.openPlace(modelData.path) }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Main list
+                Item {
+                    id: mainPane
+                    anchors.left: side.right
+                    anchors.right: parent.right
+                    anchors.top: navBar.bottom
+                    anchors.bottom: statusBar.top
+
+                    // Column headers
+                    Rectangle {
+                        id: colHead
+                        visible: viewMode === "details" && root.filesMode !== "preview" && root.filesPath !== "thispc"
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        height: 28
+                        color: "#ffffff"
+                        Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#e5e5e5" }
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 36
+                            Text { width: parent.width * 0.42; anchors.verticalCenter: parent.verticalCenter; text: "Имя"; color: "#605e5c"; font.pixelSize: 12 }
+                            Text { width: parent.width * 0.22; anchors.verticalCenter: parent.verticalCenter; text: "Дата изменения"; color: "#605e5c"; font.pixelSize: 12 }
+                            Text { width: parent.width * 0.20; anchors.verticalCenter: parent.verticalCenter; text: "Тип"; color: "#605e5c"; font.pixelSize: 12 }
+                            Text { width: parent.width * 0.14; anchors.verticalCenter: parent.verticalCenter; text: "Размер"; color: "#605e5c"; font.pixelSize: 12 }
+                        }
+                    }
+
+                    // This PC drives view
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.margins: 16
+                        visible: root.filesPath === "thispc"
+                        contentHeight: pcCol.height
+                        clip: true
+                        Column {
+                            id: pcCol
+                            width: parent.width
+                            spacing: 12
+                            Text { text: "Устройства и диски"; color: "#1a1a1a"; font.pixelSize: 14; font.bold: true }
+                            Rectangle {
+                                width: parent.width; height: 72; radius: 6
+                                color: pch.containsMouse ? "#e8f4fc" : "#ffffff"
+                                border.color: "#e5e5e5"; border.width: 1
+                                Row {
+                                    anchors.fill: parent; anchors.margins: 12; spacing: 14
+                                    Rectangle { width: 40; height: 40; radius: 6; color: "#0078d4"; anchors.verticalCenter: parent.verticalCenter
+                                        Text { anchors.centerIn: parent; text: "C:"; color: "white"; font.bold: true } }
+                                    Column {
+                                        anchors.verticalCenter: parent.verticalCenter; spacing: 4
+                                        Text { text: "Локальный диск (C:)"; color: "#1a1a1a"; font.pixelSize: 13 }
+                                        Text { text: root.diskText; color: "#605e5c"; font.pixelSize: 11 }
+                                        Rectangle {
+                                            width: 220; height: 6; radius: 3; color: "#e5e5e5"
+                                            Rectangle { width: parent.width * (1 - root.diskFreeRatio); height: parent.height; radius: 3; color: "#0078d4" }
+                                        }
+                                    }
+                                }
+                                MouseArea { id: pch; anchors.fill: parent; hoverEnabled: true; onClicked: root.navigateTo("/", false) }
+                            }
+                        }
+                    }
+
+                    Flickable {
+                        id: listFlick
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: colHead.visible ? colHead.bottom : parent.top
+                        anchors.bottom: parent.bottom
+                        clip: true
+                        visible: root.filesMode !== "preview" && root.filesPath !== "thispc" && viewMode === "details"
+                        contentHeight: listCol.height
+                        Column {
+                            id: listCol
+                            width: listFlick.width
+                            Repeater {
+                                model: root.filteredFiles()
+                                delegate: Rectangle {
+                                    width: listCol.width
+                                    height: 28
+                                    color: root.selectedName === modelData.name ? "#cce8ff" : (rowH.containsMouse ? "#e8f4fc" : (index % 2 ? "#fafafa" : "#ffffff"))
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 8
+                                        spacing: 0
+                                        Text {
+                                            width: 28; anchors.verticalCenter: parent.verticalCenter
+                                            text: modelData.dir ? "📁" : "📄"
+                                            font.pixelSize: 13
+                                        }
+                                        Text {
+                                            width: parent.width * 0.42 - 28; anchors.verticalCenter: parent.verticalCenter
+                                            text: modelData.name === ".Корзина" ? "Корзина" : modelData.name
+                                            color: "#1a1a1a"; font.pixelSize: 12; font.family: "DejaVu Sans"; elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            width: parent.width * 0.22; anchors.verticalCenter: parent.verticalCenter
+                                            text: modelData.mtime || ""
+                                            color: "#605e5c"; font.pixelSize: 12
+                                        }
+                                        Text {
+                                            width: parent.width * 0.20; anchors.verticalCenter: parent.verticalCenter
+                                            text: modelData.type || (modelData.dir ? "Папка с файлами" : "Файл")
+                                            color: "#605e5c"; font.pixelSize: 12; elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            width: parent.width * 0.14; anchors.verticalCenter: parent.verticalCenter
+                                            text: modelData.dir ? "" : root.formatSize(modelData.size || 0)
+                                            color: "#605e5c"; font.pixelSize: 12
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: rowH; anchors.fill: parent; hoverEnabled: true
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                                        onClicked: {
+                                            root.selectedName = modelData.name
+                                            if (mouse.button === Qt.RightButton) {
+                                                root.filesMenuOpen = true
+                                                root.filesMenuX = mapToItem(mainPane, mouse.x, mouse.y).x
+                                                root.filesMenuY = mapToItem(mainPane, mouse.y, mouse.y).y
+                                            } else if (mouse.button === Qt.LeftButton) {
+                                                // single click select only
+                                            }
+                                        }
+                                        onDoubleClicked: root.enterFile(modelData)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Icons view
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.margins: 12
+                        visible: root.filesMode !== "preview" && root.filesPath !== "thispc" && viewMode === "icons"
+                        contentHeight: iconGrid.height
+                        clip: true
+                        Grid {
+                            id: iconGrid
+                            width: parent.width
+                            columns: Math.max(4, Math.floor(width / 110))
+                            columnSpacing: 8; rowSpacing: 8
+                            Repeater {
+                                model: root.filteredFiles()
+                                delegate: Rectangle {
+                                    width: 100; height: 100; radius: 4
+                                    color: root.selectedName === modelData.name ? "#cce8ff" : (ih.containsMouse ? "#e8f4fc" : "transparent")
+                                    Column {
+                                        anchors.centerIn: parent; spacing: 6
+                                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.dir ? "📁" : "📄"; font.pixelSize: 32 }
+                                        Text {
+                                            width: 90; horizontalAlignment: Text.AlignHCenter
+                                            text: modelData.name; color: "#1a1a1a"; font.pixelSize: 11
+                                            elide: Text.ElideRight; wrapMode: Text.Wrap; maximumLineCount: 2
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: ih; anchors.fill: parent; hoverEnabled: true
+                                        onClicked: root.selectedName = modelData.name
+                                        onDoubleClicked: root.enterFile(modelData)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Preview
+                    Rectangle {
+                        anchors.fill: parent
+                        visible: root.filesMode === "preview"
+                        color: "#ffffff"
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 16
+                            spacing: 10
+                            Row {
+                                spacing: 8
+                                Rectangle {
+                                    width: 72; height: 28; radius: 4; color: "#0078d4"
+                                    Text { anchors.centerIn: parent; text: "Назад"; color: "white"; font.pixelSize: 12 }
+                                    MouseArea { anchors.fill: parent; onClicked: root.filesBack() }
+                                }
+                                Text { text: root.selectedName; color: "#1a1a1a"; font.pixelSize: 14; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                            }
+                            Flickable {
+                                width: parent.width
+                                height: parent.height - 50
+                                contentHeight: prevTxt.paintedHeight
+                                clip: true
+                                Text {
+                                    id: prevTxt
+                                    width: parent.width
+                                    text: root.fileView.length ? root.fileView : "(пустой файл)"
+                                    color: "#1a1a1a"
+                                    wrapMode: Text.Wrap
+                                    font.family: "DejaVu Sans Mono"
+                                    font.pixelSize: 12
+                                }
+                            }
+                        }
+                    }
+
+                    // Context menu
+                    Rectangle {
+                        visible: root.filesMenuOpen
+                        x: Math.min(root.filesMenuX, mainPane.width - 180)
+                        y: Math.min(root.filesMenuY, mainPane.height - 200)
+                        z: 40
+                        width: 168; height: 160; radius: 4
+                        color: "#ffffff"
+                        border.color: "#e5e5e5"; border.width: 1
+                        Column {
+                            anchors.fill: parent; anchors.margins: 4
+                            Repeater {
+                                model: ["Открыть", "Копировать", "Вставить", "Удалить", "Новая папка"]
+                                delegate: Rectangle {
+                                    width: 160; height: 28; radius: 3
+                                    color: cm.containsMouse ? "#cce8ff" : "transparent"
+                                    Text { anchors.left: parent.left; anchors.leftMargin: 10; anchors.verticalCenter: parent.verticalCenter; text: modelData; color: "#1a1a1a"; font.pixelSize: 12 }
+                                    MouseArea {
+                                        id: cm; anchors.fill: parent; hoverEnabled: true
+                                        onClicked: {
+                                            root.filesMenuOpen = false
+                                            if (modelData === "Открыть") {
+                                                for (var i = 0; i < root.fileEntries.length; ++i)
+                                                    if (root.fileEntries[i].name === root.selectedName) root.enterFile(root.fileEntries[i])
+                                            } else if (modelData === "Копировать") root.filesCopySelected()
+                                            else if (modelData === "Вставить") root.filesPaste()
+                                            else if (modelData === "Удалить") root.filesDeleteSelected()
+                                            else if (modelData === "Новая папка") root.filesNew("dir")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        z: -1
+                        acceptedButtons: Qt.LeftButton
+                        onClicked: root.filesMenuOpen = false
+                    }
+                }
+
+                Rectangle {
+                    id: statusBar
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 24
+                    color: "#f3f3f3"
+                    Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#e5e5e5" }
+                    Text {
+                        anchors.left: parent.left; anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: root.filesStatus + (root.selectedName.length ? ("  |  Выбран: " + root.selectedName) : "")
+                        color: "#605e5c"; font.pixelSize: 11
+                    }
+                }
+            }
+        }
