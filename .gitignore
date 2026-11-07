@@ -1,0 +1,15 @@
+cache/
+out/
+userdata/
+__pycache__/
+*.pyc
+*.pyo
+.Python
+*.log
+website/data/community.db
+website/data/*.db-journal
+.vscode/
+.idea/
+*.qcow2
+.DS_Store
+Thumbs.db

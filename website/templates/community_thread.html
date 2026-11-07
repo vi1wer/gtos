@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="comm-page comm-thread-page">
+  <p class="comm-back"><a href="{{ url_for('community') }}">← Все темы</a></p>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="comm-flash-wrap">
+    {% for category, message in messages %}
+    <p class="comm-flash comm-flash-{{ category }}">{{ message }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+  {% endwith %}
+
+  <article class="comm-op reveal">
+    <div class="comm-thread-meta">
+      <span class="comm-avatar" aria-hidden="true">{{ avatar_letter(thread.author) }}</span>
+      <div>
+        <h1>{{ thread.title }}</h1>
+        <p class="comm-who">{{ thread.author }} · {{ format_when(thread.created_at) }}</p>
+      </div>
+    </div>
+    <div class="comm-body">{{ thread.body }}</div>
+  </article>
+
+  <section class="comm-replies" id="replies">
+    <h2>{{ replies|length }} ответов</h2>
+    {% for r in replies %}
+    <article class="comm-reply-card reveal" id="r{{ r.id }}">
+      <div class="comm-thread-meta">
+        <span class="comm-avatar" aria-hidden="true">{{ avatar_letter(r.author) }}</span>
+        <div>
+          <strong>{{ r.author }}</strong>
+          <p class="comm-who">{{ format_when(r.created_at) }}</p>
+        </div>
+      </div>
+      <div class="comm-body">{{ r.body }}</div>
+    </article>
+    {% else %}
+    <p class="comm-empty">Ответов пока нет — будьте первым.</p>
+    {% endfor %}
+  </section>
+
+  <section class="comm-reply-form reveal" id="reply">
+    <h2>Ваш ответ</h2>
+    <form class="comm-form" method="post" action="{{ url_for('community_thread', thread_id=thread.id) }}">
+      <label class="comm-hp" aria-hidden="true">Сайт <input type="text" name="website" tabindex="-1" autocomplete="off"></label>
+      <label>Имя
+        <input type="text" name="author" maxlength="40" placeholder="Как вас называть" required>
+      </label>
+      <label>Сообщение
+        <textarea name="body" rows="5" maxlength="4000" placeholder="Напишите ответ" required></textarea>
+      </label>
+      <button class="btn btn-primary" type="submit">Отправить ответ</button>
+    </form>
+  </section>
+</div>
+{% endblock %}
