@@ -2,9 +2,7 @@
 
 Настольная операционная система на Linux + Qt 6.
 
-**Автор:** Glukhov Mikhail  
-**Сайт:** локально `python website/app.py` (порт 5050)  
-**Почта:** mikhail.lososka@gmail.com
+**Автор:** Glukhov Mikhail
 
 ## Скачать
 
@@ -36,6 +34,6 @@ python run.py
 
 В safe mode не поднимаются автоматически CUPS и сохранённый Wi‑Fi; каталог магазина не подгружается в фоне.
 
-## Лицензия / продукт
+## Продукт
 
 GT/OS — продукт **Glukhov Mikhail**.
