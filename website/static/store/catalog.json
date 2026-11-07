@@ -46,7 +46,7 @@
       "name": "Cursor",
       "pub": "Anysphere",
       "cat": "Разработка",
-      "desc": "AI-IDE на базе VS Code — скачивается по умолчанию при первом входе",
+      "desc": "AI-IDE на базе VS Code — Linux AppImage",
       "iconKind": "term",
       "source": "linux",
       "platform": "linux",
