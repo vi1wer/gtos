@@ -40,7 +40,9 @@ def write_page(url_path: str, html: str) -> None:
             return f"{m.group(1)}{PAGES_PREFIX}/"
 
         html = re.sub(r'((?:href|src|action)=["\'])/(?!/)', _pfx, html)
-    out.write_text(html, encoding="utf-8")
+    if html.startswith("\ufeff"):
+        html = html.lstrip("\ufeff")
+    out.write_text(html, encoding="utf-8", newline="\n")
     print(" ", url_path or "/", "→", out.relative_to(DIST))
 
 
@@ -102,7 +104,16 @@ def main() -> int:
     # nojekyll + 404 → home
     (DIST / ".nojekyll").write_text("", encoding="utf-8")
     home = (DIST / "index.html").read_text(encoding="utf-8")
+    if home.startswith("\ufeff"):
+        home = home.lstrip("\ufeff")
+        (DIST / "index.html").write_text(home, encoding="utf-8")
     (DIST / "404.html").write_text(home, encoding="utf-8")
+
+    # /gtos/favicon.ico — многие браузеры ищут именно в корне сайта
+    ico = ROOT / "static" / "img" / "favicon.ico"
+    if ico.is_file():
+        shutil.copy2(ico, DIST / "favicon.ico")
+        print("  favicon.ico (root)")
 
     print("OK", DIST)
     return 0
