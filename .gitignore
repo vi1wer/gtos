@@ -13,3 +13,7 @@ website/data/*.db-journal
 *.qcow2
 .DS_Store
 Thumbs.db
+
+website/site-dist/
+
+website/site-dist/

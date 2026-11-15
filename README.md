@@ -18,6 +18,8 @@
 </p>
 
 <p align="center">
+  <a href="https://vi1wer.github.io/gtos/"><strong>Website</strong></a>
+  ·
   <a href="https://github.com/vi1wer/gtos/releases/latest"><strong>Download ISO</strong></a>
   ·
   <a href="#features">Features</a>

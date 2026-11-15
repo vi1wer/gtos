@@ -3,12 +3,18 @@
 
 from __future__ import annotations
 
+import os
 import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
 import json
+
+# Публичный сайт (GitHub Pages): ISO с Releases, префикс /gtos
+SITE_PUBLIC = os.environ.get("GTOS_SITE_PUBLIC", "").strip() in ("1", "true", "yes")
+SITE_PREFIX = (os.environ.get("GTOS_SITE_PREFIX") or ("/gtos" if SITE_PUBLIC else "")).rstrip("/")
+GH_RELEASE_DL = "https://github.com/vi1wer/gtos/releases/download"
 
 from flask import (
     Flask,
@@ -341,6 +347,7 @@ CHANGELOG = [
             "Оболочка: исправлена синтаксическая ошибка QML (чёрный экран / цикл перезапуска)",
             "Магазин: кнопка «Обновить» больше не выезжает за край шапки",
             "Сайт: клевер на favicon крупнее — почти на всю иконку",
+            "Официальный сайт опубликован: https://vi1wer.github.io/gtos/",
             "ISO грузится в BIOS и UEFI; рядом с образом — файл .sha256",
             "Масштаб интерфейса 100/125/150/200% (HiDPI) в Параметрах",
             "Первый запуск: 4 шага — учётка, язык, сеть, бэкапы/советы",
@@ -713,6 +720,14 @@ def human_size(num: int) -> str:
     return f"{kb:.0f} КБ"
 
 
+def release_download_url(meta: dict, name: str | None = None) -> str:
+    """Ссылка на файл: локально /files/…, на публичном сайте — GitHub Releases."""
+    filename = name or meta["filename"]
+    if SITE_PUBLIC:
+        return f"{GH_RELEASE_DL}/v{meta['id']}/{filename}"
+    return f"/files/{filename}"
+
+
 def release_info(meta: dict) -> dict:
     iso = OUT / meta["filename"]
     size = iso.stat().st_size if iso.is_file() else 0
@@ -723,16 +738,28 @@ def release_info(meta: dict) -> dict:
     elif iso.is_file() and size > 0 and size < 900_000_000:
         # не считаем SHA на лету для огромных файлов без sidecar — только если есть .sha256
         sha256 = ""
+    # На публичном сайте ISO лежит в GitHub Releases — всегда «готово» для текущего канала
+    ready = size > 0 or SITE_PUBLIC
+    if SITE_PUBLIC and size <= 0:
+        # размер с локальной сборки недоступен — подпись без ложного «собирается»
+        size_label = "GitHub Releases"
+        size_bytes_label = ""
+    else:
+        size_label = human_size(size) if size else "собирается…"
+        size_bytes_label = f"{size:,} байт".replace(",", " ") if size else ""
+    sha_name = sha_path.name if sha_path.is_file() else (meta["filename"] + ".sha256" if SITE_PUBLIC else "")
     return {
         **meta,
-        "ready": size > 0,
+        "ready": ready,
         "bytes": size,
-        "size_label": human_size(size) if size else "собирается…",
-        "size_bytes_label": f"{size:,} байт".replace(",", " ") if size else "",
+        "size_label": size_label,
+        "size_bytes_label": size_bytes_label,
         "name": meta["filename"],
         "path": iso,
         "sha256": sha256,
-        "sha256_file": sha_path.name if sha_path.is_file() else "",
+        "sha256_file": sha_name,
+        "download_url": release_download_url(meta),
+        "sha256_url": release_download_url(meta, sha_name) if sha_name else "",
     }
 
 
@@ -1029,6 +1056,8 @@ def get_iso():
     rel = current_release()
     if not rel.get("ready"):
         abort(404)
+    if SITE_PUBLIC:
+        return redirect(rel["download_url"])
     return redirect(url_for("download_file", name=rel["filename"]))
 
 

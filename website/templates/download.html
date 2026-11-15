@@ -27,7 +27,7 @@
           {% for r in releases %}
           <option
             value="{{ r.id }}"
-            data-url="{{ url_for('download_file', name=r.filename) if r.ready else '' }}"
+            data-url="{{ r.download_url if r.ready else '' }}"
             data-name="{{ r.name }}"
             data-size="{{ r.size_label }}"
             data-bytes="{{ r.size_bytes_label }}"
@@ -41,9 +41,9 @@
       </div>
       <p class="ms-dl-rel-summary" data-rel-summary>{{ iso.summary }}</p>
       <div class="ms-dl-download-row">
-        <a class="ms-dl-btn" id="dlBtn" href="{% if iso.ready %}{{ url_for('download_file', name=iso.filename) }}{% else %}#{% endif %}" {% if not iso.ready %}aria-disabled="true"{% endif %}>Скачать ISO</a>
-        {% if iso.sha256_file %}
-        <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ url_for('download_file', name=iso.sha256_file) }}">SHA256</a>
+        <a class="ms-dl-btn" id="dlBtn" href="{% if iso.ready %}{{ iso.download_url }}{% else %}#{% endif %}" {% if not iso.ready %}aria-disabled="true"{% endif %}>Скачать ISO</a>
+        {% if iso.sha256_url %}
+        <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ iso.sha256_url }}">SHA256</a>
         {% endif %}
         <p class="ms-dl-filehint" data-filehint>
           {% if iso.ready %}<code>{{ iso.name }}</code> · {{ iso.size_label }}{% if iso.size_bytes_label %} <span class="ms-dl-bytes">({{ iso.size_bytes_label }})</span>{% endif %}
@@ -109,7 +109,7 @@
             <code>{{ r.name }}</code>
             <span>{{ r.size_label }}</span>
             {% if r.ready %}
-            <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ url_for('download_file', name=r.filename) }}">Скачать {{ r.id }}</a>
+            <a class="ms-dl-btn ms-dl-btn-secondary" href="{{ r.download_url }}">Скачать {{ r.id }}</a>
             {% else %}
             <span class="ms-dl-filehint">ещё собирается…</span>
             {% endif %}
