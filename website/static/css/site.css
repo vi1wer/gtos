@@ -73,11 +73,18 @@ code {
   box-shadow: 0 0 0 1px rgba(0,0,0,0.2), 0 10px 30px var(--glow);
 }
 .logo-clover {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+  width: 48px;
+  height: 48px;
+  border-radius: 0 !important;
   display: block;
-  box-shadow: 0 0 0 1px rgba(59, 225, 130, 0.25), 0 10px 28px var(--glow);
+  object-fit: contain;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+.footer-brand .logo-clover {
+  width: 56px;
+  height: 56px;
 }
 .logo-text { font-size: 1.15rem; }
 
@@ -794,6 +801,17 @@ a.home-pillar h3 { color: var(--ink); }
   transform: translateY(-1px);
   box-shadow: 0 12px 28px var(--glow);
 }
+.nav-cta-mobile { display: none; }
+.nav-sheet-label,
+.nav-sheet-label-more { display: none; }
+.nav-backdrop {
+  display: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
 .nav-toggle {
   display: none;
   width: 42px;
@@ -810,6 +828,9 @@ a.home-pillar h3 { color: var(--ink); }
   height: 2px;
   margin: 5px auto;
   background: var(--ink);
+}
+body.nav-locked {
+  overflow: hidden;
 }
 
 /* —— buttons —— */
@@ -1593,7 +1614,26 @@ a.home-pillar h3 { color: var(--ink); }
   transform: translateY(-2px);
   border-color: rgba(59, 225, 130, 0.28);
 }
-.app-chip i {
+.app-chip-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.app-chip-text b {
+  font-weight: 650;
+  font-size: 0.98rem;
+}
+.app-chip-text small {
+  font-weight: 450;
+  font-size: 0.8rem;
+  color: var(--muted, #8b98a3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.app-chip i,
+.app-chip .os-desk-ico {
   width: 44px;
   height: 44px;
   border-radius: 0;
@@ -1603,6 +1643,9 @@ a.home-pillar h3 { color: var(--ink); }
   background: transparent !important;
   box-shadow: none !important;
   color: inherit;
+  object-fit: contain;
+  image-rendering: auto;
+  filter: drop-shadow(0 4px 8px rgba(0,0,0,0.35));
 }
 .app-chip i.os-ico {
   background: transparent !important;
@@ -3214,39 +3257,152 @@ a.home-pillar h3 { color: var(--ink); }
 }
 
 @media (max-width: 900px) {
-  .nav-links, .nav-cta { display: none; }
+  /* без backdrop-filter/filter на .nav-shell — иначе fixed-меню
+     позиционируется относительно полоски хедера и ломается */
+  .nav-shell {
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+  .nav-cta-desktop { display: none !important; }
+  .nav-links { display: none !important; }
+  .nav-toggle {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    z-index: 70;
+  }
+  .nav-toggle span { transition: transform 220ms var(--ease); }
+  .nav-shell.is-open .nav-toggle span:nth-child(1) {
+    transform: translateY(7px) rotate(45deg);
+  }
+  .nav-shell.is-open .nav-toggle span:nth-child(2) {
+    transform: translateY(-7px) rotate(-45deg);
+  }
+  .nav-shell.is-open,
+  .nav-shell.is-open.is-solid {
+    background: #061018 !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border-bottom-color: var(--line);
+  }
+  .nav-shell.is-open .logo {
+    position: relative;
+    z-index: 70;
+  }
+
+  .nav-backdrop {
+    display: none;
+  }
+
   .nav-shell.is-open .nav-links {
-    display: flex;
+    display: flex !important;
     flex-direction: column;
     align-items: stretch;
-    position: absolute;
-    top: 100%;
-    left: 0; right: 0;
-    padding: 18px 24px 24px;
-    background: rgba(6,16,24,0.94);
-    border-bottom: 1px solid var(--line);
-    gap: 8px;
-  }
-  .nav-shell.is-open .nav-cta {
-    display: inline-flex;
-    position: absolute;
-    top: calc(100% + 220px);
-    right: 24px;
-  }
-  .nav-more { width: 100%; }
-  .nav-more-btn { width: 100%; justify-content: space-between; }
-  .nav-more-panel {
-    position: static;
-    min-width: 0;
-    margin-top: 6px;
-    opacity: 1;
-    visibility: visible;
-    transform: none;
-    display: none;
+    gap: 0;
+    position: fixed;
+    top: 64px;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px 24px 100px;
+    z-index: 65;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: #061018;
+    border: 0;
     box-shadow: none;
+    animation: none;
   }
-  .nav-more.is-open .nav-more-panel { display: grid; }
-  .nav-toggle { display: inline-block; }
+
+  .nav-sheet-label {
+    display: block;
+    margin: 0 0 12px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .nav-sheet-label-more {
+    margin-top: 22px;
+    margin-bottom: 8px;
+  }
+
+  .nav-shell.is-open .nav-links > a:not(.nav-cta) {
+    display: block;
+    padding: 14px 0;
+    font-family: var(--display);
+    font-size: 1.35rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    line-height: 1.2;
+    color: var(--ink);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  }
+  .nav-shell.is-open .nav-links > a::after { display: none !important; }
+  .nav-shell.is-open .nav-links > a.is-active {
+    color: var(--accent);
+  }
+
+  .nav-more-btn { display: none !important; }
+  .nav-more-panel {
+    position: static !important;
+    display: grid !important;
+    gap: 0;
+    min-width: 0;
+    margin: 0;
+    padding: 0 0 12px;
+    opacity: 1 !important;
+    visibility: visible !important;
+    transform: none !important;
+    border: 0;
+    border-radius: 0;
+    background: transparent !important;
+    backdrop-filter: none !important;
+    box-shadow: none !important;
+  }
+  .nav-more-panel a {
+    padding: 12px 0;
+    border-radius: 0;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--ink-dim);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  }
+  .nav-more-panel a.is-active,
+  .nav-more-panel a:hover {
+    color: var(--accent);
+    background: transparent;
+  }
+
+  .nav-cta-mobile { display: none !important; }
+  .nav-shell.is-open .nav-cta-mobile {
+    display: flex !important;
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: auto;
+    margin: 0;
+    padding: 14px 20px;
+    border-radius: 14px;
+    justify-content: center;
+    align-items: center;
+    min-height: 52px;
+    font-size: 1rem;
+    z-index: 70;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  }
+  .nav-shell.is-open .nav-cta-mobile:hover { transform: none; }
+
+  .logo-clover {
+    width: 40px;
+    height: 40px;
+  }
   .story { grid-template-columns: 1fr; }
   .story-block + .story-block {
     padding-left: 0;

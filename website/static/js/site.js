@@ -9,8 +9,23 @@
   onScroll();
   window.addEventListener("scroll", onScroll, { passive: true });
 
+  const backdrop = document.querySelector("[data-nav-backdrop]");
+  const setNavOpen = (open) => {
+    if (!nav) return;
+    nav.classList.toggle("is-open", open);
+    document.body.classList.toggle("nav-locked", open);
+    if (toggle) toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  };
   if (toggle && nav) {
-    toggle.addEventListener("click", () => nav.classList.toggle("is-open"));
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.addEventListener("click", () => setNavOpen(!nav.classList.contains("is-open")));
+    if (backdrop) backdrop.addEventListener("click", () => setNavOpen(false));
+    nav.querySelectorAll(".nav-links > a, .nav-cta, .nav-more-panel a").forEach((el) => {
+      el.addEventListener("click", () => setNavOpen(false));
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && nav.classList.contains("is-open")) setNavOpen(false);
+    });
   }
 
   const more = document.querySelector("[data-nav-more]");

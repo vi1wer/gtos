@@ -49,6 +49,15 @@ if [ -f /root/.Xauthority ]; then
 fi
 xhost +SI:localuser:"$U" >/dev/null 2>&1 || xhost +local: >/dev/null 2>&1 || true
 
+# Скрипты с shebang через su-exec иногда дают Exec format error (CRLF/busybox).
+# Если первая команда — текстовый скрипт, запускаем явно через /bin/sh.
+CMD0=$1
+if [ -f "$CMD0" ] && [ -r "$CMD0" ]; then
+    case "$(head -c 64 "$CMD0" 2>/dev/null | tr -d '\0')" in
+        \#!*) set -- /bin/sh "$@" ;;
+    esac
+fi
+
 {
     echo "gtos-runuser: from=$(id -u) to=$U cmd=$*"
     # Alpine: su-exec в /sbin

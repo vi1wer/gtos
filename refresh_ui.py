@@ -59,8 +59,29 @@ def main() -> None:
     lock_wall = ROOT / "assets" / "lock-wallpaper.jpg"
     tree["usr/share/gtos/qml/Main.qml"] = FsNode("reg", 0o100644, qml)
     tree["usr/share/gtos/wallpaper.jpg"] = FsNode("reg", 0o100644, wall)
+    gtos_clover = ROOT / "assets" / "gtos-clover-trans.png"
+    if not gtos_clover.is_file():
+        gtos_clover = ROOT / "website" / "static" / "img" / "gtos-clover.png"
+    if gtos_clover.is_file():
+        clover_bytes = gtos_clover.read_bytes()
+        tree["usr/share/gtos/gtos-clover.png"] = FsNode("reg", 0o100644, clover_bytes)
+        tree["usr/share/gtos/gtos-icon.png"] = FsNode("reg", 0o100644, clover_bytes)
     if lock_wall.is_file():
         tree["usr/share/gtos/lock-wallpaper.jpg"] = FsNode("reg", 0o100644, lock_wall.read_bytes())
+    install_welcome = ROOT / "assets" / "install-welcome.jpg"
+    if install_welcome.is_file():
+        tree["usr/share/gtos/install-welcome.jpg"] = FsNode("reg", 0o100644, install_welcome.read_bytes())
+    elif lock_wall.is_file():
+        tree["usr/share/gtos/install-welcome.jpg"] = FsNode("reg", 0o100644, lock_wall.read_bytes())
+    install_lang = ROOT / "assets" / "install-lang.jpg"
+    if install_lang.is_file():
+        tree["usr/share/gtos/install-lang.jpg"] = FsNode("reg", 0o100644, install_lang.read_bytes())
+    flags_dir = ROOT / "assets" / "install"
+    tree["usr/share/gtos/install"] = FsNode("dir", 0o040755)
+    if flags_dir.is_dir():
+        for fp in flags_dir.iterdir():
+            if fp.suffix.lower() in (".png", ".jpg", ".jpeg") and fp.stat().st_size > 200:
+                tree[f"usr/share/gtos/install/{fp.name}"] = FsNode("reg", 0o100644, fp.read_bytes())
     for i in range(1, 5):
         extra = ROOT / "assets" / f"wallpaper-{i}.jpg"
         if extra.is_file():
@@ -96,6 +117,28 @@ def main() -> None:
     tree["usr/bin/gtos-notifyd"] = FsNode("reg", 0o100755, notifyd)
     store_inst = (ROOT / "scripts" / "gtos-store-install.sh").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/bin/gtos-store-install"] = FsNode("reg", 0o100755, store_inst)
+    glibc_run = (ROOT / "scripts" / "gtos-glibc-run.sh").read_bytes().replace(b"\r\n", b"\n")
+    tree["usr/bin/gtos-glibc-run"] = FsNode("reg", 0o100755, glibc_run)
+    # статический proot — без apk в рантайме (иначе Permission denied / add failed)
+    proot_bin = ROOT / "assets" / "bin" / "proot"
+    if proot_bin.is_file():
+        tree["usr/bin/proot"] = FsNode("reg", 0o100755, proot_bin.read_bytes())
+        tree["usr/bin/proot.static"] = FsNode("reg", 0o100755, proot_bin.read_bytes())
+    # офлайн glibc: предпочтительно готовый root; иначе base+debs
+    cache = ROOT / "cache"
+    prebuilt = cache / "gtos-glibc-root.tar.gz"
+    if prebuilt.is_file() and prebuilt.stat().st_size > 5_000_000:
+        tree["usr/share/gtos/gtos-glibc-root.tar.gz"] = FsNode("reg", 0o100644, prebuilt.read_bytes())
+        print(f"embed gtos-glibc-root.tar.gz ({prebuilt.stat().st_size // (1024 * 1024)} MB)")
+    else:
+        for src_name, dest_name in (
+            ("ubuntu-base-22.04.5-base-amd64.tar.gz", "ubuntu-base.tar.gz"),
+            ("glibc-debs.tar.gz", "glibc-debs.tar.gz"),
+        ):
+            src = cache / src_name
+            if src.is_file() and src.stat().st_size > 1_000_000:
+                tree[f"usr/share/gtos/{dest_name}"] = FsNode("reg", 0o100644, src.read_bytes())
+                print(f"embed {dest_name} ({src.stat().st_size // (1024 * 1024)} MB)")
     dunst_cfg = (ROOT / "scripts" / "gtos-dunst.conf").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/share/gtos/dunst.conf"] = FsNode("reg", 0o100644, dunst_cfg)
     tree["etc/dunst"] = FsNode("dir", 0o040755)

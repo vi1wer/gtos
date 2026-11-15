@@ -1,12 +1,12 @@
 <p align="center">
-  <img src="website/static/img/gt-mark.svg" alt="GT/OS" width="72" height="72">
+  <img src="website/static/img/gtos-clover.png" alt="GT/OS" width="96" height="96">
 </p>
 
 <h1 align="center">GT/OS</h1>
 
 <p align="center">
-  <strong>Desktop operating system</strong> by Glukhov Mikhail<br>
-  Linux kernel · Alpine userland · Qt 6 shell
+  <strong>Своя настольная ОС</strong> — рабочий стол, магазин и параметры<br>
+  на Linux · Alpine · Qt 6 · by Glukhov Mikhail
 </p>
 
 <p align="center">

@@ -79,7 +79,13 @@ Window {
     property string storeDetailId: ""
     property string storeInstallingId: ""
     property int storeInstallPct: 0
+    property real storeExpectBytes: 0
+    property real storeLastBytes: 0
+    property int storeStallTicks: 0
     property var storePendingApp: null
+    property var storeLaunchCheckApp: null
+    property var storePendingGlibcApp: null
+    property bool glibcSetupBusy: false
     property var storeAutoOpenApp: null
     property var storeRemoteApps: []
     property var storeCategoryList: [
@@ -259,9 +265,12 @@ Window {
     property real bootSweep: 0
     property real bootFade: 1
     property bool bootHeavyDone: false
+    property bool bootAnimDone: false
+    property bool bootSweepReady: false
     property bool lockReveal: false
     property bool lockUnlocking: false
     property bool lockShake: false
+    property bool lockUserTransit: false
     property string lockInput: ""
     property string lockError: ""
     property string userPassword: ""
@@ -347,7 +356,8 @@ Window {
     property int setupStep: 0              // 0 account · 1 lang · 2 net · 3 tips
     property bool updateNeedsReboot: false
     property bool resumePending: false
-    property var defaultDownloadIds: ["cursor-linux"]
+    // Cursor AppImage = glibc/Electron — на musl GT/OS не запускается; автоустановку отключили
+    property var defaultDownloadIds: []
     property bool defaultDownloadBusy: false
     property real sessionStartedAt: Date.now()
     property string browserUrl: "https://example.com"
@@ -498,6 +508,13 @@ Window {
     property string installLog: ""
     property bool installBusy: false
     property var installDisks: []
+    property bool installLicenseOk: false
+    property bool installManualPart: false
+    property bool installQemuGuest: false
+    property bool installOptSystem: true
+    property bool installOptGrub: true
+    property bool installOptDrivers: false
+    property bool installOptUpdates: false
 
     readonly property var months: ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
@@ -570,8 +587,8 @@ Window {
 
     function openSettingsSection(sec) {
         settingsSection = sec || "home"
-        if (sec === "updates")
-            updateStatus = "GT/OS " + osVersion + " · " + updateStatus
+        if (sec === "updates" && updateStatus.indexOf("GT/OS " + osVersion) !== 0)
+            updateStatus = "GT/OS " + osVersion + " · готово к проверке"
         launch("settings", "Параметры")
         // Тяжёлые опросы — после открытия окна, иначе весь UI встаёт
         if (sec === "storage")
@@ -582,6 +599,8 @@ Window {
             settingsHeavySoon.kind = "security"
         else if (sec === "power")
             settingsHeavySoon.kind = "power"
+        else if (sec === "updates")
+            settingsHeavySoon.kind = "updates"
         else
             settingsHeavySoon.kind = ""
         if (settingsHeavySoon.kind.length)
@@ -612,6 +631,12 @@ Window {
                 root.refreshSecurityAudit()
             else if (kind === "power")
                 root.refreshPowerInfo()
+            else if (kind === "updates") {
+                // ничего тяжёлого — только подпись, без apk/sys.run
+                if (!root.updateChecking && !root.updateApplying
+                        && String(root.updateStatus).indexOf("Проверка") < 0)
+                    root.updateStatus = "GT/OS " + root.osVersion + " · нажмите «Проверить»"
+            }
             kind = ""
         }
     }
@@ -725,6 +750,8 @@ Window {
             browserBody = "<p>Введите адрес сайта и нажмите <b>Открыть</b>. Страница откроется как обычный текст с разметкой.</p>"
         if (appId === "mail" && !mailBody.length)
             mailBody = "Здравствуйте,\n\n"
+        if (appId === "term")
+            Qt.callLater(function () { root.ensureTermBanner() })
         if (appId === "install")
             Qt.callLater(function () { root.refreshInstallDisks() })
     }
@@ -899,7 +926,7 @@ Window {
 
     function allLauncherApps() {
         var out = [
-            { id: "browser", name: "Браузер", kind: "browser", color: "#2f6fed", cats: ["internet"] },
+            { id: "browser", name: "Браузер", kind: "browser", color: "#3d7dd6", cats: ["internet"] },
             { id: "files", name: "Файлы", kind: "files", color: "#3d6b4a", cats: ["office", "tools"] },
             { id: "store", name: "Магазин", kind: "store", color: "#2563eb", cats: ["internet", "tools"] },
             { id: "music", name: "Медиаплеер", kind: "music", color: "#b83280", cats: ["media"] },
@@ -918,7 +945,7 @@ Window {
             { id: "control", name: "Контрольный центр", kind: "control", color: "#546e7a", cats: ["system", "tools"] },
             { id: "archive", name: "GT Archive Manager", kind: "files", color: "#f59e0b", cats: ["tools", "office"] },
             { id: "fonts", name: "GT Font Manager", kind: "notes", color: "#a855f7", cats: ["tools"] },
-            { id: "install", name: "Установка", kind: "system", color: "#0f766e", cats: ["system"] }
+            { id: "install", name: "Установка", kind: "install", color: "#0f766e", cats: ["system"] }
         ]
         var seen = {}
         for (var i = 0; i < out.length; ++i)
@@ -2417,7 +2444,9 @@ Window {
         if (appId === "power") return "settings"
         if (appId === "archive") return "files"
         if (appId === "fonts") return "notes"
-        if (appId === "updates" || appId === "storage" || appId === "privacy" || appId === "security" || appId === "install")
+        if (appId === "install")
+            return "install"
+        if (appId === "updates" || appId === "storage" || appId === "privacy" || appId === "security")
             return "system"
         return "files"
     }
@@ -2425,7 +2454,8 @@ Window {
     function appIconColor(kind) {
         if (kind === "files") return "#3d6b4a"
         if (kind === "term") return "#1f6a3c"
-        if (kind === "browser") return "#2f6fed"
+        if (kind === "browser") return "#3d7dd6"
+        if (kind === "globe") return "#2f6fed"
         if (kind === "mail") return "#5b8fa8"
         if (kind === "settings") return "#4a5560"
         if (kind === "control") return "#0d9488"
@@ -2434,15 +2464,19 @@ Window {
         if (kind === "music") return "#b83280"
         if (kind === "cal") return "#4a7c59"
         if (kind === "draw") return "#5c54c4"
+        if (kind === "install") return "#0f766e"
         return "#3be182"
     }
 
     function notify(title, body, kind) {
         if (dndMode && kind !== "ok")
             return
-        var id = ++notifySeq
+        var id = Date.now() * 100 + (++notifySeq % 100)
         var stamp = Qt.formatTime(new Date(), "HH:mm")
-        var entry = { id: id, title: title, body: body || "", kind: kind || "info", time: stamp }
+        body = String(body || "").replace(/\s*\|\s*/g, " · ").replace(/\s+/g, " ").trim()
+        if (body.length > 160)
+            body = body.slice(0, 157) + "…"
+        var entry = { id: id, title: title, body: body, kind: kind || "info", time: stamp, ts: Date.now() }
         var items = notifications.slice()
         items.unshift(entry)
         if (items.length > 8)
@@ -2450,9 +2484,10 @@ Window {
         notifications = items
         var hist = notifyHistory.slice()
         hist.unshift(entry)
-        if (hist.length > 40)
-            hist = hist.slice(0, 40)
+        if (hist.length > 60)
+            hist = hist.slice(0, 60)
         notifyHistory = hist
+        saveNotifyHistory()
         if (!notifyCenterOpen) {
             notifyKiller.interval = 4800
             notifyKiller.restart()
@@ -2460,6 +2495,7 @@ Window {
     }
 
     function dismissNotify(id) {
+        // только тост «сейчас» — история в центре остаётся
         var items = []
         for (var i = 0; i < notifications.length; ++i) {
             if (notifications[i].id !== id)
@@ -2468,9 +2504,95 @@ Window {
         notifications = items
     }
 
+    function dismissNotifyForever(id) {
+        dismissNotify(id)
+        var h = []
+        for (var i = 0; i < notifyHistory.length; ++i) {
+            if (notifyHistory[i].id !== id)
+                h.push(notifyHistory[i])
+        }
+        notifyHistory = h
+        saveNotifyHistory()
+    }
+
     function clearNotifyHistory() {
         notifications = []
         notifyHistory = []
+        saveNotifyHistory()
+    }
+
+    function saveNotifyHistory() {
+        try {
+            sys.run("mkdir -p /var/lib/gtos")
+            var payload = JSON.stringify({ items: notifyHistory || [] })
+            sys.writeFile("/var/lib/gtos/notify-history.json", payload)
+        } catch (e) {}
+    }
+
+    function loadNotifyHistory() {
+        try {
+            var raw = sys.readFile("/var/lib/gtos/notify-history.json").trim()
+            if (!raw.length)
+                return
+            var o = JSON.parse(raw)
+            var items = (o && o.items) ? o.items : []
+            if (!(items instanceof Array))
+                items = []
+            var seen = {}
+            var merged = []
+            var cur = notifyHistory || []
+            for (var i = 0; i < cur.length; ++i) {
+                seen[cur[i].ts + "|" + cur[i].title] = true
+                merged.push(cur[i])
+            }
+            for (var j = 0; j < items.length; ++j) {
+                var it = items[j]
+                if (!it || seen[it.ts + "|" + it.title])
+                    continue
+                seen[it.ts + "|" + it.title] = true
+                merged.push(it)
+            }
+            merged.sort(function(a, b) { return (b.ts || 0) - (a.ts || 0) })
+            notifyHistory = merged.slice(0, 60)
+            saveNotifyHistory()
+        } catch (e) {
+            console.log("notify history load failed: " + e)
+        }
+    }
+
+    function glibcReady() {
+        var r = "/var/lib/gtos/glibc-root"
+        return sys.run("test -f " + r + "/.gtos-electron-ok -a -e " + r + "/usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+                       + " -a -e " + r + "/usr/lib/x86_64-linux-gnu/libX11.so.6"
+                       + " && grep -qx 4 " + r + "/.gtos-root-version && echo yes").trim() === "yes"
+    }
+
+    function glibcSetupCmd() {
+        return "if mkdir /tmp/gtos-glibc-kick.lock 2>/dev/null; then "
+             + "rm -f /tmp/gtos-glibc-setup-done /tmp/gtos-glibc-setup-fail; "
+             + "/usr/bin/gtos-glibc-run --setup >/tmp/gtos-glibc-setup.log 2>&1; "
+             + "rc=$?; "
+             + "if [ $rc -eq 0 ]; then echo 1 > /tmp/gtos-glibc-setup-done; "
+             + "else echo 1 > /tmp/gtos-glibc-setup-fail; fi; "
+             + "rmdir /tmp/gtos-glibc-kick.lock; fi"
+    }
+
+    function ensureGlibcRootAsync() {
+        if (glibcReady()) {
+            var readyApp = storePendingGlibcApp
+            storePendingGlibcApp = null
+            glibcSetupBusy = false
+            if (readyApp)
+                launchPkgBinary(readyApp)
+            return
+        }
+        if (!glibcSetupBusy) {
+            glibcSetupBusy = true
+            notify("Магазин GT", "Распаковываем готовый glibc-root… обычно до минуты", "ok")
+            bootKick(glibcSetupCmd())
+        }
+        if (!glibcSetupPoll.running)
+            glibcSetupPoll.start()
     }
 
     function trackAppLaunch(appId) {
@@ -2510,15 +2632,15 @@ Window {
     function taskFriendlyApp(cmd) {
         var c = String(cmd || "").toLowerCase()
         var map = [
-            { m: "firefox", name: "Firefox", icon: "browser", kill: true },
-            { m: "chromium", name: "Chromium", icon: "browser", kill: true },
-            { m: "chrome", name: "Chrome", icon: "browser", kill: true },
+            { m: "firefox", name: "Firefox", icon: "globe", kill: true },
+            { m: "chromium", name: "Chromium", icon: "globe", kill: true },
+            { m: "chrome", name: "Chrome", icon: "globe", kill: true },
             { m: "vlc", name: "VLC", icon: "video", kill: true },
             { m: "cvlc", name: "VLC", icon: "video", kill: true },
             { m: "gimp", name: "GIMP", icon: "draw", kill: true },
             { m: "libreoffice", name: "LibreOffice", icon: "notes", kill: true },
             { m: "soffice", name: "LibreOffice", icon: "notes", kill: true },
-            { m: "telegram", name: "Telegram", icon: "browser", kill: true },
+            { m: "telegram", name: "Telegram", icon: "mail", kill: true },
             { m: "gt-shell", name: "Рабочий стол GT/OS", icon: "system", kill: false },
             { m: "openbox", name: "Оформление окон", icon: "settings", kill: false },
             { m: "xorg", name: "Экран и графика", icon: "monitor", kill: false }
@@ -3326,22 +3448,20 @@ Window {
         }
     }
 
-    function refreshWeather() {
-        weatherLoading = true
-        weatherDesc = "Обновление…"
-        var url = "https://api.open-meteo.com/v1/forecast?latitude=" + weatherLat
+    function weatherForecastUrl() {
+        return "https://api.open-meteo.com/v1/forecast?latitude=" + weatherLat
                 + "&longitude=" + weatherLon
                 + "&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m,surface_pressure"
                 + "&hourly=temperature_2m,weather_code,precipitation_probability"
                 + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
                 + "&timezone=auto&forecast_days=7"
-        var raw = (typeof sys.runTimeout === "function"
-                   ? sys.runTimeout("curl -fsSL --max-time 10 " + shQuote(url), 12000)
-                   : sys.run("curl -fsSL --max-time 10 " + shQuote(url))).trim()
+    }
+
+    function applyWeatherPayload(raw) {
         weatherLoading = false
-        if (!raw.length || raw.charAt(0) !== "{") {
+        if (!raw || !raw.length || raw.charAt(0) !== "{") {
             weatherDesc = "Нет сети или API недоступен"
-            return
+            return false
         }
         try {
             var data = JSON.parse(raw)
@@ -3388,9 +3508,31 @@ Window {
             }
             weatherDaily = daily
             weatherUpdated = Qt.formatTime(new Date(), "HH:mm")
+            return true
         } catch (e) {
             weatherDesc = "Ошибка разбора ответа"
+            return false
         }
+    }
+
+    function refreshWeather(background) {
+        weatherLoading = true
+        weatherDesc = "Обновление…"
+        var url = weatherForecastUrl()
+        // фон: не блокируем сплэш/lock длинным curl
+        if (background === true) {
+            sys.run("rm -f /tmp/gtos-weather.json /tmp/gtos-weather.json.tmp; "
+                    + "(curl -fsSL --max-time 10 " + shQuote(url)
+                    + " -o /tmp/gtos-weather.json.tmp && mv -f /tmp/gtos-weather.json.tmp /tmp/gtos-weather.json"
+                    + ") >/tmp/gtos-weather-fetch.log 2>&1 &")
+            weatherFetchPoll.attempts = 0
+            weatherFetchPoll.restart()
+            return
+        }
+        var raw = (typeof sys.runTimeout === "function"
+                   ? sys.runTimeout("curl -fsSL --max-time 10 " + shQuote(url), 12000)
+                   : sys.run("curl -fsSL --max-time 10 " + shQuote(url))).trim()
+        applyWeatherPayload(raw)
     }
 
     function setDesktopWallpaper(path) {
@@ -3804,9 +3946,21 @@ Window {
     }
 
     function wifiIfaceName() {
-        var iface = sys.run("cat /var/lib/gtos/wifi-iface 2>/dev/null").trim()
-        if (!iface.length)
-            iface = sys.run("ls /sys/class/net 2>/dev/null | awk '/^wl/{print; exit}'").trim()
+        var iface = sys.readFile("/var/lib/gtos/wifi-iface").trim()
+        if (!iface.length) {
+            var listing = sys.readFile("/sys/class/net")
+            // listDir fallback if readFile on dir is empty
+            if (!listing.length && typeof sys.listDir === "function")
+                listing = sys.listDir("/sys/class/net")
+            var lines = listing.split("\n")
+            for (var i = 0; i < lines.length; ++i) {
+                var n = lines[i].replace(/^\[dir\]\s*/, "").replace(/^\[file\]\s*/, "").trim()
+                if (n.indexOf("wl") === 0) {
+                    iface = n
+                    break
+                }
+            }
+        }
         wifiIface = iface
         return iface
     }
@@ -3956,7 +4110,7 @@ Window {
         sys.run("cp -f /var/lib/gtos/wpa_supplicant.conf /tmp/gtos-wpa.conf 2>/dev/null || true")
     }
 
-    function connectWifi(ssid, pass) {
+    function connectWifi(ssid, pass, background) {
         var iface = wifiIfaceName()
         if (!iface.length || !ssid.length)
             return
@@ -3964,41 +4118,63 @@ Window {
         var q = shellQuote(ssid)
         saveWifiNetwork(ssid, pass || "")
         writePersistentWpa(ssid, pass || "")
+        var assoc = ""
         if (pass && pass.length) {
-            sys.run("killall wpa_supplicant 2>/dev/null; ip link set " + iface + " up"
+            assoc = "killall wpa_supplicant 2>/dev/null; ip link set " + iface + " up"
                     + "; wpa_supplicant -B -i " + iface + " -c /var/lib/gtos/wpa_supplicant.conf >/tmp/wpa.log 2>&1"
-                    + "; sleep 2; udhcpc -i " + iface + " -n -q -t 5 >/tmp/dhcp-wifi.log 2>&1")
+                    + "; sleep 2; udhcpc -i " + iface + " -n -q -t 5 >/tmp/dhcp-wifi.log 2>&1"
         } else {
-            sys.run("killall wpa_supplicant 2>/dev/null; ip link set " + iface + " up"
+            assoc = "killall wpa_supplicant 2>/dev/null; ip link set " + iface + " up"
                     + "; iwconfig " + iface + " essid " + q + " 2>/dev/null"
-                    + "; udhcpc -i " + iface + " -n -q -t 5 >/tmp/dhcp-wifi.log 2>&1")
+                    + "; udhcpc -i " + iface + " -n -q -t 5 >/tmp/dhcp-wifi.log 2>&1"
         }
+        if (background === true) {
+            bootKick("rm -f /tmp/gtos-wifi-bg-done; " + assoc + "; touch /tmp/gtos-wifi-bg-done")
+            wifiAutoRefreshTimer.restart()
+            return
+        }
+        sys.run(assoc)
         refreshNetwork()
         scanWifiNetworks()
         refreshNetworkDetails()
         notify("Сеть", wifiSsid.length ? ("Подключено к «" + wifiSsid + "» · сеть сохранена") : netStatus, "wifi")
     }
 
-    function autoConnectWifi() {
+    function autoConnectWifi(background) {
         var list = loadWifiNetworks()
-        if (!list.length)
+        if (!list.length) {
+            sys.writeFile("/tmp/gtos-wifi-auto-done", "skip\n")
             return
+        }
         var iface = wifiIfaceName()
-        if (!iface.length)
+        if (!iface.length) {
+            sys.writeFile("/tmp/gtos-wifi-auto-done", "no-iface\n")
             return
+        }
         // уже есть адрес — не трогаем
-        if (netIp.length && netIp !== "нет адреса" && netIp !== "—")
+        if (netIp.length && netIp !== "нет адреса" && netIp !== "—") {
+            sys.writeFile("/tmp/gtos-wifi-auto-done", "have-ip\n")
             return
-        if (sys.run("test -f /var/lib/gtos/wpa_supplicant.conf && echo yes").trim() === "yes") {
-            sys.run("killall wpa_supplicant 2>/dev/null; ip link set " + iface + " up"
+        }
+        var bg = (background !== false)
+        if (sys.readFile("/var/lib/gtos/wpa_supplicant.conf").length > 0) {
+            var cmd = "killall wpa_supplicant 2>/dev/null; ip link set " + iface + " up"
                     + "; wpa_supplicant -B -i " + iface + " -c /var/lib/gtos/wpa_supplicant.conf >/tmp/wpa-auto.log 2>&1"
-                    + "; sleep 2; udhcpc -i " + iface + " -n -q -t 4 >/tmp/dhcp-wifi-auto.log 2>&1")
+                    + "; sleep 2; udhcpc -i " + iface + " -n -q -t 4 >/tmp/dhcp-wifi-auto.log 2>&1"
+            if (bg) {
+                bootKick("rm -f /tmp/gtos-wifi-auto-done; " + cmd + "; touch /tmp/gtos-wifi-auto-done")
+                wifiAutoRefreshTimer.restart()
+                return
+            }
+            sys.run(cmd)
             refreshNetwork()
             return
         }
         var n = list[0]
         if (n && n.ssid)
-            connectWifi(n.ssid, n.pass || "")
+            connectWifi(n.ssid, n.pass || "", bg)
+        else
+            sys.writeFile("/tmp/gtos-wifi-auto-done", "no-ssid\n")
     }
 
     function windowDesk(i) {
@@ -4166,7 +4342,9 @@ Window {
         notify("Добро пожаловать", "GT/OS " + osVersion + " · " + userFullName, "ok")
         notify("Сеть", netStatus, "wifi")
         bootNotify.start()
-        Qt.callLater(function () { root.checkUpdates() })
+        // не зовём checkUpdates() сразу — apk в фоне вешает UI при открытии Центра обновлений
+        if (root.updateAutoCheck)
+            updateBootCheckTimer.restart()
         Qt.callLater(function () { root.queueDefaultStoreDownloads() })
     }
 
@@ -4192,11 +4370,11 @@ Window {
     function storeCuratedApps() {
         // запасной список, если сеть/каталог ещё не подгрузились
         return [
-            { id: "firefox", apk: "firefox", launchId: "pkg", name: "Firefox", pub: "Mozilla", cat: "Интернет", desc: "Настоящий браузер Mozilla (JS, вкладки)", iconKind: "browser", iconFile: "/usr/share/gtos/app-icons/firefox.png", price: "Бесплатно", homeUrl: "https://www.mozilla.org/firefox/", source: "alpine", engineBins: ["firefox"] },
-            { id: "chromium", apk: "chromium", launchId: "pkg", name: "Chromium", pub: "The Chromium Authors", cat: "Интернет", desc: "Браузер на движке Chromium", iconKind: "browser", iconFile: "/usr/share/gtos/app-icons/chromium.png", price: "Бесплатно", homeUrl: "https://www.google.com/chrome/", source: "alpine", engineBins: ["chromium", "chrome"] },
-            { id: "telegram", apk: "telegram-desktop", launchId: "telegram", name: "Telegram", pub: "Telegram FZ-LLC", cat: "Интернет", desc: "Мессенджер с облачными чатами", iconKind: "browser", iconFile: "/usr/share/gtos/app-icons/telegram.png", price: "Бесплатно", homeUrl: "https://web.telegram.org/k/", source: "alpine" },
+            { id: "firefox", apk: "firefox", launchId: "pkg", name: "Firefox", pub: "Mozilla", cat: "Интернет", desc: "Настоящий браузер Mozilla (JS, вкладки)", iconKind: "globe", iconFile: "/usr/share/gtos/app-icons/firefox.png", price: "Бесплатно", homeUrl: "https://www.mozilla.org/firefox/", source: "alpine", engineBins: ["firefox"] },
+            { id: "chromium", apk: "chromium", launchId: "pkg", name: "Chromium", pub: "The Chromium Authors", cat: "Интернет", desc: "Браузер на движке Chromium", iconKind: "globe", iconFile: "/usr/share/gtos/app-icons/chromium.png", price: "Бесплатно", homeUrl: "https://www.google.com/chrome/", source: "alpine", engineBins: ["chromium", "chrome"] },
+            { id: "telegram", apk: "telegram-desktop", launchId: "telegram", name: "Telegram", pub: "Telegram FZ-LLC", cat: "Интернет", desc: "Мессенджер с облачными чатами", iconKind: "mail", iconFile: "/usr/share/gtos/app-icons/telegram.png", price: "Бесплатно", homeUrl: "https://web.telegram.org/k/", source: "alpine" },
             { id: "vlc", apk: "vlc", launchId: "vlc", name: "VLC media player", pub: "VideoLAN", cat: "Медиа", desc: "Видео и аудио", iconKind: "video", iconFile: "/usr/share/gtos/app-icons/vlc.png", price: "Бесплатно", engineBins: ["vlc", "cvlc"], source: "alpine" },
-            { id: "gimp", apk: "gimp", launchId: "draw", name: "GIMP", pub: "GIMP Team", cat: "Творчество", desc: "Редактор графики", iconKind: "draw", iconFile: "/usr/share/gtos/app-icons/gimp.png", price: "Бесплатно", source: "alpine" },
+            { id: "gimp", apk: "gimp", launchId: "draw", name: "GIMP", pub: "GIMP Team", cat: "Творчество", desc: "Редактор графики", iconKind: "draw", iconFile: "/usr/share/gtos/app-icons/gimp.png", price: "Бесплатно", source: "alpine", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/gimp-3.2.4-r0.apk" },
             { id: "libreoffice", apk: "libreoffice", launchId: "notes", name: "LibreOffice", pub: "The Document Foundation", cat: "Офис", desc: "Офисный пакет", iconKind: "notes", iconFile: "/usr/share/gtos/app-icons/libreoffice.png", price: "Бесплатно", source: "alpine" }
         ]
     }
@@ -4249,12 +4427,12 @@ Window {
             }
             storeCategoryList = cats
         }
-        storeCatalogStatus = "Каталог: " + data.apps.length + " приложений · " + (source || "локально")
+        storeCatalogStatus = data.apps.length + " приложений"
         return true
     }
 
     function fetchStoreCatalogNetwork(forceNotify) {
-        storeCatalogStatus = "Каталог: загрузка из сети…"
+        storeCatalogStatus = "Обновление…"
         var urls = [
             "http://10.0.2.2:5050/api/store/catalog?limit=2000",
             "http://10.0.2.2:5050/static/store/catalog.json",
@@ -4280,7 +4458,7 @@ Window {
             return true
         }
         storeRemoteApps = []
-        storeCatalogStatus = "Каталог: только избранное (сеть недоступна)"
+        storeCatalogStatus = "Избранное"
         if (forceNotify)
             notify("Магазин GT", "Не удалось загрузить сетевой каталог", "info")
         return false
@@ -4442,10 +4620,15 @@ Window {
         storePendingApp = app
         storeInstallingId = app.id
         storeInstallPct = 2
+        storeExpectBytes = Number(app.size) || 0
+        if (app.id === "cursor-linux" && storeExpectBytes < 1000000)
+            storeExpectBytes = 326973944
+        storeLastBytes = 0
+        storeStallTicks = 0
         var plat = storePlatformOf(app)
         var src = String(app.source || (app.apk ? "alpine" : "web"))
         upsertPendingOp("store-" + app.id, "Загрузка «" + app.name + "»", storePlatformLabel(plat), 2, "download")
-        notify("Магазин GT", "Установка «" + app.name + "» (" + storePlatformLabel(plat) + ")…", "ok")
+        notify("Магазин GT", "Установка «" + app.name + "»…", "ok")
         // web-only
         if (src === "web" || (!app.apk && !app.url && app.homeUrl)) {
             storeInstallPct = 100
@@ -4472,7 +4655,8 @@ Window {
                       + "GTOS_USER='" + desktopUserName() + "'\n")
         sys.run(
             "mkdir -p /var/lib/gtos/apk-cache /var/lib/gtos/apps /home/" + currentUser + "/Загрузки; "
-            + "rm -f /tmp/gtos-apk-done /tmp/gtos-apk-rc /tmp/gtos-store-done /tmp/gtos-store-rc; "
+            + "pkill -f 'grep -aobm1 hsqs' 2>/dev/null || true; "
+            + "rm -f /tmp/gtos-apk-done /tmp/gtos-apk-rc /tmp/gtos-store-done /tmp/gtos-store-rc /tmp/gtos-store-phase /tmp/gtos-store-bytes; "
             + "export GTOS_USER=" + shQuote(desktopUserName()) + "; "
             + "( /usr/bin/gtos-store-install /tmp/gtos-store-job.env "
             + "|| ( echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done ); "
@@ -4511,12 +4695,14 @@ Window {
                 if (hasLaunch === "yes" || hasBinEarly.length)
                     ok = true
             } else {
-                var logTail = sys.run("tail -n 10 /tmp/gtos-apk-log 2>/dev/null").trim()
+                var errLine = sys.run("grep -E '^ERROR:' /tmp/gtos-apk-log 2>/dev/null | tail -n 1 | sed 's/^ERROR: *//'").trim()
+                if (!errLine.length)
+                    errLine = "не удалось установить"
                 storeAutoOpenApp = null
                 finishPendingOp(opId)
                 if (defaultDownloadIds && defaultDownloadIds.indexOf(app.id) >= 0)
                     defaultDownloadBusy = false
-                notify("Установка не удалась", "«" + app.name + "»: код " + rc + (logTail ? ("\n" + logTail) : ""), "info")
+                notify("Установка не удалась", "«" + app.name + "»: " + errLine, "info")
                 return
             }
         }
@@ -4710,6 +4896,10 @@ Window {
         for (var i = 0; i < parts.length; ++i)
             quoted += (i ? " " : "") + shQuote(parts[i])
         var binName = parts[0].split("/").pop()
+        // Не убиваем sh/bash — иначе /bin/sh …/launch валит оболочку
+        var killCmd = ""
+        if (binName !== "sh" && binName !== "bash" && binName !== "busybox" && binName.length)
+            killCmd = "pkill -x " + shQuote(binName) + " 2>/dev/null; "
         // Без sleep/tail: sys.run блокирует UI-поток (в QEMU это выглядит как зависание).
         // Отвязка процесса устойчива к отсутствию setsid (setsid → nohup → подоболочка).
         var inner = "if [ -x /usr/bin/gtos-runuser ]; then "
@@ -4721,7 +4911,7 @@ Window {
         return sys.run(
             "export DISPLAY=${DISPLAY:-:0}; "
             + "rm -f " + shQuote(log) + "; "
-            + "pkill -x " + shQuote(binName) + " 2>/dev/null; "
+            + killCmd
             + "xhost +SI:localuser:" + shQuote(u) + " >/dev/null 2>&1 || xhost +local: >/dev/null 2>&1 || true; "
             + "echo 'GTOS_PKG_LAUNCH " + binName + "' > /dev/ttyS0 2>/dev/null || true; "
             + "RUN=" + shQuote(inner) + "; "
@@ -4739,8 +4929,69 @@ Window {
         var launchSh = "/var/lib/gtos/apps/" + app.id + "/bin/launch"
         if (sys.run("test -x " + shQuote(launchSh) + " && echo yes").trim() === "yes") {
             var logL = "/tmp/gtos-pkg-" + app.id + ".log"
-            runAsDesktopUser(launchSh, logL)
+            // CRLF в shebang → Exec format error у su-exec; всегда через /bin/sh
+            sys.run("tr -d '\\r' < " + shQuote(launchSh) + " > " + shQuote(launchSh + ".lf")
+                    + " && mv -f " + shQuote(launchSh + ".lf") + " " + shQuote(launchSh)
+                    + " && chmod 755 " + shQuote(launchSh))
+            // AppImage на musl: переписать лаунчер на gtos-glibc-run (proot + Ubuntu)
+            var appRoot = "/var/lib/gtos/apps/" + app.id + "/squashfs-root"
+            var appImg = "/var/lib/gtos/apps/" + app.id + "/dl/app.AppImage"
+            // права: каталог часто root:root 700 → Permission denied у test2/misha
+            sys.run("chmod -R a+rX " + shQuote("/var/lib/gtos/apps/" + app.id) + " 2>/dev/null; true")
+            // Electron: ресурсы рядом с usr/bin/<app> (proot видит exe как symlink)
+            sys.run("cd " + shQuote(appRoot + "/usr/bin") + " 2>/dev/null && for l in *; do "
+                    + "[ -L \"$l\" ] || continue; r=$(readlink -f \"$l\"); d=$(dirname \"$r\"); "
+                    + "[ -f \"$d/v8_context_snapshot.bin\" ] || continue; [ \"$d\" = \"$PWD\" ] && continue; "
+                    + "for a in v8_context_snapshot.bin snapshot_blob.bin icudtl.dat resources.pak chrome_100_percent.pak "
+                    + "chrome_200_percent.pak locales resources libffmpeg.so libEGL.so libGLESv2.so libvk_swiftshader.so "
+                    + "libvulkan.so.1 vk_swiftshader_icd.json; do [ -e \"$d/$a\" ] && [ ! -e \"$a\" ] && ln -s \"$d/$a\" \"$a\"; done; "
+                    + "done; true")
+            var hasAppRun = sys.run("test -e " + shQuote(appRoot + "/AppRun") + " -o -L " + shQuote(appRoot + "/AppRun")
+                                    + " && test -r " + shQuote(appRoot + "/AppRun") + " && echo yes").trim() === "yes"
+            var needRepair = sys.run("test -d " + shQuote(appRoot) + " && echo yes").trim() === "yes" && !hasAppRun
+            // битый extract / закрытые права → ремонт из кэша AppImage
+            if (needRepair) {
+                if (sys.run("test -f " + shQuote(appImg) + " -a -x /usr/bin/gtos-store-install && echo yes").trim() === "yes") {
+                    notify("«" + (app.name || app.id) + "»", "Чиним распаковку AppImage… обычно 1–2 минуты", "ok")
+                    bootKick("chmod -R a+rX " + shQuote("/var/lib/gtos/apps/" + app.id) + " 2>/dev/null; "
+                             + "rm -rf " + shQuote(appRoot) + "; "
+                             + "/usr/bin/gtos-store-install --repair-appimage " + app.id
+                             + " >/tmp/gtos-repair-" + app.id + ".log 2>&1; "
+                             + "chmod -R a+rX " + shQuote("/var/lib/gtos/apps/" + app.id) + " 2>/dev/null; "
+                             + "echo GTOS_REPAIR_DONE " + app.id + " >/dev/ttyS0")
+                    storePendingGlibcApp = app
+                    storeRepairPoll.appId = app.id
+                    storeRepairPoll.tries = 0
+                    storeRepairPoll.start()
+                    return
+                }
+                notify("«" + (app.name || app.id) + "»", "Нет AppRun — удалите и установите снова из Магазина", "info")
+                return
+            }
+            if (sys.run("test -x /usr/bin/gtos-glibc-run -a -d " + shQuote(appRoot) + " && echo yes").trim() === "yes") {
+                sys.writeFile(launchSh,
+                    "#!/bin/sh\n"
+                    + "export DISPLAY=${DISPLAY:-:0}\n"
+                    + "exec /usr/bin/gtos-glibc-run " + shQuote(appRoot) + " \"$@\"\n")
+                sys.run("tr -d '\\r' < " + shQuote(launchSh) + " > " + shQuote(launchSh + ".lf")
+                        + " && mv -f " + shQuote(launchSh + ".lf") + " " + shQuote(launchSh)
+                        + " && chmod 755 " + shQuote(launchSh))
+                // rootfs Ubuntu — один раз от root; proot уже в образе
+                if (sys.run("test -x /usr/bin/proot -o -x /usr/bin/proot.static && echo yes").trim() !== "yes") {
+                    notify("«" + (app.name || app.id) + "»", "В образе нет proot — обновите систему (refresh_ui / ISO)", "info")
+                    return
+                }
+                if (!glibcReady()) {
+                    // setup долгий — не sys.run (таймаут 4с → «таймаут»), а фон + ожидание
+                    storePendingGlibcApp = app
+                    ensureGlibcRootAsync()
+                    return
+                }
+            }
+            runAsDesktopUser("/bin/sh " + launchSh, logL)
             notify("Магазин GT", "Запуск «" + (app.name || app.id) + "»…", "ok")
+            storeLaunchCheckApp = app
+            storeLaunchCheckTimer.restart()
             return
         }
         var bins = []
@@ -5173,7 +5424,7 @@ Window {
                 { label: "Графика", action: "openwith:draw", icon: "paint" },
                 { label: "Блокнот", action: "openwith:notes", icon: "notes" },
                 { label: "Медиаплеер", action: "openwith:music", icon: "music" },
-                { label: "Firefox", action: "openwith:firefox", icon: "browser" },
+                { label: "Firefox", action: "openwith:firefox", icon: "globe" },
                 { label: "VLC", action: "openwith:vlc", icon: "video" },
                 { label: "Терминал", action: "openwith:term", icon: "term" },
                 { label: "Проводник", action: "openwith:files", icon: "folder" },
@@ -5887,6 +6138,7 @@ Window {
         lockInput = ""
         lockError = ""
         bootNotify.start()
+        Qt.callLater(function () { root.queueDefaultStoreDownloads() })
     }
 
     function saveUserPassword() {
@@ -6300,15 +6552,39 @@ Window {
         }
     }
 
+    function isJsArray(v) {
+        // QML JS: Array.isArray часто нет; достаточно length + push
+        return !!(v && typeof v === "object" && typeof v.length === "number" && typeof v.push === "function")
+    }
+
     function loadOsUsers() {
         var raw = sys.readFile("/var/lib/gtos/users.json").trim()
         var list = []
         if (raw.length) {
             try {
                 var p = JSON.parse(raw)
-                if (Array.isArray(p))
+                // Array.isArray в QML/JS часто отсутствует — иначе теряем всех юзеров
+                if (isJsArray(p))
                     list = p
+                else if (p && typeof p === "object" && isJsArray(p.users))
+                    list = p.users
             } catch (e) { list = [] }
+        }
+        // подтянуть учётки из /home, которых нет в json (иначе «Пользователь не найден»)
+        var homes = sys.run("ls -1 /home 2>/dev/null").trim().split("\n")
+        var seen = {}
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i] && list[i].user)
+                seen[list[i].user] = true
+        }
+        for (var h = 0; h < homes.length; ++h) {
+            var u = String(homes[h] || "").trim()
+            if (!u.length || u === "lost+found" || seen[u])
+                continue
+            if (!/^[a-z_][a-z0-9_-]*$/i.test(u))
+                continue
+            list.push({ user: u, name: u, hash: "", salt: "", avatar: "#4a5560" })
+            seen[u] = true
         }
         if (!list.length && currentUser.length) {
             list = [{
@@ -6394,33 +6670,50 @@ Window {
         return true
     }
 
-    function switchOsUser(user) {
+    function switchOsUser(user, opts) {
         user = String(user || "").trim()
         if (!user.length || user === currentUser)
-            return
+            return false
+        opts = opts || {}
         var list = loadOsUsers()
         var target = null
         for (var i = 0; i < list.length; ++i) {
-            if (list[i].user === user) {
+            if (list[i] && list[i].user === user) {
                 target = list[i]
                 break
             }
         }
+        // нет в json, но есть домашний каталог / passwd — зарегистрировать
         if (!target) {
-            notify("Сеанс", "Пользователь не найден", "info")
-            return
+            var homeOk = sys.run("test -d /home/" + user + " && echo yes").trim() === "yes"
+            var pwdOk = sys.run("grep -q '^" + user + ":' /etc/passwd && echo yes").trim() === "yes"
+            if (!homeOk && !pwdOk) {
+                notify("Сеанс", "Пользователь «" + user + "» не найден", "info")
+                return false
+            }
+            target = { user: user, name: user, hash: "", salt: "", avatar: "#4a5560" }
+            list.push(target)
+            osUsers = list
+            saveOsUsers()
+            sys.run("mkdir -p /home/" + user + " /var/lib/gtos/users/" + user
+                    + "; grep -q '^" + user + ":' /etc/passwd || echo '" + user
+                    + ":x:1000:1000:" + user + ":/home/" + user + ":/bin/sh' >> /etc/passwd")
         }
         upsertCurrentOsUser()
         saveDesktop()
-        // профиль
         sys.run("mkdir -p /var/lib/gtos/users/" + currentUser
                 + "; cp -f /var/lib/gtos/desktop.conf /var/lib/gtos/users/" + currentUser + "/desktop.conf 2>/dev/null || true")
+        // плавная смена на экране блокировки
+        lockUserTransit = true
+        lockPickUser = target.user
         currentUser = target.user
         userFullName = target.name || target.user
         passwordHash = target.hash || ""
-        passwordSalt = target.salt || passwordSalt
-        userAvatar = target.avatar || userAvatar
+        passwordSalt = target.salt || ""
+        userAvatar = target.avatar || "#4a5560"
         userPassword = ""
+        lockInput = ""
+        lockError = ""
         sys.writeFile("/var/lib/gtos/username", currentUser + "\n")
         sys.writeFile("/var/lib/gtos/fullname", userFullName + "\n")
         var conf = sys.readFile("/var/lib/gtos/users/" + currentUser + "/desktop.conf")
@@ -6428,9 +6721,17 @@ Window {
             sys.writeFile("/var/lib/gtos/desktop.conf", conf)
         loadDesktop()
         refreshDeskIcons()
-        lockPickUser = currentUser
-        lockSession()
-        notify("Сеанс", "Переключение на «" + userFullName + "» — введите пароль", "ok")
+        if (!opts.keepUnlocked) {
+            lockSession()
+            lockReveal = true
+        } else if (!locked) {
+            lockSession()
+            lockReveal = true
+        }
+        lockUserTransitAnim.restart()
+        if (!opts.silent)
+            notify("Сеанс", "Переключение на «" + userFullName + "» — введите пароль", "ok")
+        return true
     }
 
     function loadUpdateChannel() {
@@ -6888,23 +7189,30 @@ Window {
     }
 
     function checkUpdates() {
+        if (updateChecking || updateApplying)
+            return
         updateChecking = true
         updateStatus = "Проверка репозиториев и оболочки…"
         updateDepsStatus = "Сверяем зависимости…"
+        sys.run("rm -f /tmp/gtos-upd-done /tmp/gtos-upd-sim.txt /tmp/gtos-shell-upd-check.log")
         var diskVer = sys.readFile("/var/lib/gtos/version").trim()
         if (!diskVer.length)
             diskVer = sys.readFile("/usr/share/gtos/version").trim()
         if (diskVer.length && diskVer !== osVersion)
             updateStatus = "Оболочка на диске: " + diskVer + " · UI: " + osVersion
+        // timeout — иначе apk/сеть вешают гостя; всё строго в фоне
         sys.run(
             "mkdir -p /var/lib/gtos/apk-cache /var/lib/gtos/update-snapshots; "
-            + "( apk update --cache-dir /var/lib/gtos/apk-cache >/tmp/gtos-upd.log 2>&1; "
-            + "apk upgrade -s --cache-dir /var/lib/gtos/apk-cache 2>/tmp/gtos-upd-sim.txt; "
-            + "apk policy 2>/dev/null | head -n 40 >/tmp/gtos-upd-deps.txt; "
-            + "/usr/bin/gtos-shell-update --check >/tmp/gtos-shell-upd-check.log 2>&1 || true; "
-            + "/usr/bin/gtos-shell-update --check --network >>/tmp/gtos-shell-upd-check.log 2>&1 || true; "
-            + "echo done >/tmp/gtos-upd-done ) &"
+            + "( "
+            + "timeout 25 apk update --no-progress --cache-dir /var/lib/gtos/apk-cache >/tmp/gtos-upd.log 2>&1 || true; "
+            + "timeout 25 apk upgrade -s --cache-dir /var/lib/gtos/apk-cache >/tmp/gtos-upd-sim.txt 2>&1 || true; "
+            + "timeout 10 /usr/bin/gtos-shell-update --check >/tmp/gtos-shell-upd-check.log 2>&1 || true; "
+            + "timeout 15 /usr/bin/gtos-shell-update --check --network >>/tmp/gtos-shell-upd-check.log 2>&1 || true; "
+            + "echo done >/tmp/gtos-upd-done "
+            + ") >/dev/null 2>&1 &"
         )
+        updateCheckTimer.ticks = 0
+        updateCheckTimer.interval = 1200
         updateCheckTimer.restart()
     }
 
@@ -7056,7 +7364,7 @@ Window {
                   items: [{ name: aboutCpu, detail: aboutCpuHz, state: "ОК", warn: false }] },
                 { id: "disk", name: "Дисковые устройства", icon: "files", open: true, count: 1,
                   items: [{ name: "Системный накопитель", detail: aboutDiskUsed + " из " + aboutDiskTotal, state: "ОК", warn: false }] },
-                { id: "net", name: "Сетевые адаптеры", icon: "browser", open: true, count: 1,
+                { id: "net", name: "Сетевые адаптеры", icon: "globe", open: true, count: 1,
                   items: [{ name: "eth0", detail: netIp, state: "ОК", warn: false }] }
             ]
         }
@@ -7206,11 +7514,11 @@ Window {
         }
         if (!kbdItems.length)
             kbdItems = [{ name: "Клавиатура AT/OS", detail: "Ввод", state: "ОК", warn: false }]
-        addGroup("kbd", "Клавиатуры", "notes", kbdItems, false)
+        addGroup("kbd", "Клавиатуры", "keyboard", kbdItems, false)
         if (mouseItems.length)
-            addGroup("mouse", "Мыши и другие указывающие устройства", "draw", mouseItems, false)
+            addGroup("mouse", "Мыши и другие указывающие устройства", "mouse", mouseItems, false)
         if (hidItems.length)
-            addGroup("hid", "Устройства HID", "store", hidItems, false)
+            addGroup("hid", "Устройства HID", "hid", hidItems, false)
 
         // Мониторы
         var monItems = _ccItemsFromLines(_ccLines(
@@ -7352,7 +7660,17 @@ Window {
             var b = bks[j].trim()
             if (!b.length) continue
             var sz = sys.run("du -sh /var/lib/gtos/backups/" + b + " 2>/dev/null | awk '{print $1}'").trim()
-            bl.push({ id: b, title: b, size: sz.length ? sz : "—" })
+            var title = b
+            if (b.indexOf("user-") === 0) {
+                var ts = b.slice(5)
+                // user-yyyyMMdd-HHmmss → читаемая дата
+                if (ts.length >= 15)
+                    title = "Копия · " + ts.slice(0, 4) + "-" + ts.slice(4, 6) + "-" + ts.slice(6, 8)
+                           + " " + ts.slice(9, 11) + ":" + ts.slice(11, 13)
+                else
+                    title = "Копия данных"
+            }
+            bl.push({ id: b, title: title, size: sz.length ? sz : "—" })
         }
         recoveryBackups = bl
         recoveryStatus = restorePoints.length + " точек · " + recoveryBackups.length + " копий"
@@ -8351,7 +8669,20 @@ Window {
         calSelectedDay = t.getDate()
     }
 
+    function detectQemuGuest() {
+        var blob = (sys.readFile("/sys/class/dmi/id/sys_vendor")
+                    + " " + sys.readFile("/sys/class/dmi/id/product_name")
+                    + " " + sys.readFile("/sys/class/dmi/id/board_name")
+                    + " " + sys.readFile("/proc/cpuinfo")).toLowerCase()
+        installQemuGuest = blob.indexOf("qemu") >= 0
+                || blob.indexOf("bochs") >= 0
+                || blob.indexOf("virtualbox") >= 0
+                || sys.readFile("/sys/class/dmi/id/chassis_vendor").toLowerCase().indexOf("qemu") >= 0
+        return installQemuGuest
+    }
+
     function refreshInstallDisks() {
+        detectQemuGuest()
         var raw = sys.listDisks()
         var lines = raw.length ? raw.split("\n") : []
         var disks = []
@@ -8361,12 +8692,52 @@ Window {
             var parts = line.split(/\s+/)
             var name = parts[0]
             var size = parts.length > 1 ? parts[1] : "?"
-            var model = parts.slice(3).join(" ")
-            disks.push({ id: name, label: "/dev/" + name + " · " + size + (model ? (" · " + model) : "") })
+            var model = ""
+            var tran = ""
+            if (parts.length >= 4) {
+                var knownTran = { nvme: 1, sata: 1, usb: 1, sas: 1, ata: 1, virtio: 1 }
+                if (knownTran[parts[parts.length - 1]]) {
+                    tran = parts[parts.length - 1]
+                    model = parts.slice(3, parts.length - 1).join(" ")
+                } else {
+                    model = parts.slice(3).join(" ")
+                }
+            }
+            var kind = "HDD"
+            var low = (name + " " + model + " " + tran).toLowerCase()
+            if (low.indexOf("nvme") >= 0 || low.indexOf("ssd") >= 0 || tran === "nvme")
+                kind = "SSD"
+            else if (tran === "usb")
+                kind = "USB"
+            else if (installQemuGuest || tran === "virtio" || name.indexOf("vd") === 0)
+                kind = "VIRT"
+            disks.push({
+                id: name,
+                size: size,
+                model: model,
+                tran: tran,
+                kind: kind,
+                label: "Диск · /dev/" + name + " · " + size + (model ? (" · " + model) : "")
+            })
         }
         installDisks = disks
         if (!installDisk.length && disks.length)
             installDisk = disks[0].id
+    }
+
+    function skipInstallDiskForQemu() {
+        detectQemuGuest()
+        if (!installQemuGuest && installDisks.length === 0)
+            refreshInstallDisks()
+        if (!installDisk.length && installDisks.length)
+            installDisk = installDisks[0].id
+        if (!installDisk.length) {
+            // типичный virtio в QEMU
+            installDisk = "vda"
+        }
+        installManualPart = false
+        installStep = 4
+        notify("Установка", "QEMU: диск пропущен · /dev/" + installDisk, "ok")
     }
 
     function detectBootMode() {
@@ -8379,13 +8750,14 @@ Window {
     function runInstaller() {
         if (!installDisk.length) {
             notify("Установка", "Выберите диск", "info")
-            return
+            return false
         }
         var bootMode = detectBootMode()
-        installBusy = true
+        if (!installOptGrub && bootMode === "auto")
+            bootMode = detectBootMode()
         installLog = "GT/OS " + osVersion + " · установка\n"
                    + "Диск: /dev/" + installDisk + "\n"
-                   + "Загрузка: " + bootMode + " (GPT/UEFI или MBR/BIOS)\n"
+                   + "Загрузка: " + bootMode + (installOptGrub ? " · GRUB" : "") + "\n"
                    + "Пользователь: " + installFullName + " (" + installUser + ")\n"
                    + "Язык: " + installLang + "\n"
                    + "—\n"
@@ -8398,15 +8770,18 @@ Window {
             installLog += out + "\n"
         else
             installLog += "Запись системы…\nНастройка загрузчика…\n"
-        installBusy = false
         if (out.indexOf("GTOS_INSTALL_DONE") >= 0) {
             installLog += "—\nГотово. GT/OS " + osVersion + " установлен (" + bootMode + ").\n"
-            installStep = 5
+            if (installOptUpdates)
+                installLog += "Обновления: будут предложены после первого входа.\n"
+            if (installOptDrivers)
+                installLog += "Драйверы: базовый набор включён в образ.\n"
             notify("Установка", "GT/OS " + osVersion + " установлен. Можно перезагрузиться.", "ok")
-        } else {
-            installLog += "—\nНе удалось завершить установку. Проверьте диск и журнал.\n"
-            notify("Установка", "Ошибка — смотрите журнал", "info")
+            return true
         }
+        installLog += "—\nНе удалось завершить установку. Проверьте диск и журнал.\n"
+        notify("Установка", "Ошибка — смотрите журнал", "info")
+        return false
     }
 
     function refreshFiles() {
@@ -8590,6 +8965,15 @@ Window {
         if (!host.length)
             host = "gt-os"
         prompt = user + "@" + host + ":" + prettyPath(termCwd) + "$ "
+    }
+
+    function ensureTermBanner() {
+        if (termLog.indexOf("██████") >= 0)
+            return
+        termLog = neoFetch()
+        if (!termLog.endsWith("\n"))
+            termLog += "\n"
+        refreshPrompt()
     }
 
     function submitTerm(line) {
@@ -8892,6 +9276,7 @@ Window {
         repeat: false
         onTriggered: {
             if (!setupOpen && !locked) {
+                loadNotifyHistory()
                 notify("GT/OS " + osVersion + " готов", persistOk ? "Постоянный том активен" : "Рабочий стол запущен", "ok")
                 refreshNetwork()
                 notify("Сеть", netStatus, "wifi")
@@ -8900,16 +9285,43 @@ Window {
         }
     }
 
-    function finishBootVisual() {
+    function tryFinishBootSplash() {
+        // Тяжёлое остаётся на сплэше, но только после того как sweep уже крутится.
+        if (!bootHeavyDone || !bootAnimDone || !bootSweepReady)
+            return
         bootAnim.stop()
         bootSweepAnim.stop()
+        bootStatus = ""
         bootFadeOut.start()
+    }
+
+    function finishBootVisual() {
+        tryFinishBootSplash()
+    }
+
+    function bootKick(cmd) {
+        // фон: shell сразу выходит — UI/полоска не ждут окончания работы
+        var wrapped = "(" + cmd + ") >/tmp/gtos-boot-kick.log 2>&1 &"
+        if (typeof sys.runTimeout === "function")
+            sys.runTimeout(wrapped, 600)
+        else
+            sys.run(wrapped)
+    }
+
+    function startSplashWork() {
+        if (postBootInit.running)
+            return
+        postBootInit.phase = 0
+        postBootInit.waiting = false
+        postBootInit.tries = 0
+        postBootInit.start()
     }
 
     function revealAfterBoot() {
         booting = false
         bootLogoOpacity = 0
         bootBarOpacity = 0
+        loadNotifyHistory()
         if (setupOpen) {
             locked = false
         } else {
@@ -8918,22 +9330,44 @@ Window {
             lockScreen.appear = 0
             lockEnter.start()
         }
-        // тяжёлая инициализация — после экрана загрузки, кусками
-        postBootInit.phase = 0
-        postBootInit.start()
+        if (!safeMode) {
+            x11ClipTimer.start()
+            extNotifyTimer.start()
+            storeCatalogBootTimer.restart()
+        }
     }
 
-    function runPostBootPhase(phase) {
+    function beginSplashPhase(phase) {
+        postBootInit.waiting = false
+        postBootInit.tries = 0
         if (phase === 0) {
-            ensureHome()
+            bootStatus = "Домашняя папка…"
+            bootKick("rm -f /tmp/gtos-boot-home-done; "
+                     + "hostname gt-os; printf '%s\\n' gt-os > /etc/hostname; "
+                     + "grep -q '^misha:' /etc/passwd || echo 'misha:x:1000:1000:Misha:/home/misha:/bin/sh' >> /etc/passwd; "
+                     + "mkdir -p /home/misha/Документы /home/misha/Загрузки /home/misha/Изображения /home/misha/Музыка /home/misha/Видео '/home/misha/Рабочий стол' /home/misha/Проекты /home/misha/Архив /home/misha/.Корзина; "
+                     + "[ -f /home/misha/Изображения/wallpaper.jpg ] || cp /usr/share/gtos/wallpaper.jpg /home/misha/Изображения/wallpaper.jpg 2>/dev/null; "
+                     + "[ -f /home/misha/Документы/os-release.txt ] || cp /etc/os-release /home/misha/Документы/os-release.txt 2>/dev/null; "
+                     + "[ -f /home/misha/Проекты/readme.txt ] || printf '%s\\n' 'Проекты GT/OS' > /home/misha/Проекты/readme.txt; "
+                     + "[ -f '/home/misha/Рабочий стол/заметка.txt' ] || printf '%s\\n' 'Рабочий стол GT/OS' > '/home/misha/Рабочий стол/заметка.txt'; "
+                     + "touch /tmp/gtos-boot-home-done")
+            postBootInit.waiting = true
+            postBootInit.maxTries = 60
             return
         }
         if (phase === 1) {
-            refreshNetwork()
+            bootStatus = "Сеть и питание…"
             refreshBattery()
+            refreshWifiSignal()
+            bootKick("rm -f /tmp/gtos-boot-ip-done /tmp/gtos-boot-ip; "
+                     + "ip -4 -o addr show scope global 2>/dev/null | awk '{print $4; exit}' > /tmp/gtos-boot-ip; "
+                     + "touch /tmp/gtos-boot-ip-done")
+            postBootInit.waiting = true
+            postBootInit.maxTries = 25
             return
         }
         if (phase === 2) {
+            bootStatus = "Рабочий стол…"
             refreshDeskIcons()
             termCwd = "/home/" + currentUser
             notePath = "/home/" + currentUser + "/Документы/заметка.txt"
@@ -8941,12 +9375,19 @@ Window {
             return
         }
         if (phase === 3) {
-            termLog = neoFetch() + "\n"
-            loadFiles("/home/" + currentUser)
+            bootStatus = "Файлы…"
             loadRecent()
+            loadFiles("/home/" + currentUser)
+            bootKick("rm -f /tmp/gtos-boot-fetch-done /tmp/gtos-boot-fetch; "
+                     + "{ echo \"OS: GT/OS " + osVersion + "\"; echo -n 'Kernel: '; uname -r; "
+                     + "echo -n 'Host: '; hostname; } > /tmp/gtos-boot-fetch; "
+                     + "touch /tmp/gtos-boot-fetch-done")
+            postBootInit.waiting = true
+            postBootInit.maxTries = 30
             return
         }
         if (phase === 4) {
+            bootStatus = "Приложения…"
             var inst = sys.readFile("/var/lib/gtos/installed.json").trim()
             if (inst.length) {
                 var map = {}
@@ -8958,10 +9399,139 @@ Window {
                 }
                 installedApps = map
             }
-            syncInstalledFromSystem()
-            refreshAppIconCache()
-            bootHeavyDone = true
+            var local = sys.readFile("/usr/share/gtos/store-catalog.json").trim()
+            var localData = parseStoreCatalogJson(local)
+            if (localData)
+                applyStoreCatalogPayload(localData, "офлайн-копия")
+            // syncInstalled — долгий shell, в фоне
+            var c = storeCatalog()
+            var checks = []
+            for (var si = 0; si < c.length; ++si) {
+                var a = c[si]
+                if (!a || !a.id)
+                    continue
+                var bins = []
+                if (a.engineBins && a.engineBins.length) {
+                    for (var e = 0; e < a.engineBins.length; ++e)
+                        bins.push(String(a.engineBins[e] || "").replace(/[^a-zA-Z0-9._+-]/g, ""))
+                }
+                if (a.apk)
+                    bins.push(String(a.apk).replace(/[^a-zA-Z0-9._+-]/g, ""))
+                bins.push(String(a.id).replace(/[^a-zA-Z0-9._+-]/g, ""))
+                bins = bins.filter(function (b) { return b.length })
+                if (bins.length)
+                    checks.push(a.id + "=" + bins.join("|"))
+            }
+            if (!checks.length) {
+                sys.writeFile("/tmp/gtos-inst-scan", "")
+                sys.writeFile("/tmp/gtos-inst-scan.done", "1\n")
+                postBootInit.waiting = true
+                postBootInit.maxTries = 2
+                return
+            }
+            var script = "for spec in " + checks.map(function (s) { return shQuote(s) }).join(" ") + "; do "
+                + "id=${spec%%=*}; bins=${spec#*=}; found=0; "
+                + "[ -d /var/lib/gtos/apps/$id ] && found=1; "
+                + "IFS='|'; for b in $bins; do [ -n \"$b\" ] && command -v \"$b\" >/dev/null 2>&1 && found=1 && break; done; "
+                + "[ \"$found\" = 1 ] && echo \"$id\"; done"
+            bootKick("rm -f /tmp/gtos-inst-scan /tmp/gtos-inst-scan.done; "
+                     + script + " > /tmp/gtos-inst-scan; touch /tmp/gtos-inst-scan.done")
+            postBootInit.waiting = true
+            postBootInit.maxTries = 50
+            return
         }
+        if (phase === 5) {
+            bootStatus = "Wi‑Fi…"
+            if (!safeMode) {
+                autoConnectWifi(true)
+                postBootInit.waiting = true
+                postBootInit.maxTries = 35
+            }
+            return
+        }
+        if (phase === 6) {
+            bootStatus = "Погода…"
+            if (!safeMode) {
+                refreshWeather(true)
+                postBootInit.waiting = true
+                postBootInit.maxTries = 40
+            }
+            return
+        }
+        if (phase === 7) {
+            // заранее glibc для Cursor/Electron — без блокировки UI
+            bootStatus = "glibc…"
+            if (!safeMode && !glibcReady())
+                bootKick(glibcSetupCmd())
+            return
+        }
+    }
+
+    function finishSplashPhase(phase) {
+        if (phase === 0) {
+            sys.refresh()
+            return
+        }
+        if (phase === 1) {
+            var ip = sys.readFile("/tmp/gtos-boot-ip").trim()
+            if (ip.length && ip.indexOf("таймаут") < 0)
+                netIp = ip
+            else if (!netIp.length)
+                netIp = "нет адреса"
+            refreshNetwork(false)
+            return
+        }
+        if (phase === 3) {
+            // полный баннер терминала — не затирать урезанным OS/Kernel/Host
+            return
+        }
+        if (phase === 4) {
+            var raw = sys.readFile("/tmp/gtos-inst-scan").trim()
+            var map2 = {}
+            for (var k in installedApps) {
+                if (installedApps[k])
+                    map2[k] = true
+            }
+            if (raw.length) {
+                var ids = raw.split("\n")
+                for (var j = 0; j < ids.length; ++j)
+                    if (ids[j].trim().length)
+                        map2[ids[j].trim()] = true
+            }
+            installedApps = map2
+            var keys = []
+            for (var id2 in map2)
+                if (map2[id2])
+                    keys.push(id2)
+            sys.writeFile("/var/lib/gtos/installed.json", keys.join(",") + "\n")
+            refreshAppIconCache()
+            return
+        }
+        if (phase === 5) {
+            refreshNetwork(true)
+            refreshWifiSignal()
+        }
+    }
+
+    function pollSplashPhase(phase) {
+        if (phase === 0)
+            return sys.readFile("/tmp/gtos-boot-home-done").length > 0
+        if (phase === 1)
+            return sys.readFile("/tmp/gtos-boot-ip-done").length > 0
+        if (phase === 3)
+            return sys.readFile("/tmp/gtos-boot-fetch-done").length > 0
+        if (phase === 4)
+            return sys.readFile("/tmp/gtos-inst-scan.done").length > 0
+        if (phase === 5) {
+            // авто-wifi в фоне: ждём маркер или уже есть IP
+            if (netIp.length && netIp !== "нет адреса" && netIp !== "—")
+                return true
+            return sys.readFile("/tmp/gtos-wifi-auto-done").length > 0
+                || sys.readFile("/tmp/gtos-wifi-bg-done").length > 0
+        }
+        if (phase === 6)
+            return !weatherLoading
+        return true
     }
 
     Timer {
@@ -8973,23 +9543,82 @@ Window {
         onTriggered: {
             step += 1
             bootProgress = Math.min(1, step / 70)
-            // минимум ~3.5 с визуала; не обрываем, пока intro/sweep живы
-            if (bootProgress >= 1)
-                root.finishBootVisual()
+            if (bootProgress >= 1) {
+                bootAnimDone = true
+                stop()
+                root.tryFinishBootSplash()
+            }
         }
     }
 
     Timer {
         id: postBootInit
-        interval: 350
+        interval: 100
         running: false
         repeat: true
         property int phase: 0
+        property bool waiting: false
+        property int tries: 0
+        property int maxTries: 40
         onTriggered: {
-            root.runPostBootPhase(phase)
-            phase += 1
-            if (phase > 4)
+            if (waiting) {
+                tries += 1
+                if (root.pollSplashPhase(phase) || tries >= maxTries) {
+                    root.finishSplashPhase(phase)
+                    waiting = false
+                    tries = 0
+                    phase += 1
+                    if (phase > 7) {
+                        stop()
+                        root.bootStatus = ""
+                        root.bootHeavyDone = true
+                        root.tryFinishBootSplash()
+                    }
+                }
+                return
+            }
+            root.beginSplashPhase(phase)
+            if (!waiting) {
+                phase += 1
+                if (phase > 7) {
+                    stop()
+                    root.bootStatus = ""
+                    root.bootHeavyDone = true
+                    root.tryFinishBootSplash()
+                }
+            }
+        }
+    }
+
+    Timer {
+        id: wifiAutoRefreshTimer
+        interval: 2800
+        repeat: false
+        onTriggered: {
+            root.refreshNetwork(true)
+            root.refreshWifiSignal()
+        }
+    }
+
+    Timer {
+        id: weatherFetchPoll
+        interval: 500
+        repeat: true
+        property int attempts: 0
+        onTriggered: {
+            attempts += 1
+            var raw = sys.readFile("/tmp/gtos-weather.json").trim()
+            if (raw.length && raw.charAt(0) === "{") {
                 stop()
+                root.applyWeatherPayload(raw)
+                return
+            }
+            if (attempts >= 24) {
+                stop()
+                root.weatherLoading = false
+                if (!root.weatherTemp || root.weatherTemp === "—" || root.weatherDesc === "Обновление…")
+                    root.weatherDesc = "Нет сети или API недоступен"
+            }
         }
     }
 
@@ -9021,11 +9650,18 @@ Window {
             }
         }
         PauseAnimation { duration: 180 }
+        ScriptAction {
+            script: {
+                // полоска сначала, init — только когда sweep уже крутится
+                root.bootSweepReady = true
+                bootSweepAnim.restart()
+                root.startSplashWork()
+            }
+        }
         NumberAnimation {
             target: root; property: "bootBarOpacity"; from: 0; to: 1
             duration: 420; easing.type: Easing.OutCubic
         }
-        ScriptAction { script: bootSweepAnim.restart() }
     }
 
     SequentialAnimation {
@@ -9070,18 +9706,14 @@ Window {
         lidPollTimer.start()
         loadWeatherCities()
         loadPhotosFavs()
-        if (!safeMode) {
-            x11ClipTimer.start()
-            extNotifyTimer.start()
-            Qt.callLater(function () {
-                root.refreshWeather()
-                root.autoConnectWifi()
-            })
-        }
+        // Intro → полоска → только потом лёгкая init. Тяжёлое — после сплэша.
         locked = !setupOpen
         lockReveal = false
         lockPickUser = currentUser
         booting = true
+        bootHeavyDone = false
+        bootAnimDone = false
+        bootSweepReady = false
         bootFade = 1
         bootLogoOpacity = 0
         bootBarOpacity = 0
@@ -9130,33 +9762,198 @@ Window {
     ListModel { id: windows }
 
     Timer {
-        id: storeInstallTimer
-        interval: 400
+        id: storeRepairPoll
+        interval: 3000
         repeat: true
+        property string appId: ""
+        property int tries: 0
         onTriggered: {
-            root.storeInstallPct = Math.min(96, root.storeInstallPct + 2 + Math.floor(Math.random() * 4))
-            if (root.storePendingApp && root.storePendingApp.id)
-                root.upsertPendingOp("store-" + root.storePendingApp.id,
-                                     "Загрузка «" + root.storePendingApp.name + "»",
-                                     root.storeInstallPct + "%",
-                                     root.storeInstallPct, "download")
-            var done = sys.run("test -f /tmp/gtos-store-done -o -f /tmp/gtos-apk-done && echo yes").trim() === "yes"
-            if (done) {
-                root.storeInstallPct = 100
-                root.finishStoreInstall()
-            } else if (root.storeInstallPct >= 96) {
-                // установка ещё идёт — держим 96%, пока не появится done
-                root.storeInstallPct = 96
+            tries += 1
+            var root = "/var/lib/gtos/apps/" + appId + "/squashfs-root"
+            if (sys.run("test -e " + root + "/AppRun -o -L " + root + "/AppRun && echo yes").trim() === "yes") {
+                stop()
+                tries = 0
+                var app = storePendingGlibcApp
+                storePendingGlibcApp = null
+                notify("Магазин GT", "Распаковка исправлена — запускаю…", "ok")
+                if (app)
+                    launchPkgBinary(app)
+                return
+            }
+            if (tries >= 120) {
+                stop()
+                tries = 0
+                storePendingGlibcApp = null
+                var log = sys.run("tail -n 8 /tmp/gtos-repair-" + appId + ".log 2>/dev/null").trim()
+                notify("«" + appId + "»", "Не удалось починить: " + (log || "переустановите из Магазина").slice(0, 160), "info")
             }
         }
     }
 
     Timer {
-        id: storeCatalogBootTimer
-        interval: 2200
-        running: !root.safeMode
+        id: glibcSetupPoll
+        interval: 2000
+        repeat: true
+        property int tries: 0
+        onTriggered: {
+            tries += 1
+            if (sys.readFile("/tmp/gtos-glibc-setup-done").length > 0 || root.glibcReady()) {
+                stop()
+                tries = 0
+                root.glibcSetupBusy = false
+                var app = root.storePendingGlibcApp
+                root.storePendingGlibcApp = null
+                root.notify("Магазин GT", "glibc-среда готова", "ok")
+                if (app)
+                    root.launchPkgBinary(app)
+                return
+            }
+            if (sys.readFile("/tmp/gtos-glibc-setup-fail").length > 0 || tries >= 180) {
+                stop()
+                tries = 0
+                root.glibcSetupBusy = false
+                root.storePendingGlibcApp = null
+                var log = sys.run("tail -n 6 /tmp/gtos-glibc-setup.log 2>/dev/null").trim()
+                root.notify("«Cursor»", "Не удалось подготовить glibc: " + (log || "см. /tmp/gtos-glibc-setup.log").slice(0, 180), "info")
+            }
+        }
+    }
+
+    Timer {
+        id: storeLaunchCheckTimer
+        interval: 12000
         repeat: false
-        onTriggered: root.fetchStoreCatalogNetwork(false)
+        onTriggered: {
+            var app = root.storeLaunchCheckApp
+            root.storeLaunchCheckApp = null
+            if (!app || !app.id)
+                return
+            var log = sys.run("tail -n 60 /tmp/gtos-pkg-" + app.id + ".log 2>/dev/null; tail -n 20 /tmp/gtos-glibc-run-1000.log 2>/dev/null; tail -n 20 /tmp/gtos-glibc-app-1000.log 2>/dev/null").trim()
+            sys.run("{ echo GTOS_LAUNCHCHECK " + app.id + "; tail -n 25 /tmp/gtos-pkg-" + app.id + ".log; } 2>/dev/null | tr '\\n' '|' | cut -c1-1500 > /dev/ttyS0; echo > /dev/ttyS0")
+            var alive = sys.run("ps w 2>/dev/null | grep -Ei '[A]ppRun|[c]ursor|[e]lectron|[p]root|[c]ode' | head -n 1").trim()
+            if (alive.length)
+                return
+            // ещё качается ubuntu-base — не орём ошибкой
+            if (log.indexOf("скачиваю Ubuntu") >= 0 || log.indexOf("распаковка rootfs") >= 0
+                    || log.indexOf("ставлю GUI/Electron") >= 0 || log.indexOf("apt") >= 0) {
+                notify("«" + (app.name || app.id) + "»", "Ещё готовится glibc-среда — подождите и откройте снова", "info")
+                return
+            }
+            var useful = []
+            var lines = log.length ? log.split("\n") : []
+            for (var i = 0; i < lines.length; ++i) {
+                var ln = lines[i]
+                if (ln.indexOf("gtos-runuser:") === 0 || ln.indexOf("via /sbin/su-exec") === 0 || ln.indexOf("cmd=") === 0)
+                    continue
+                if (ln.trim().length)
+                    useful.push(ln.trim())
+            }
+            if (log.indexOf("Permission denied") >= 0 || log.indexOf("нет AppRun") >= 0) {
+                notify("«" + (app.name || app.id) + "»", "Распаковка повреждена — откройте ещё раз, система починит сама", "info")
+                return
+            }
+            if (!useful.length) {
+                notify("«" + (app.name || app.id) + "»", "Не стартовало — попробуйте снова из Магазина", "info")
+                return
+            }
+            var tail = useful[useful.length - 1]
+            if (tail.length > 120)
+                tail = tail.slice(0, 117) + "…"
+            notify("«" + (app.name || app.id) + "» не запустилось", tail, "info")
+        }
+    }
+
+    Timer {
+        id: storeInstallTimer
+        interval: 500
+        repeat: true
+        onTriggered: {
+            var app = root.storePendingApp
+            if (!app || !app.id) {
+                storeInstallTimer.stop()
+                return
+            }
+            var done = sys.run("test -f /tmp/gtos-store-done -o -f /tmp/gtos-apk-done && echo yes").trim() === "yes"
+            if (done) {
+                root.storeInstallPct = 100
+                root.finishStoreInstall()
+                return
+            }
+
+            var phase = sys.readFile("/tmp/gtos-store-phase").trim()
+            var expect = root.storeExpectBytes
+            var expFile = parseFloat(sys.readFile("/tmp/gtos-store-expect").trim())
+            if (expFile > 1000)
+                expect = expFile
+            var bytes = parseFloat(sys.readFile("/tmp/gtos-store-bytes").trim())
+            if (!(bytes > 0)) {
+                bytes = parseFloat(sys.run("stat -c%s /var/lib/gtos/apps/" + app.id + "/dl/app.AppImage 2>/dev/null || echo 0").trim()) || 0
+            }
+            if (expect > 1000)
+                root.storeExpectBytes = expect
+
+            var label = "Загрузка «" + app.name + "»"
+            var pct = root.storeInstallPct
+            if (phase === "extract") {
+                pct = Math.max(pct, 92)
+                pct = Math.min(99, pct + 1)
+                label = "Распаковка «" + app.name + "»"
+            } else if (phase === "apk") {
+                pct = Math.min(88, Math.max(pct, 8 + Math.floor(bytes / 1024 / 8)))
+                label = "Установка «" + app.name + "»…"
+            } else if (phase === "download" || bytes > 0) {
+                if (expect > 1000)
+                    pct = Math.max(2, Math.min(90, Math.floor(bytes * 90 / expect)))
+                else
+                    pct = Math.min(85, Math.max(pct, 5 + Math.floor(bytes / (1024 * 1024))))
+                if (bytes > 0 && expect > 1000)
+                    label = "Загрузка «" + app.name + "» · " + Math.floor(bytes / (1024 * 1024)) + "/" + Math.floor(expect / (1024 * 1024)) + " МБ"
+                else if (bytes > 0)
+                    label = "Загрузка «" + app.name + "» · " + Math.floor(bytes / (1024 * 1024)) + " МБ"
+            } else if (phase === "init" || !phase.length) {
+                pct = Math.min(8, pct + 1)
+            } else {
+                pct = Math.min(90, pct + 1)
+            }
+            root.storeInstallPct = pct
+
+            if (bytes <= root.storeLastBytes && phase !== "extract" && phase !== "apk")
+                root.storeStallTicks += 1
+            else {
+                root.storeStallTicks = 0
+                root.storeLastBytes = bytes
+            }
+
+            // apk может идти минутами без curl — не убивать рано
+            var alive = sys.run("ps w 2>/dev/null | grep -E '[g]tos-store-install|[c]url|[u]nsquashfs|[a]pk |[t]imeout |[d]d if=' | head -n 1").trim()
+            var stallLimit = (phase === "apk") ? 360 : 48
+            if (!alive.length && root.storeStallTicks >= stallLimit) {
+                sys.run("echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done")
+                root.storeInstallPct = 100
+                root.finishStoreInstall()
+                return
+            }
+            if (phase === "download" && root.storeStallTicks >= 600) {
+                sys.run("killall curl 2>/dev/null; echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; true")
+                root.storeInstallPct = 100
+                root.finishStoreInstall()
+                return
+            }
+
+            root.upsertPendingOp("store-" + app.id, label, pct + "%", pct, "download")
+        }
+    }
+
+    Timer {
+        id: storeCatalogBootTimer
+        interval: 1800
+        running: false
+        repeat: false
+        onTriggered: {
+            if (root.safeMode || root.booting)
+                return
+            root.fetchStoreCatalogNetwork(false)
+        }
     }
 
     Timer {
@@ -11967,11 +12764,11 @@ Rectangle {
                         NumberAnimation { target: startBtn; property: "pressScale"; to: 1.08; duration: 120; easing.type: Easing.OutBack }
                         NumberAnimation { target: startBtn; property: "pressScale"; to: 1; duration: 100 }
                     }
-                    // клевер акцентным цветом
+                    // клевер с промо — крупный, без круга
                     CloverMark {
                         anchors.centerIn: parent
-                        width: parent.width * 0.72
-                        height: parent.height * 0.72
+                        width: parent.width * 0.92
+                        height: parent.height * 0.92
                         ink: root.accentColor
                     }
                     MouseArea {
@@ -12492,9 +13289,11 @@ Rectangle {
                         }
                         Column {
                             id: bodyCol
-                            width: parent.width - 92
+                            // иконка 38 + × 26 + отступы/spacing — иначе текст вылезает за карточку
+                            width: Math.max(80, toastCard.width - 112)
                             anchors.verticalCenter: parent.verticalCenter
                             spacing: 3
+                            clip: true
                             Text {
                                 text: modelData.title
                                 color: "#f4f7f8"; font.pixelSize: 13; font.family: root.uiFontBold
@@ -12503,7 +13302,10 @@ Rectangle {
                             Text {
                                 text: modelData.body
                                 color: "#9aa7b2"; font.pixelSize: 12
-                                font.family: root.uiFont; width: parent.width; wrapMode: Text.Wrap
+                                font.family: root.uiFont; width: parent.width
+                                wrapMode: Text.Wrap
+                                maximumLineCount: 4
+                                elide: Text.ElideRight
                             }
                         }
                         Rectangle {
@@ -12894,7 +13696,7 @@ Rectangle {
                     }
                     Repeater {
                         model: root.notifications
-                        delegate: NotifyCard
+                        delegate: NotifyCard {}
                     }
 
                     Text {
@@ -12920,7 +13722,7 @@ Rectangle {
                             }
                             return out
                         }
-                        delegate: NotifyCard
+                        delegate: NotifyCard {}
                     }
 
                     Item {
@@ -12929,7 +13731,7 @@ Rectangle {
                         height: 36
                         Text {
                             anchors.centerIn: parent
-                            text: "Нажмите карточку, чтобы убрать из ленты"
+                            text: "× на карточке убирает её из ленты"
                             color: "#4b5560"
                             font.pixelSize: 11
                             font.family: root.uiFont
@@ -13042,14 +13844,7 @@ Rectangle {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.dismissNotify(modelData.id)
-                                    var h = []
-                                    for (var i = 0; i < root.notifyHistory.length; ++i)
-                                        if (root.notifyHistory[i].id !== modelData.id)
-                                            h.push(root.notifyHistory[i])
-                                    root.notifyHistory = h
-                                }
+                                onClicked: root.dismissNotifyForever(modelData.id)
                             }
                         }
                     }
@@ -13058,15 +13853,6 @@ Rectangle {
                         anchors.fill: parent
                         anchors.rightMargin: 36
                         hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.dismissNotify(modelData.id)
-                            var h = []
-                            for (var i = 0; i < root.notifyHistory.length; ++i)
-                                if (root.notifyHistory[i].id !== modelData.id)
-                                    h.push(root.notifyHistory[i])
-                            root.notifyHistory = h
-                        }
                     }
                 }
             }
@@ -13415,21 +14201,38 @@ Rectangle {
                 color: "#d7efc8"
             }
         }
+        // GT Browser glyph — окно + компас
         Canvas {
             visible: kind === "browser"
             anchors.fill: parent
             onPaint: {
                 var ctx = getContext("2d")
+                ctx.clearRect(0, 0, width, height)
                 ctx.strokeStyle = glyph.ink
-                ctx.lineWidth = 1.6
+                ctx.fillStyle = glyph.ink
+                ctx.lineWidth = 1.5
+                // окно
                 ctx.beginPath()
-                ctx.arc(14, 14, 9, 0, Math.PI * 2)
+                ctx.moveTo(5, 8); ctx.lineTo(5, 6); ctx.quadraticCurveTo(5, 4, 7, 4)
+                ctx.lineTo(21, 4); ctx.quadraticCurveTo(23, 4, 23, 6)
+                ctx.lineTo(23, 22); ctx.quadraticCurveTo(23, 24, 21, 24)
+                ctx.lineTo(7, 24); ctx.quadraticCurveTo(5, 24, 5, 22)
+                ctx.closePath()
                 ctx.stroke()
+                // вкладка / chrome
+                ctx.beginPath(); ctx.moveTo(5, 9); ctx.lineTo(23, 9); ctx.stroke()
                 ctx.beginPath()
-                ctx.moveTo(5, 14); ctx.lineTo(23, 14); ctx.stroke()
-                ctx.beginPath()
-                ctx.moveTo(14, 5); ctx.lineTo(14, 23); ctx.stroke()
+                ctx.moveTo(7, 4); ctx.lineTo(7, 9); ctx.lineTo(14, 9); ctx.lineTo(14, 6)
+                ctx.quadraticCurveTo(14, 4, 12, 4); ctx.closePath()
+                ctx.stroke()
+                // компас
+                var cx = 14, cy = 16.5
+                ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.stroke()
+                ctx.beginPath(); ctx.moveTo(cx, cy - 4); ctx.lineTo(cx + 1.6, cy); ctx.lineTo(cx, cy + 1); ctx.closePath(); ctx.fill()
+                ctx.beginPath(); ctx.moveTo(cx, cy + 4); ctx.lineTo(cx - 1.6, cy); ctx.lineTo(cx, cy - 1); ctx.stroke()
             }
+            Component.onCompleted: requestPaint()
+            onVisibleChanged: if (visible) requestPaint()
         }
         Item {
             visible: kind === "mail"
@@ -13581,16 +14384,27 @@ Rectangle {
     component CloverMark: Item {
         id: clover
         property color ink: root.accentColor
-        width: 36
-        height: 36
+        width: 48
+        height: 48
+        Image {
+            id: cloverImg
+            anchors.fill: parent
+            // клевер с промо, без круга
+            source: "file:///usr/share/gtos/gtos-clover.png"
+            fillMode: Image.PreserveAspectFit
+            smooth: true
+            mipmap: true
+            asynchronous: true
+            visible: status === Image.Ready
+        }
         Canvas {
             id: cloverCanvas
             anchors.fill: parent
+            visible: cloverImg.status !== Image.Ready
             onPaint: {
                 var ctx = getContext("2d")
                 ctx.clearRect(0, 0, width, height)
                 var cx = width * 0.5
-                var cy = height * 0.46
                 var r = Math.min(width, height) * 0.22
                 ctx.fillStyle = clover.ink.toString()
                 function leaf(lx, ly) {
@@ -13598,13 +14412,11 @@ Rectangle {
                     ctx.arc(lx, ly, r, 0, Math.PI * 2)
                     ctx.fill()
                 }
-                // четыре листа без стебля
                 var cy2 = height * 0.5
                 leaf(cx, cy2 - r * 0.95)
                 leaf(cx - r * 0.95, cy2)
                 leaf(cx + r * 0.95, cy2)
                 leaf(cx, cy2 + r * 0.95)
-                // центр
                 ctx.beginPath()
                 ctx.arc(cx, cy2, r * 0.28, 0, Math.PI * 2)
                 ctx.fill()
@@ -13779,55 +14591,73 @@ Rectangle {
         id: termPage
         Item {
             property string appTitle: ""
+            Component.onCompleted: root.ensureTermBanner()
             Rectangle {
                 anchors.fill: parent
                 radius: 8
                 color: "#071412"
                 Flickable {
                     id: flick
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.bottom: inputRow.top
+                    anchors.fill: parent
                     anchors.margins: 16
-                    contentWidth: Math.max(width, logText.implicitWidth)
-                    contentHeight: logText.implicitHeight
                     clip: true
-                    Text {
-                        id: logText
-                        text: root.termLog
-                        color: "#3dff7a"
-                        font.family: root.monoFont
-                        font.pixelSize: 14
-                        wrapMode: Text.NoWrap
+                    contentWidth: width
+                    contentHeight: Math.max(height, termCol.implicitHeight)
+                    boundsBehavior: Flickable.StopAtBounds
+                    Column {
+                        id: termCol
+                        width: flick.width
+                        spacing: 0
+                        Text {
+                            id: logText
+                            width: parent.width
+                            text: root.termLog
+                            color: "#3dff7a"
+                            font.family: root.monoFont
+                            font.pixelSize: 14
+                            wrapMode: Text.WrapAnywhere
+                        }
+                        Row {
+                            id: inputRow
+                            width: parent.width
+                            height: Math.max(22, promptText.implicitHeight)
+                            spacing: 0
+                            Text {
+                                id: promptText
+                                text: root.prompt
+                                color: "#3dff7a"
+                                font.family: root.monoFont
+                                font.pixelSize: 14
+                            }
+                            TextInput {
+                                id: termInput
+                                width: Math.max(40, inputRow.width - promptText.implicitWidth)
+                                color: "#3dff7a"
+                                font.family: root.monoFont
+                                font.pixelSize: 14
+                                selectByMouse: true
+                                clip: true
+                                cursorVisible: true
+                                Keys.onReturnPressed: {
+                                    root.submitTerm(text)
+                                    text = ""
+                                    Qt.callLater(function () { flick.contentY = Math.max(0, flick.contentHeight - flick.height) })
+                                }
+                                Keys.onEnterPressed: {
+                                    root.submitTerm(text)
+                                    text = ""
+                                    Qt.callLater(function () { flick.contentY = Math.max(0, flick.contentHeight - flick.height) })
+                                }
+                                Component.onCompleted: forceActiveFocus()
+                            }
+                        }
                     }
                     onContentHeightChanged: contentY = Math.max(0, contentHeight - height)
-                }
-                Row {
-                    id: inputRow
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 16
-                    height: 24
-                    spacing: 0
-                    Text {
-                        id: promptText
-                        text: root.prompt
-                        color: "#3dff7a"
-                        font.family: root.monoFont
-                        font.pixelSize: 14
-                    }
-                    TextInput {
-                        width: Math.max(40, inputRow.width - promptText.implicitWidth)
-                        color: "#3dff7a"
-                        font.family: root.monoFont
-                        font.pixelSize: 14
-                        selectByMouse: true
-                        clip: true
-                        Keys.onReturnPressed: { root.submitTerm(text); text = "" }
-                        Keys.onEnterPressed: { root.submitTerm(text); text = "" }
-                        Component.onCompleted: forceActiveFocus()
+                    MouseArea {
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton
+                        onClicked: termInput.forceActiveFocus()
+                        z: -1
                     }
                 }
             }
@@ -14605,7 +15435,7 @@ Rectangle {
                 { id: "system", name: "Система", desc: "Экран, звук, уведомления и сведения о ПК", iconKind: "pc" },
                 { id: "power", name: "Питание", desc: "GT Power Manager: режимы, крышка и батарея", iconKind: "monitor" },
                 { id: "bluetooth", name: "Bluetooth и устройства", desc: "Мышь, клавиатура и беспроводные устройства", iconKind: "settings" },
-                { id: "network", name: "Сеть и Интернет", desc: "Wi‑Fi, кабель и состояние подключения", iconKind: "browser" },
+                { id: "network", name: "Сеть и Интернет", desc: "Wi‑Fi, кабель и состояние подключения", iconKind: "network" },
                 { id: "personalize", name: "Персонализация", desc: "Фон, цвета, панель задач и окна", iconKind: "draw" },
                 { id: "apps", name: "Приложения", desc: "Установленные программы и панель задач", iconKind: "store" },
                 { id: "accounts", name: "Учётные записи", desc: "Ваш профиль и вход в систему", iconKind: "mail" },
@@ -15396,7 +16226,7 @@ Rectangle {
                             Rectangle {
                                 width: 56; height: 56; radius: 14; color: "#243028"
                                 anchors.verticalCenter: parent.verticalCenter
-                                DeskIconArt { anchors.centerIn: parent; width: 28; height: 28; kind: "browser" }
+                                DeskIconArt { anchors.centerIn: parent; width: 28; height: 28; kind: "globe" }
                             }
                             Column {
                                 anchors.verticalCenter: parent.verticalCenter; spacing: 4; width: parent.width - 220
@@ -16737,238 +17567,241 @@ Rectangle {
 
             Component {
                 id: settingsSec_updates
+                // лёгкая вкладка: без Image/CloverMark и без тяжёлых sys.run при открытии
                 Column {
                     width: parent.width
-                    spacing: 8
-                        Text {
-                            text: "GT Update Engine"
-                            color: "#fff"; font.pixelSize: 22; font.family: root.uiFontBold
-                        }
-                        Text {
-                            text: "Проверка, зависимости, установка и безопасный откат"
-                            color: "#a0a0a0"; font.pixelSize: 13; font.family: root.uiFont
-                        }
-                        Text {
-                            text: "Канал обновлений оболочки (URL с gtos-version / boot / qml)"
-                            color: "#a0a0a0"; font.pixelSize: 12; font.family: root.uiFont
-                            topPadding: 4
-                        }
-                        Rectangle {
-                            width: parent.width; height: 40; radius: 8
-                            color: "#1a1a1a"; border.width: 1; border.color: "#3c3c3c"
-                            TextInput {
-                                anchors.fill: parent; anchors.margins: 10
-                                color: "#fff"; font.pixelSize: 12; font.family: root.uiFont
-                                text: root.updateChannelUrl
-                                onTextChanged: root.updateChannelUrl = text
-                                onEditingFinished: root.saveUpdateChannel()
-                                Text {
-                                    anchors.fill: parent
-                                    visible: !parent.text.length
-                                    text: "https://…/gtos/  (пусто = только ISO/USB)"
-                                    color: "#666"; font.pixelSize: 12
-                                }
+                    spacing: 14
+
+                    Text {
+                        text: "Центр обновлений"
+                        color: "#fff"
+                        font.pixelSize: 24
+                        font.family: root.uiFontBold
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Проверка пакетов и оболочки · снимок перед установкой · откат"
+                        color: "#8b98a3"
+                        font.pixelSize: 13
+                        font.family: root.uiFont
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 132
+                        radius: 16
+                        color: "#1a2220"
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 20
+                            spacing: 8
+                            Text {
+                                text: "GT/OS " + root.osVersion
+                                color: "#fff"
+                                font.pixelSize: 20
+                                font.family: root.uiFontBold
+                            }
+                            Text {
+                                width: parent.width
+                                text: root.updateStatus
+                                color: "#a8b4bc"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                                wrapMode: Text.WordWrap
+                                maximumLineCount: 2
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: "Последняя проверка: " + root.updateLastCheck
+                                color: "#6b7785"
+                                font.pixelSize: 11
+                                font.family: root.uiFont
                             }
                         }
+                    }
 
+                    Row {
+                        spacing: 10
+                        width: parent.width
                         Rectangle {
-                            width: parent.width
-                            height: 150
-                            radius: 14
-                            color: "#2c2c2c"
-                            Column {
+                            width: (parent.width - 20) / 3
+                            height: 44
+                            radius: 12
+                            color: root.updateChecking ? "#2a2a2a" : root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.updateChecking ? "Проверка…" : "Проверить"
+                                color: root.updateChecking ? "#9aa7b2" : "#06210f"
+                                font.pixelSize: 13
+                                font.family: root.uiFontBold
+                            }
+                            MouseArea {
                                 anchors.fill: parent
-                                anchors.margins: 18
-                                spacing: 10
-                                Row {
-                                    spacing: 14
-                                    Rectangle {
-                                        width: 56; height: 56; radius: 28
-                                        color: "#243028"
-                                        CloverMark { anchors.centerIn: parent; width: 26; height: 26; ink: root.accentColor }
-                                    }
-                                    Column {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 4
-                                        width: parent.width - 80
-                                        Text {
-                                            text: "GT/OS Desktop " + root.osVersion
-                                            color: "#fff"; font.pixelSize: 18; font.family: root.uiFontBold
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: root.updateStatus
-                                            color: "#a0a0a0"; font.pixelSize: 12; wrapMode: Text.WordWrap
-                                        }
-                                        Text {
-                                            text: "Проверка: " + root.updateLastCheck
-                                            color: "#6b7785"; font.pixelSize: 11
-                                        }
-                                    }
-                                }
-                                Row {
-                                    spacing: 8
-                                    Rectangle {
-                                        width: 168; height: 36; radius: 9
-                                        color: root.updateChecking ? "#3a3a3a" : (chkUpH.containsMouse ? "#4af098" : root.accentColor)
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: root.updateChecking ? "Проверка…" : "Проверить"
-                                            color: root.updateChecking ? "#9aa7b2" : "#06210f"
-                                            font.bold: true; font.pixelSize: 13
-                                        }
-                                        MouseArea {
-                                            id: chkUpH; anchors.fill: parent; hoverEnabled: true
-                                            enabled: !root.updateChecking && !root.updateApplying
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.checkUpdates()
-                                        }
-                                    }
-                                    Rectangle {
-                                        width: 168; height: 36; radius: 9
-                                        color: depH.containsMouse ? "#323232" : "#3a3a3a"
-                                        Text { anchors.centerIn: parent; text: "Зависимости"; color: "#e8e8e8"; font.pixelSize: 13 }
-                                        MouseArea {
-                                            id: depH; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.checkUpdateDependencies()
-                                        }
-                                    }
-                                    Rectangle {
-                                        width: 168; height: 36; radius: 9
-                                        color: root.updateApplying ? "#3a3a3a" : (instH.containsMouse ? "#4af098" : "#16352e")
-                                        border.width: 1; border.color: "#3be18255"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: root.updateApplying ? "Установка…" : "Установить"
-                                            color: root.updateApplying ? "#9aa7b2" : "#86efac"
-                                            font.bold: true; font.pixelSize: 13
-                                        }
-                                        MouseArea {
-                                            id: instH; anchors.fill: parent; hoverEnabled: true
-                                            enabled: !root.updateApplying && !root.updateChecking
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.applySystemUpdates()
-                                        }
-                                    }
-                                }
+                                enabled: !root.updateChecking && !root.updateApplying
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.checkUpdates()
                             }
                         }
-
-                        SettingCard {
-                            title: "Зависимости пакетов"
-                            subtitle: root.updateDepsStatus
+                        Rectangle {
+                            width: (parent.width - 20) / 3
+                            height: 44
+                            radius: 12
+                            color: root.updateApplying ? "#2a2a2a" : "#243028"
+                            border.width: 1
+                            border.color: root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.updateApplying ? "Установка…" : "Установить"
+                                color: root.accentColor
+                                font.pixelSize: 13
+                                font.family: root.uiFontBold
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !root.updateApplying && !root.updateChecking
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.applySystemUpdates(false)
+                            }
                         }
-                        Repeater {
-                            model: root.updatePendingPkgs
-                            delegate: Rectangle {
-                                width: parent.width; height: 36; radius: 8; color: "#2c2c2c"
+                        Rectangle {
+                            width: (parent.width - 20) / 3
+                            height: 44
+                            radius: 12
+                            color: root.updateApplying ? "#2a2a2a" : "#1e1e1e"
+                            border.width: 1
+                            border.color: "#3a3a3a"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "И перезагрузить"
+                                color: "#e8eef2"
+                                font.pixelSize: 12
+                                font.family: root.uiFontBold
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !root.updateApplying && !root.updateChecking
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.applySystemUpdatesAndReboot()
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 64
+                        radius: 12
+                        color: "#1e1e1e"
+                        Column {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            width: parent.width - 80
+                            Text { text: "Автопроверка"; color: "#fff"; font.pixelSize: 14; font.family: root.uiFontBold }
+                            Text { text: "Тихая проверка через минуту после входа"; color: "#7e8b96"; font.pixelSize: 11 }
+                        }
+                        ToggleSwitch {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            on: root.updateAutoCheck
+                            onToggled: root.updateAutoCheck = !root.updateAutoCheck
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 72
+                        radius: 12
+                        color: "#1e1e1e"
+                        Column {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            width: parent.width - 160
+                            Text { text: "Откат"; color: "#fff"; font.pixelSize: 14; font.family: root.uiFontBold }
+                            Text {
+                                width: parent.width
+                                text: root.updateRollbackStatus.length ? root.updateRollbackStatus : "Вернуть пакеты по снимку"
+                                color: "#7e8b96"
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Rectangle {
+                            anchors.right: parent.right
+                            anchors.rightMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 120
+                            height: 36
+                            radius: 10
+                            color: root.updateRollingBack ? "#2a2a2a" : "#3a1818"
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.updateRollingBack ? "…" : "Откатить"
+                                color: "#fecaca"
+                                font.pixelSize: 12
+                                font.family: root.uiFontBold
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !root.updateRollingBack
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.rollbackLastUpdate()
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "История"
+                        color: "#9aa7b2"
+                        font.pixelSize: 12
+                        font.family: root.uiFontBold
+                        topPadding: 4
+                    }
+                    Repeater {
+                        model: root.updateLog
+                        delegate: Rectangle {
+                            width: parent.width
+                            height: 56
+                            radius: 12
+                            color: index === 0 ? "#1a2220" : "#1a1a1a"
+                            border.width: index === 0 ? 1 : 0
+                            border.color: root.accentColor
+                            Row {
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                spacing: 12
                                 Text {
-                                    anchors.left: parent.left; anchors.leftMargin: 14
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData; color: "#c5d0d8"; font.pixelSize: 12
-                                    elide: Text.ElideRight; width: parent.width - 28
+                                    text: modelData.ver
+                                    color: root.accentColor
+                                    font.pixelSize: 13
+                                    font.family: root.uiFontBold
+                                    width: 48
                                 }
-                            }
-                        }
-
-                        Rectangle {
-                            width: parent.width; height: 72; radius: 10; color: "#2c2c2c"
-                            Column {
-                                anchors.left: parent.left; anchors.leftMargin: 16
-                                anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                                width: parent.width - 200
-                                Text { text: "Безопасный откат"; color: "#fff"; font.pixelSize: 14; font.family: root.uiFontBold }
-                                Text {
-                                    width: parent.width
-                                    text: root.updateRollbackStatus.length
-                                          ? root.updateRollbackStatus
-                                          : "Откат по снимку манифеста apk — без слепого удаления"
-                                    color: "#a0a0a0"; font.pixelSize: 12; wrapMode: Text.WordWrap
-                                }
-                            }
-                            Rectangle {
-                                anchors.right: parent.right; anchors.rightMargin: 16
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 140; height: 34; radius: 8
-                                color: root.updateRollingBack ? "#3a3a3a" : "#3f1515"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: root.updateRollingBack ? "Откат…" : "Откатить"
-                                    color: "#fecaca"; font.pixelSize: 12; font.family: root.uiFontBold
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: !root.updateRollingBack
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.rollbackLastUpdate()
-                                }
-                            }
-                        }
-
-                        Rectangle {
-                            width: parent.width; height: 64; radius: 10; color: "#2c2c2c"
-                            Column {
-                                anchors.left: parent.left; anchors.leftMargin: 16
-                                anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                                Text { text: "Автоматическая проверка"; color: "#fff"; font.pixelSize: 14 }
-                                Text { text: "Сообщать о новых выпусках и пакетах"; color: "#a0a0a0"; font.pixelSize: 12 }
-                            }
-                            ToggleSwitch {
-                                anchors.right: parent.right; anchors.rightMargin: 16
-                                anchors.verticalCenter: parent.verticalCenter
-                                on: root.updateAutoCheck
-                                onToggled: root.updateAutoCheck = !root.updateAutoCheck
-                            }
-                        }
-
-                        SettingCard {
-                            title: "Текущая версия GT/OS"
-                            subtitle: "Desktop " + root.osVersion + " · ядро " + root.aboutKernel
-                        }
-
-                        Text { text: "История установленных обновлений"; color: "#a0a0a0"; font.pixelSize: 12 }
-                        Repeater {
-                            model: root.updateLog
-                            delegate: Rectangle {
-                                width: setBody.width
-                                height: 78
-                                radius: 10
-                                color: "#2c2c2c"
-                                border.width: index === 0 ? 1 : 0
-                                border.color: root.accentColor
-                                Row {
-                                    anchors.fill: parent
-                                    anchors.margins: 14
-                                    spacing: 14
-                                    Rectangle {
-                                        width: 52; height: 44; radius: 10
-                                        color: "#243028"
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: modelData.ver
-                                            color: root.accentColor
-                                            font.bold: true; font.pixelSize: 11; font.family: root.uiFont
-                                        }
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - 60
+                                    spacing: 2
+                                    Text {
+                                        width: parent.width
+                                        text: modelData.title
+                                        color: "#e8eef2"
+                                        font.pixelSize: 13
+                                        elide: Text.ElideRight
                                     }
-                                    Column {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 3
-                                        width: parent.width - 78
-                                        Text {
-                                            text: modelData.title
-                                            color: "#e8e8e8"; font.pixelSize: 14; font.family: root.uiFont
-                                            elide: Text.ElideRight; width: parent.width
-                                        }
-                                        Text {
-                                            text: modelData.date + " · " + modelData.note
-                                            color: "#9aa7b2"; font.pixelSize: 12; font.family: root.uiFont
-                                        }
+                                    Text {
+                                        text: modelData.date
+                                        color: "#6b7785"
+                                        font.pixelSize: 11
                                     }
                                 }
                             }
                         }
+                    }
                 }
             }
 
@@ -16977,10 +17810,12 @@ Rectangle {
                 Column {
                     width: parent.width
                     spacing: 8
-                        // снимок железа
-                        Row {
+                        // снимок железа (2×2 — не вылезает за ширину панели)
+                        Grid {
                             width: parent.width
-                            spacing: 10
+                            columns: 2
+                            rowSpacing: 10
+                            columnSpacing: 10
                             Repeater {
                                 model: [
                                     {
@@ -17009,16 +17844,18 @@ Rectangle {
                                     }
                                 ]
                                 delegate: Rectangle {
-                                    width: (parent.width - 30) / 4
-                                    height: 108
+                                    width: (parent.width - 10) / 2
+                                    height: 100
                                     radius: 10
                                     color: "#2c2c2c"
+                                    clip: true
                                     Column {
                                         anchors.fill: parent
                                         anchors.margins: 12
                                         spacing: 6
                                         Row {
                                             spacing: 8
+                                            width: parent.width
                                             DeskIconArt {
                                                 width: 16; height: 16
                                                 kind: modelData.kind
@@ -17030,13 +17867,15 @@ Rectangle {
                                                 font.pixelSize: 12
                                                 font.family: root.uiFont
                                                 anchors.verticalCenter: parent.verticalCenter
+                                                elide: Text.ElideRight
+                                                width: parent.width - 28
                                             }
                                         }
                                         Text {
                                             width: parent.width
                                             text: modelData.big
                                             color: "#ffffff"
-                                            font.pixelSize: 20
+                                            font.pixelSize: 18
                                             font.family: root.uiFontBold
                                             elide: Text.ElideRight
                                         }
@@ -17297,7 +18136,7 @@ Rectangle {
                                         color: "#243028"
                                         CloverMark {
                                             anchors.centerIn: parent
-                                            width: 16; height: 16
+                                            width: 22; height: 22
                                             ink: root.accentColor
                                         }
                                     }
@@ -17505,56 +18344,74 @@ Rectangle {
 
                     Item { width: 1; height: 2 }
 
-                    Repeater {
-                        model: [{ id: "home", name: "Главная", iconKind: "pc" }].concat(sections)
-                        delegate: Rectangle {
-                            width: setSide.width - 28
-                            height: 40
-                            radius: 8
-                            visible: modelData.id === "home" || matchesQuery(modelData)
-                            color: root.settingsSection === modelData.id ? "#243028"
-                                 : (navHover.containsMouse ? "#222" : "transparent")
-                            Rectangle {
-                                visible: root.settingsSection === modelData.id
-                                anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 3; height: 22; radius: 2
-                                color: root.accentColor
-                            }
-                            Row {
-                                anchors.fill: parent
-                                anchors.leftMargin: 14
-                                spacing: 12
-                                DeskIconArt {
-                                    width: 18; height: 18
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    kind: modelData.iconKind || "settings"
-                                }
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.name
-                                    color: "#ffffff"
-                                    font.pixelSize: 13
-                                    font.family: root.uiFont
-                                    elide: Text.ElideRight
-                                    width: 200
-                                }
-                            }
-                            MouseArea {
-                                id: navHover
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    root.settingsSection = modelData.id
-                                    if (modelData.id === "home")
-                                        settingsQuery = ""
-                                    if (modelData.id === "storage" || modelData.id === "about") {
-                                        settingsHeavySoon.kind = modelData.id
-                                        settingsHeavySoon.restart()
+                    Flickable {
+                        id: setNavFlick
+                        width: parent.width
+                        height: Math.max(40, parent.height - y)
+                        clip: true
+                        contentWidth: width
+                        contentHeight: setNavCol.height
+                        boundsBehavior: Flickable.StopAtBounds
+                        flickableDirection: Flickable.VerticalFlick
+
+                        Column {
+                            id: setNavCol
+                            width: parent.width
+                            spacing: 4
+                            Repeater {
+                                model: [{ id: "home", name: "Главная", iconKind: "pc" }].concat(sections)
+                                delegate: Rectangle {
+                                    width: setNavCol.width
+                                    height: visible ? 40 : 0
+                                    radius: 8
+                                    visible: modelData.id === "home" || matchesQuery(modelData)
+                                    color: root.settingsSection === modelData.id ? "#243028"
+                                         : (navHover.containsMouse ? "#222" : "transparent")
+                                    clip: true
+                                    Rectangle {
+                                        visible: root.settingsSection === modelData.id
+                                        anchors.left: parent.left
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 3; height: 22; radius: 2
+                                        color: root.accentColor
                                     }
-                                    if (modelData.id !== "accounts")
-                                        accountsFocus = ""
+                                    Row {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 14
+                                        anchors.rightMargin: 10
+                                        spacing: 12
+                                        DeskIconArt {
+                                            width: 18; height: 18
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            kind: modelData.iconKind || "settings"
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: modelData.name
+                                            color: "#ffffff"
+                                            font.pixelSize: 13
+                                            font.family: root.uiFont
+                                            elide: Text.ElideRight
+                                            width: Math.max(40, parent.width - 40)
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: navHover
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.settingsSection = modelData.id
+                                            if (modelData.id === "home")
+                                                settingsQuery = ""
+                                            if (modelData.id === "storage" || modelData.id === "about") {
+                                                settingsHeavySoon.kind = modelData.id
+                                                settingsHeavySoon.restart()
+                                            }
+                                            if (modelData.id !== "accounts")
+                                                accountsFocus = ""
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -17666,7 +18523,7 @@ Rectangle {
                                     spacing: 6
                                     Row {
                                         spacing: 10
-                                        DeskIconArt { width: 22; height: 22; kind: "browser" }
+                                        DeskIconArt { width: 22; height: 22; kind: "globe" }
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: "Сеть"
@@ -18050,9 +18907,9 @@ Rectangle {
                     Loader {
                         id: settingsSectionLoader
                         width: parent.width
+                        // sync + лёгкий updates: async+implicitHeight давал зависание
                         asynchronous: false
-                        // implicitHeight — иначе Column часто даёт height 0 и контент «пустой»
-                        height: (status === Loader.Ready && item) ? item.implicitHeight : (status === Loader.Error ? 48 : 0)
+                        height: (status === Loader.Ready && item) ? Math.max(item.implicitHeight, 1) : (status === Loader.Error ? 48 : 0)
                         function compFor(sec) {
                             if (sec === "home") return null
                             if (sec === "system") return settingsSec_system
@@ -18122,7 +18979,7 @@ Rectangle {
                 { id: "windows", t: "Windows" },
                 { id: "web", t: "Веб" }
             ]
-            property int gridCols: width > 980 ? 3 : 2
+            property int gridCols: width > 1100 ? 4 : (width > 780 ? 3 : 2)
 
             function storeList() {
                 catalog = root.storeCatalog()
@@ -18186,543 +19043,481 @@ Rectangle {
 
             Rectangle {
                 anchors.fill: parent
-                color: "#191919"
+                color: "#141414"
             }
 
-            Row {
+            Item {
                 anchors.fill: parent
 
-                Rectangle {
-                    width: 200
-                    height: parent.height
-                    color: "#1e1e1e"
-                    Rectangle { anchors.right: parent.right; width: 1; height: parent.height; color: "#2a2a2a" }
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 14
-                        spacing: 6
-                        Row {
-                            spacing: 10
-                            CloverMark { width: 26; height: 26; ink: root.accentColor }
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 24
+                    spacing: 16
+                    visible: root.storeDetailId.length > 0
+
+                    Text {
+                        text: "← Назад"
+                        color: root.accentColor
+                        font.pixelSize: 14
+                        font.family: root.uiFont
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.storeDetailId = "" }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 200
+                        radius: 18
+                        gradient: Gradient {
+                            GradientStop { position: 0; color: "#1c2a24" }
+                            GradientStop { position: 1; color: "#1a1a1a" }
+                        }
+                        Item {
+                            anchors.fill: parent
+                            anchors.margins: 28
+                            DeskIconArt {
+                                id: detailIco
+                                width: 96; height: 96
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                kind: detailApp().iconKind || "store"
+                                appId: detailApp().id || ""
+                            }
                             Column {
+                                anchors.left: detailIco.right
+                                anchors.leftMargin: 22
+                                anchors.right: detailBtn.left
+                                anchors.rightMargin: 22
                                 anchors.verticalCenter: parent.verticalCenter
-                                Text { text: "Магазин"; color: "#f4f7f8"; font.pixelSize: 17; font.family: root.uiFontBold }
+                                spacing: 8
                                 Text {
-                                    text: root.storeCatalogStatus
-                                    color: "#7e8b96"
-                                    font.pixelSize: 10
+                                    width: parent.width
+                                    text: detailApp().name
+                                    color: "#fff"
+                                    font.pixelSize: 32
+                                    font.family: root.uiFontBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: {
+                                        var bits = []
+                                        if (detailApp().pub) bits.push(detailApp().pub)
+                                        if (detailApp().cat) bits.push(detailApp().cat)
+                                        bits.push(root.storePlatformLabel(root.storePlatformOf(detailApp())))
+                                        return bits.join(" · ")
+                                    }
+                                    color: "#9aa7b2"
+                                    font.pixelSize: 14
                                     font.family: root.uiFont
-                                    width: 140
-                                    wrapMode: Text.Wrap
+                                    elide: Text.ElideRight
                                 }
-                            }
-                        }
-                        Item { width: 1; height: 8 }
-                        Rectangle {
-                            width: parent.width - 4; height: 38; radius: 8
-                            color: root.storeDetailId.length === 0 && storeCat === "all" ? "#2a2a2a" : (homeStoreH.containsMouse ? "#252525" : "transparent")
-                            Text {
-                                anchors.left: parent.left; anchors.leftMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "Главная"
-                                color: "#e8eef2"; font.pixelSize: 13; font.family: root.uiFont
-                            }
-                            MouseArea {
-                                id: homeStoreH; anchors.fill: parent; hoverEnabled: true
-                                onClicked: { storeCat = "all"; root.storeDetailId = "" }
-                            }
-                        }
-                        Text {
-                            text: "Платформа"
-                            color: "#7e8b96"
-                            font.pixelSize: 11
-                            font.family: root.uiFontBold
-                            topPadding: 8
-                            bottomPadding: 2
-                            leftPadding: 6
-                        }
-                        Repeater {
-                            model: storePlatforms
-                            delegate: Rectangle {
-                                width: parent.width - 4
-                                height: 30
-                                radius: 8
-                                color: storePlatform === modelData.id ? "#2a2a2a" : (platH.containsMouse ? "#252525" : "transparent")
                                 Text {
-                                    anchors.left: parent.left; anchors.leftMargin: 12
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.t
-                                    color: storePlatform === modelData.id ? root.accentColor : "#e8eef2"
-                                    font.pixelSize: 12; font.family: root.uiFont
-                                }
-                                MouseArea {
-                                    id: platH; anchors.fill: parent; hoverEnabled: true
-                                    onClicked: { storePlatform = modelData.id; root.storeDetailId = "" }
+                                    text: detailApp().price || "Бесплатно"
+                                    color: root.accentColor
+                                    font.pixelSize: 13
+                                    font.family: root.uiFontBold
                                 }
                             }
-                        }
-                        Text {
-                            text: "Категории"
-                            color: "#7e8b96"
-                            font.pixelSize: 11
-                            font.family: root.uiFontBold
-                            topPadding: 8
-                            bottomPadding: 2
-                            leftPadding: 6
-                        }
-                        Repeater {
-                            model: storeCats
-                            delegate: Rectangle {
-                                width: parent.width - 4
-                                height: 34
-                                radius: 8
-                                color: root.storeDetailId.length === 0 && storeCat === modelData.id ? "#2a2a2a" : (catH.containsMouse ? "#252525" : "transparent")
-                                Row {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: 10
-                                    spacing: 8
-                                    Rectangle {
-                                        visible: root.storeDetailId.length === 0 && storeCat === modelData.id
-                                        width: 3; height: 12; radius: 2
-                                        color: root.accentColor
-                                        anchors.verticalCenter: parent.verticalCenter
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData.name
-                                        color: "#e8eef2"
-                                        font.pixelSize: 13
-                                        font.family: root.uiFont
-                                    }
+                            Rectangle {
+                                id: detailBtn
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 168; height: 48; radius: 12
+                                color: root.storeInstallingId === detailApp().id
+                                       ? "#252525"
+                                       : (isOwned(detailApp()) ? "#252525" : root.accentColor)
+                                clip: true
+                                Rectangle {
+                                    visible: root.storeInstallingId === detailApp().id
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: parent.width * (root.storeInstallPct / 100.0)
+                                    color: root.accentColor
+                                    opacity: 0.35
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: btnLabel(detailApp())
+                                    color: isOwned(detailApp()) || root.storeInstallingId === detailApp().id ? "#e8eef2" : "#06210f"
+                                    font.family: root.uiFontBold; font.pixelSize: 14
                                 }
                                 MouseArea {
-                                    id: catH
                                     anchors.fill: parent
-                                    hoverEnabled: true
+                                    enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === detailApp().id
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: { storeCat = modelData.id; root.storeDetailId = "" }
+                                    onClicked: root.installStoreApp(detailApp())
                                 }
                             }
                         }
-                        Item { width: 1; height: Math.max(8, parent.height - 480) }
-                        Rectangle {
-                            width: parent.width - 4; height: 38; radius: 8
-                            color: updAllH.containsMouse ? Qt.lighter(root.accentColor, 1.1) : root.accentColor
-                            Text {
-                                anchors.centerIn: parent
-                                text: "Обновить каталог"
-                                color: "#06210f"
-                                font.pixelSize: 12
-                                font.family: root.uiFontBold
-                            }
-                            MouseArea {
-                                id: updAllH
-                                anchors.fill: parent
-                                hoverEnabled: true
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.storeUpdateAll()
-                            }
-                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: detailApp().desc
+                        color: "#c5d0d8"
+                        font.pixelSize: 16
+                        font.family: root.uiFont
+                        wrapMode: Text.WordWrap
                     }
                 }
 
-                Item {
-                    width: parent.width - 200
-                    height: parent.height
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 16
+                    visible: root.storeDetailId.length === 0
 
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 22
-                        spacing: 14
-                        visible: root.storeDetailId.length > 0
-
-                        Text {
-                            text: "← Назад в каталог"
-                            color: root.accentColor
-                            font.pixelSize: 13
-                            font.family: root.uiFont
-                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.storeDetailId = "" }
-                        }
-
-                        Rectangle {
-                            width: parent.width
-                            height: 120
-                            radius: 12
-                            color: "#1e1e1e"
-                            Row {
-                                anchors.fill: parent
-                                anchors.margins: 18
-                                spacing: 18
-                                DeskIconArt {
-                                    width: 72; height: 72
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    kind: detailApp().iconKind || "store"
-                                    appId: detailApp().id || ""
-                                }
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 6
-                                    width: parent.width - 280
-                                    Text { text: detailApp().name; color: "#fff"; font.pixelSize: 26; font.family: root.uiFontBold }
-                                    Text { text: (detailApp().pub || "") + " · " + detailApp().cat; color: "#9aa7b2"; font.pixelSize: 13; font.family: root.uiFont }
-                                    Text { text: detailApp().price || "Бесплатно"; color: root.accentColor; font.pixelSize: 13; font.family: root.uiFont }
-                                }
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 168; height: 42; radius: 10
-                                    color: root.storeInstallingId === detailApp().id
-                                           ? "#252525"
-                                           : (isOwned(detailApp()) ? "#252525" : root.accentColor)
-                                    clip: true
-                                    Rectangle {
-                                        visible: root.storeInstallingId === detailApp().id
-                                        anchors.left: parent.left
-                                        anchors.top: parent.top
-                                        anchors.bottom: parent.bottom
-                                        width: parent.width * (root.storeInstallPct / 100.0)
-                                        color: root.accentColor
-                                        opacity: 0.35
-                                    }
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: btnLabel(detailApp())
-                                        color: isOwned(detailApp()) || root.storeInstallingId === detailApp().id ? "#e8eef2" : "#06210f"
-                                        font.family: root.uiFontBold; font.pixelSize: 13
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === detailApp().id
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.installStoreApp(detailApp())
-                                    }
-                                }
-                            }
-                        }
-
-                        Text {
-                            width: parent.width
-                            text: detailApp().desc
-                            color: "#c5d0d8"
-                            font.pixelSize: 15
-                            font.family: root.uiFont
-                            wrapMode: Text.WordWrap
-                        }
-                        Text {
-                            width: parent.width
-                            text: {
-                                var a = detailApp()
-                                var p = root.storePlatformOf(a)
-                                if (p === "web")
-                                    return "«" + a.name + "» открывается как веб-клиент."
-                                if (p === "linux")
-                                    return "«" + a.name + "» — Linux-пакет (" + (a.format || "AppImage/deb") + "), не Alpine."
-                                if (p === "windows")
-                                    return "«" + a.name + "» — приложение Windows, запуск через Wine."
-                                return "«" + a.name + "» скачивается из Alpine пакетом " + (a.apk || a.id) + "."
-                            }
-                            color: "#9aa7b2"
-                            font.pixelSize: 13
-                            font.family: root.uiFont
-                            wrapMode: Text.WordWrap
-                        }
-                        Text {
-                            text: "Издатель: " + (detailApp().pub || "—")
-                                 + "\nКатегория: " + detailApp().cat
-                                 + "\nПлатформа: " + root.storePlatformLabel(root.storePlatformOf(detailApp()))
-                                 + (detailApp().format ? ("\nФормат: " + detailApp().format) : "")
-                                 + "\nПакет: " + (detailApp().apk || detailApp().id)
-                                 + (detailApp().version ? ("\nВерсия: " + detailApp().version) : "")
-                                 + (detailApp().size ? ("\nРазмер: " + Math.round(detailApp().size / 1024) + " КБ") : "")
-                                 + (detailApp().source ? ("\nИсточник: " + detailApp().source) : "")
-                            color: "#7e8b96"
-                            font.pixelSize: 12
-                            font.family: root.uiFont
-                        }
-                    }
-
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 20
-                        spacing: 14
-                        visible: root.storeDetailId.length === 0
-
-                        Rectangle {
-                            width: parent.width
-                            height: 42
-                            radius: 10
-                            color: "#1e1e1e"
-                            border.width: 1
-                            border.color: storeSearch.activeFocus ? root.accentColor : "#2a2a2a"
-                            TextInput {
-                                id: storeSearch
-                                anchors.fill: parent
-                                anchors.leftMargin: 14
-                                anchors.rightMargin: 14
-                                verticalAlignment: Text.AlignVCenter
-                                color: "#f4f7f8"
-                                font.pixelSize: 13
-                                font.family: root.uiFont
-                                text: root.storeQuery
-                                onTextChanged: root.storeQuery = text
-                                Keys.onPressed: function (e) {
-                                    var ch = root.mapLangKey(e)
-                                    if (ch !== null) { insert(ch); e.accepted = true }
+                    Item {
+                        width: parent.width
+                        height: 44
+                        Row {
+                            id: storeHeadLeft
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.right: storeHeadRight.left
+                            anchors.rightMargin: 16
+                            spacing: 14
+                            clip: true
+                            CloverMark { width: 36; height: 36; anchors.verticalCenter: parent.verticalCenter }
+                            Column {
+                                width: Math.max(80, parent.width - 50)
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Text {
+                                    width: parent.width
+                                    text: "Магазин GT"
+                                    color: "#fff"
+                                    font.pixelSize: 22
+                                    font.family: root.uiFontBold
+                                    elide: Text.ElideRight
                                 }
                                 Text {
-                                    anchors.fill: parent
-                                    verticalAlignment: Text.AlignVCenter
-                                    visible: !storeSearch.text.length && !storeSearch.activeFocus
-                                    text: "Найти приложение…"
-                                    color: "#5f6c76"
-                                    font.pixelSize: 13
+                                    width: parent.width
+                                    text: root.storeCatalogStatus
+                                    color: "#7e8b96"
+                                    font.pixelSize: 12
                                     font.family: root.uiFont
+                                    elide: Text.ElideRight
                                 }
                             }
                         }
-
-                        Rectangle {
-                            width: parent.width
-                            height: 118
-                            radius: 12
-                            color: "#1e1e1e"
-                            Row {
-                                anchors.fill: parent
-                                anchors.margins: 18
-                                spacing: 16
-                                DeskIconArt {
-                                    width: 64; height: 64
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    kind: featuredApp().iconKind || "browser"
-                                    appId: featuredApp().id || ""
-                                }
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 4
-                                    width: parent.width - 250
-                                    Text {
-                                        text: "Рекомендуем · " + (featuredApp().pub || "")
-                                        color: root.accentColor
-                                        font.pixelSize: 12
-                                        font.family: root.uiFont
-                                    }
-                                    Text {
-                                        text: featuredApp().name
-                                        color: "#ffffff"
-                                        font.pixelSize: 22
-                                        font.bold: true
-                                        font.family: root.uiFont
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: featuredApp().desc
-                                        color: "#9aa7b2"
-                                        font.pixelSize: 12
-                                        font.family: root.uiFont
-                                        wrapMode: Text.WordWrap
-                                        maximumLineCount: 2
-                                        elide: Text.ElideRight
-                                    }
-                                }
-                                Rectangle {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: 140; height: 38; radius: 10
-                                    color: root.storeInstallingId === featuredApp().id
-                                           ? "#252525"
-                                           : (isOwned(featuredApp()) ? "#252525" : (featH.containsMouse ? Qt.lighter(root.accentColor, 1.1) : root.accentColor))
+                        Row {
+                            id: storeHeadRight
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 10
+                            Rectangle {
+                                width: Math.min(280, Math.max(140, storeHeadRight.parent.width * 0.28))
+                                height: 40
+                                radius: 12
+                                color: "#1e1e1e"
+                                border.width: 1
+                                border.color: storeSearch.activeFocus ? root.accentColor : "#2a2a2a"
+                                TextInput {
+                                    id: storeSearch
+                                    anchors.fill: parent
+                                    anchors.leftMargin: 14
+                                    anchors.rightMargin: 14
+                                    verticalAlignment: Text.AlignVCenter
+                                    color: "#f4f7f8"
+                                    font.pixelSize: 13
+                                    font.family: root.uiFont
                                     clip: true
-                                    Rectangle {
-                                        visible: root.storeInstallingId === featuredApp().id
-                                        anchors.left: parent.left
-                                        anchors.top: parent.top
-                                        anchors.bottom: parent.bottom
-                                        width: parent.width * (root.storeInstallPct / 100.0)
-                                        color: root.accentColor
-                                        opacity: 0.35
+                                    text: root.storeQuery
+                                    onTextChanged: root.storeQuery = text
+                                    Keys.onPressed: function (e) {
+                                        var ch = root.mapLangKey(e)
+                                        if (ch !== null) { insert(ch); e.accepted = true }
                                     }
                                     Text {
-                                        anchors.centerIn: parent
-                                        text: btnLabel(featuredApp())
-                                        color: isOwned(featuredApp()) || root.storeInstallingId === featuredApp().id ? "#e8eef2" : "#06210f"
-                                        font.bold: true
+                                        anchors.fill: parent
+                                        verticalAlignment: Text.AlignVCenter
+                                        visible: !storeSearch.text.length && !storeSearch.activeFocus
+                                        text: "Поиск…"
+                                        color: "#5f6c76"
                                         font.pixelSize: 13
                                         font.family: root.uiFont
                                     }
+                                }
+                            }
+                            Rectangle {
+                                width: 118
+                                height: 40
+                                radius: 12
+                                color: updAllH.containsMouse ? Qt.lighter(root.accentColor, 1.08) : "#1e1e1e"
+                                border.width: 1
+                                border.color: root.accentColor
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "Обновить"
+                                    color: root.accentColor
+                                    font.pixelSize: 12
+                                    font.family: root.uiFontBold
+                                }
+                                MouseArea {
+                                    id: updAllH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: root.storeUpdateAll()
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: parent.width
+                        height: 148
+                        radius: 18
+                        color: "#1a2220"
+                        Item {
+                            anchors.fill: parent
+                            anchors.margins: 22
+                            DeskIconArt {
+                                id: featIco
+                                width: 88; height: 88
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                kind: featuredApp().iconKind || "browser"
+                                appId: featuredApp().id || ""
+                            }
+                            Column {
+                                anchors.left: featIco.right
+                                anchors.leftMargin: 20
+                                anchors.right: featBtn.left
+                                anchors.rightMargin: 20
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+                                Text {
+                                    text: "Подборка для вас"
+                                    color: root.accentColor
+                                    font.pixelSize: 12
+                                    font.family: root.uiFontBold
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: featuredApp().name
+                                    color: "#ffffff"
+                                    font.pixelSize: 26
+                                    font.family: root.uiFontBold
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: featuredApp().desc
+                                    color: "#9aa7b2"
+                                    font.pixelSize: 13
+                                    font.family: root.uiFont
+                                    wrapMode: Text.WordWrap
+                                    maximumLineCount: 2
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            Rectangle {
+                                id: featBtn
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 148; height: 44; radius: 12
+                                color: root.storeInstallingId === featuredApp().id
+                                       ? "#252525"
+                                       : (isOwned(featuredApp()) ? "#252525" : (featH.containsMouse ? Qt.lighter(root.accentColor, 1.1) : root.accentColor))
+                                clip: true
+                                Rectangle {
+                                    visible: root.storeInstallingId === featuredApp().id
+                                    anchors.left: parent.left
+                                    anchors.top: parent.top
+                                    anchors.bottom: parent.bottom
+                                    width: parent.width * (root.storeInstallPct / 100.0)
+                                    color: root.accentColor
+                                    opacity: 0.35
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: btnLabel(featuredApp())
+                                    color: isOwned(featuredApp()) || root.storeInstallingId === featuredApp().id ? "#e8eef2" : "#06210f"
+                                    font.bold: true
+                                    font.pixelSize: 13
+                                    font.family: root.uiFont
+                                }
+                                MouseArea {
+                                    id: featH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === featuredApp().id
+                                    onClicked: root.installStoreApp(featuredApp())
+                                }
+                            }
+                        }
+                    }
+
+                    Flickable {
+                        id: chipFlick
+                        width: parent.width
+                        height: 36
+                        contentWidth: chipRow.width
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        Row {
+                            id: chipRow
+                            spacing: 8
+                            Repeater {
+                                model: storePlatforms
+                                delegate: Rectangle {
+                                    height: 32
+                                    width: platChipTxt.implicitWidth + 18
+                                    radius: 16
+                                    color: storePlatform === modelData.id ? "#243028" : "#1e1e1e"
+                                    border.width: 1
+                                    border.color: storePlatform === modelData.id ? root.accentColor : "#2a2a2a"
+                                    Text {
+                                        id: platChipTxt
+                                        anchors.centerIn: parent
+                                        text: modelData.t
+                                        color: storePlatform === modelData.id ? root.accentColor : "#9aa7b2"
+                                        font.pixelSize: 11
+                                        font.family: root.uiFont
+                                    }
                                     MouseArea {
-                                        id: featH
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: { storePlatform = modelData.id; root.storeDetailId = "" }
+                                    }
+                                }
+                            }
+                            Repeater {
+                                model: [{ id: "all", name: "Все" }].concat(storeCats)
+                                delegate: Rectangle {
+                                    height: 32
+                                    width: chipTxt.implicitWidth + 20
+                                    radius: 16
+                                    color: storeCat === modelData.id ? root.accentColor : "#1e1e1e"
+                                    Text {
+                                        id: chipTxt
+                                        anchors.centerIn: parent
+                                        text: modelData.name
+                                        color: storeCat === modelData.id ? "#06210f" : "#e8eef2"
+                                        font.pixelSize: 12
+                                        font.family: root.uiFont
+                                    }
+                                    MouseArea {
+                                        id: chipH
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === featuredApp().id
-                                        onClicked: root.installStoreApp(featuredApp())
+                                        onClicked: storeCat = modelData.id
                                     }
                                 }
                             }
                         }
+                    }
 
-                        Flickable {
-                            id: chipFlick
+                    Text {
+                        text: (storeCat === "all" ? "Каталог" : storeCat) + " · " + storeMatchCount()
+                        color: "#d5dde3"
+                        font.pixelSize: 15
+                        font.family: root.uiFontBold
+                    }
+
+                    Flickable {
+                        width: parent.width
+                        height: parent.height - 56 - 148 - 36 - 28 - 28 - 40
+                        contentWidth: width
+                        contentHeight: storeGridCol.height
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        Column {
+                            id: storeGridCol
                             width: parent.width
-                            height: 34
-                            contentWidth: chipRow.width
-                            clip: true
-                            boundsBehavior: Flickable.StopAtBounds
-                            Row {
-                                id: chipRow
-                                spacing: 8
+                            spacing: 12
+
+                            Grid {
+                                id: storeGrid
+                                width: parent.width
+                                columns: gridCols
+                                spacing: 12
                                 Repeater {
-                                    model: [{ id: "all", name: "Все" }].concat(storeCats)
+                                    model: storeList()
                                     delegate: Rectangle {
-                                        height: 32
-                                        width: chipTxt.implicitWidth + 20
-                                        radius: 8
-                                        color: storeCat === modelData.id ? root.accentColor : (chipH.containsMouse ? "#2a2a2a" : "#252525")
-                                        Text {
-                                            id: chipTxt
-                                            anchors.centerIn: parent
-                                            text: modelData.name
-                                            color: storeCat === modelData.id ? "#06210f" : "#e8eef2"
-                                            font.pixelSize: 12
-                                            font.family: root.uiFont
+                                        width: (storeGrid.width - (gridCols - 1) * 12) / gridCols
+                                        height: 168
+                                        radius: 16
+                                        color: cardH.containsMouse ? "#222222" : "#1a1a1a"
+                                        border.width: 1
+                                        border.color: "#2a2a2a"
+                                        Column {
+                                            anchors.fill: parent
+                                            anchors.margins: 16
+                                            spacing: 10
+                                            DeskIconArt {
+                                                width: 56; height: 56
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                kind: modelData.iconKind || "store"
+                                                appId: modelData.id || ""
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                horizontalAlignment: Text.AlignHCenter
+                                                text: modelData.name
+                                                color: "#f4f7f8"
+                                                font.pixelSize: 13
+                                                font.family: root.uiFontBold
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                horizontalAlignment: Text.AlignHCenter
+                                                text: modelData.pub || modelData.cat || ""
+                                                color: "#7e8b96"
+                                                font.pixelSize: 11
+                                                font.family: root.uiFont
+                                                elide: Text.ElideRight
+                                            }
+                                            Rectangle {
+                                                width: parent.width
+                                                height: 34
+                                                radius: 10
+                                                color: root.storeInstallingId === modelData.id
+                                                      ? "#2a2a2a"
+                                                      : (isOwned(modelData) ? "#2a2a2a" : root.accentColor)
+                                                clip: true
+                                                Rectangle {
+                                                    visible: root.storeInstallingId === modelData.id
+                                                    anchors.left: parent.left
+                                                    anchors.top: parent.top
+                                                    anchors.bottom: parent.bottom
+                                                    width: parent.width * (root.storeInstallPct / 100.0)
+                                                    color: root.accentColor
+                                                    opacity: 0.35
+                                                }
+                                                Text {
+                                                    anchors.centerIn: parent
+                                                    text: btnLabel(modelData)
+                                                    color: isOwned(modelData) || root.storeInstallingId === modelData.id ? "#9aa7b2" : "#06210f"
+                                                    font.pixelSize: 12
+                                                    font.bold: true
+                                                    font.family: root.uiFont
+                                                }
+                                                MouseArea {
+                                                    anchors.fill: parent
+                                                    cursorShape: Qt.PointingHandCursor
+                                                    enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === modelData.id
+                                                    onClicked: root.installStoreApp(modelData)
+                                                }
+                                            }
                                         }
                                         MouseArea {
-                                            id: chipH
+                                            id: cardH
                                             anchors.fill: parent
                                             hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: storeCat = modelData.id
+                                            z: -1
+                                            onClicked: root.storeDetailId = modelData.id
                                         }
                                     }
                                 }
                             }
-                        }
-
-                        Text {
-                            text: (storeCat === "all" ? "Приложения" : storeCat) + " · " + storeMatchCount()
-                            color: "#d5dde3"
-                            font.pixelSize: 14
-                            font.bold: true
-                            font.family: root.uiFont
-                        }
-
-                        Flickable {
-                            width: parent.width
-                            height: parent.height - 42 - 118 - 34 - 14 - 28 - 56
-                            contentWidth: width
-                            contentHeight: storeGridCol.height
-                            clip: true
-                            boundsBehavior: Flickable.StopAtBounds
-
-                            Column {
-                                id: storeGridCol
-                                width: parent.width
-                                spacing: 10
-
-                                Grid {
-                                    id: storeGrid
-                                    width: parent.width
-                                    columns: gridCols
-                                    spacing: 10
-                                    Repeater {
-                                        model: storeList()
-                                        delegate: Rectangle {
-                                            width: (storeGrid.width - (gridCols - 1) * 10) / gridCols
-                                            height: 136
-                                            radius: 12
-                                            color: cardH.containsMouse ? "#252525" : "#1e1e1e"
-                                            border.width: 1
-                                            border.color: "#2a2a2a"
-                                            Row {
-                                                anchors.fill: parent
-                                                anchors.margins: 12
-                                                spacing: 12
-                                                DeskIconArt {
-                                                    width: 48; height: 48
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    kind: modelData.iconKind || "store"
-                                                    appId: modelData.id || ""
-                                                }
-                                                Column {
-                                                    anchors.verticalCenter: parent.verticalCenter
-                                                    spacing: 4
-                                                    width: parent.width - 140
-                                                    Text {
-                                                        width: parent.width
-                                                        text: modelData.name
-                                                        color: "#f4f7f8"
-                                                        font.pixelSize: 14
-                                                        font.bold: true
-                                                        font.family: root.uiFont
-                                                        elide: Text.ElideRight
-                                                    }
-                                                    Text {
-                                                        width: parent.width
-                                                        text: modelData.pub || modelData.cat
-                                                        color: "#7e8b96"
-                                                        font.pixelSize: 11
-                                                        font.family: root.uiFont
-                                                        elide: Text.ElideRight
-                                                    }
-                                                    Rectangle {
-                                                        height: 18; radius: 4
-                                                        width: platBadgeTxt.implicitWidth + 10
-                                                        color: {
-                                                            var p = root.storePlatformOf(modelData)
-                                                            if (p === "windows") return "#1e3a5f"
-                                                            if (p === "linux") return "#1a3d2e"
-                                                            if (p === "web") return "#3a2a10"
-                                                            return "#2a2a2a"
-                                                        }
-                                                        Text {
-                                                            id: platBadgeTxt
-                                                            anchors.centerIn: parent
-                                                            text: root.storePlatformLabel(root.storePlatformOf(modelData))
-                                                            color: "#e8eef2"; font.pixelSize: 10
-                                                            font.family: root.uiFont
-                                                        }
-                                                    }
-                                                    Rectangle {
-                                                        width: 100; height: 28; radius: 8
-                                                        color: root.storeInstallingId === modelData.id
-                                                              ? "#2a2a2a"
-                                                              : (isOwned(modelData) ? "#2a2a2a" : root.accentColor)
-                                                        clip: true
-                                                        Rectangle {
-                                                            visible: root.storeInstallingId === modelData.id
-                                                            anchors.left: parent.left
-                                                            anchors.top: parent.top
-                                                            anchors.bottom: parent.bottom
-                                                            width: parent.width * (root.storeInstallPct / 100.0)
-                                                            color: root.accentColor
-                                                            opacity: 0.35
-                                                        }
-                                                        Text {
-                                                            anchors.centerIn: parent
-                                                            text: btnLabel(modelData)
-                                                            color: isOwned(modelData) || root.storeInstallingId === modelData.id ? "#9aa7b2" : "#06210f"
-                                                            font.pixelSize: 11
-                                                            font.bold: true
-                                                            font.family: root.uiFont
-                                                        }
-                                                        MouseArea {
-                                                            anchors.fill: parent
-                                                            hoverEnabled: true
-                                                            cursorShape: Qt.PointingHandCursor
-                                                            enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === modelData.id
-                                                            onClicked: root.installStoreApp(modelData)
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            MouseArea {
-                                                id: cardH
-                                                anchors.fill: parent
-                                                hoverEnabled: true
-                                                z: -1
-                                                onClicked: root.storeDetailId = modelData.id
-                                            }
-                                        }
-                                    }
-                                }
 
                                 Rectangle {
                                     visible: storeMatchCount() > root.storeListLimit
@@ -18752,7 +19547,6 @@ Rectangle {
                 }
             }
         }
-    }
 
     Component {
         id: photosPage
@@ -20673,7 +21467,7 @@ Rectangle {
                 { id: "bg", name: "Фоновые задачи", iconKind: "store" },
                 { id: "health", name: "Состояние", iconKind: "files" },
                 { id: "diag", name: "Диагностика", iconKind: "control" },
-                { id: "backups", name: "Бэкапы", iconKind: "files" },
+                { id: "backups", name: "Бэкапы", iconKind: "drive" },
                 { id: "recovery", name: "GT Recovery", iconKind: "system" }
             ]
             property int selectedDevGroup: -1
@@ -21230,61 +22024,157 @@ Rectangle {
                         Column {
                             width: parent.width
                             visible: root.controlTab === "backups"
-                            spacing: 12
-                            topPadding: 8
-                            leftPadding: 8
-                            rightPadding: 8
+                            spacing: 14
+                            topPadding: 12
+                            leftPadding: 14
+                            rightPadding: 14
 
                             Text {
-                                text: "Резервные копии пользовательских данных"
-                                color: "#f4f7f8"; font.pixelSize: 16; font.bold: true; font.family: root.uiFont
+                                text: "Резервные копии"
+                                color: "#f4f7f8"
+                                font.pixelSize: 18
+                                font.family: root.uiFontBold
                             }
                             Text {
-                                width: parent.width - 16
-                                text: "Документы, Загрузки, Рабочий стол и настройки рабочего стола. " + root.recoveryStatus
-                                color: "#9aa7b2"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                                width: parent.width - 8
+                                text: "Документы, Загрузки, Рабочий стол и настройки оболочки."
+                                color: "#8b98a3"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                                wrapMode: Text.WordWrap
                             }
-                            Text {
-                                width: parent.width - 16
-                                text: "Расписание: " + (root.backupSchedule === "off" ? "выключено" : root.backupNextHint)
-                                      + (root.backupLastRun.length ? (" · последний запуск " + root.backupLastRun) : "")
-                                color: "#c5d0d8"; font.pixelSize: 12; wrapMode: Text.WordWrap
-                            }
-                            Row {
-                                spacing: 8
-                                Repeater {
-                                    model: [
-                                        { id: "off", label: "Выкл" },
-                                        { id: "daily", label: "Ежедневно" },
-                                        { id: "weekly", label: "Еженедельно" }
-                                    ]
-                                    delegate: Rectangle {
-                                        width: 110; height: 32; radius: 8
-                                        color: root.backupSchedule === modelData.id ? root.accentColor : "#2a2a2a"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: modelData.label
-                                            color: root.backupSchedule === modelData.id ? "#06210f" : "#e8e8e8"
-                                            font.pixelSize: 12; font.bold: root.backupSchedule === modelData.id
+
+                            // статус
+                            Rectangle {
+                                width: parent.width - 4
+                                height: bkStatusCol.height + 24
+                                radius: 10
+                                color: "#232323"
+                                border.width: 1
+                                border.color: "#2e2e2e"
+                                Column {
+                                    id: bkStatusCol
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 14
+                                    spacing: 10
+                                    Row {
+                                        spacing: 16
+                                        Column {
+                                            spacing: 2
+                                            Text { text: "Копий"; color: "#6b7785"; font.pixelSize: 11; font.family: root.uiFont }
+                                            Text {
+                                                text: String(root.recoveryBackups.length)
+                                                color: "#f0f0f0"; font.pixelSize: 22; font.family: root.uiFontBold
+                                            }
                                         }
-                                        MouseArea {
+                                        Rectangle { width: 1; height: 40; color: "#2e2e2e" }
+                                        Column {
+                                            spacing: 2
+                                            Text { text: "Расписание"; color: "#6b7785"; font.pixelSize: 11; font.family: root.uiFont }
+                                            Text {
+                                                text: root.backupSchedule === "off" ? "Выключено"
+                                                    : (root.backupSchedule === "daily" ? "Ежедневно" : "Еженедельно")
+                                                color: root.backupSchedule === "off" ? "#9aa7b2" : root.accentColor
+                                                font.pixelSize: 15; font.family: root.uiFontBold
+                                            }
+                                        }
+                                        Rectangle { width: 1; height: 40; color: "#2e2e2e" }
+                                        Column {
+                                            spacing: 2
+                                            Text { text: "Последний запуск"; color: "#6b7785"; font.pixelSize: 11; font.family: root.uiFont }
+                                            Text {
+                                                text: root.backupLastRun.length ? root.backupLastRun : "ещё не было"
+                                                color: "#e8e8e8"; font.pixelSize: 15; font.family: root.uiFontBold
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        visible: root.backupSchedule !== "off"
+                                        width: parent.width
+                                        text: "Следующий: " + root.backupNextHint
+                                        color: "#8b98a3"; font.pixelSize: 11; font.family: root.uiFont
+                                    }
+                                }
+                            }
+
+                            // расписание
+                            Rectangle {
+                                width: parent.width - 4
+                                height: bkSchedCol.height + 24
+                                radius: 10
+                                color: "#232323"
+                                border.width: 1
+                                border.color: "#2e2e2e"
+                                Column {
+                                    id: bkSchedCol
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.top: parent.top
+                                    anchors.margins: 14
+                                    spacing: 10
+                                    Text {
+                                        text: "Автоматическое копирование"
+                                        color: "#f0f0f0"; font.pixelSize: 13; font.family: root.uiFontBold
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: "Когда GT/OS сам сделает копию Документов и рабочего стола."
+                                        color: "#8b98a3"; font.pixelSize: 11; font.family: root.uiFont; wrapMode: Text.WordWrap
+                                    }
+                                    Rectangle {
+                                        width: parent.width
+                                        height: 36
+                                        radius: 8
+                                        color: "#1a1a1a"
+                                        Row {
+                                            id: bkSegRow
                                             anchors.fill: parent
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.setBackupSchedule(modelData.id)
+                                            anchors.margins: 3
+                                            spacing: 3
+                                            Repeater {
+                                                model: [
+                                                    { id: "off", label: "Выкл" },
+                                                    { id: "daily", label: "Каждый день" },
+                                                    { id: "weekly", label: "Раз в неделю" }
+                                                ]
+                                                delegate: Rectangle {
+                                                    width: (bkSegRow.width - 6) / 3
+                                                    height: bkSegRow.height
+                                                    radius: 6
+                                                    color: root.backupSchedule === modelData.id ? root.accentColor : "transparent"
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: modelData.label
+                                                        color: root.backupSchedule === modelData.id ? "#06210f" : "#c5d0d8"
+                                                        font.pixelSize: 12
+                                                        font.family: root.backupSchedule === modelData.id ? root.uiFontBold : root.uiFont
+                                                    }
+                                                    MouseArea {
+                                                        anchors.fill: parent
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: root.setBackupSchedule(modelData.id)
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
                             }
+
+                            // действия
                             Row {
-                                spacing: 8
+                                spacing: 10
                                 Rectangle {
-                                    width: 180; height: 36; radius: 8
+                                    width: 200; height: 40; radius: 10
                                     color: root.recoveryBusy ? "#2a2a2a" : root.accentColor
                                     Text {
                                         anchors.centerIn: parent
-                                        text: root.recoveryBusy ? "Копирование…" : "Создать бэкап"
+                                        text: root.recoveryBusy ? "Копирование…" : "Создать копию сейчас"
                                         color: root.recoveryBusy ? "#6b7785" : "#06210f"
-                                        font.pixelSize: 12; font.bold: true
+                                        font.pixelSize: 13
+                                        font.family: root.uiFontBold
                                     }
                                     MouseArea {
                                         anchors.fill: parent; enabled: !root.recoveryBusy
@@ -21293,16 +22183,14 @@ Rectangle {
                                     }
                                 }
                                 Rectangle {
-                                    width: 120; height: 36; radius: 8; color: "#2a2a2a"
-                                    Text { anchors.centerIn: parent; text: "Обновить"; color: "#e8e8e8"; font.pixelSize: 12 }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        onClicked: root.refreshRecovery()
+                                    width: 168; height: 40; radius: 10
+                                    color: "#2a2a2a"
+                                    border.width: 1; border.color: "#3a3a3a"
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Очистить временные"
+                                        color: "#e8e8e8"; font.pixelSize: 12; font.family: root.uiFont
                                     }
-                                }
-                                Rectangle {
-                                    width: 140; height: 36; radius: 8; color: "#1a2a24"
-                                    Text { anchors.centerIn: parent; text: "Очистить диск"; color: root.accentColor; font.pixelSize: 12; font.bold: true }
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
@@ -21310,28 +22198,87 @@ Rectangle {
                                     }
                                 }
                             }
+
+                            // список копий
                             Text {
-                                visible: root.recoveryBackups.length === 0
-                                text: "Копий пока нет — создайте первую."
-                                color: "#6b7785"; font.pixelSize: 12
+                                topPadding: 4
+                                text: "Сохранённые копии"
+                                color: "#f0f0f0"; font.pixelSize: 13; font.family: root.uiFontBold
                             }
+
+                            Rectangle {
+                                visible: root.recoveryBackups.length === 0
+                                width: parent.width - 4
+                                height: 88
+                                radius: 10
+                                color: "#1c1c1c"
+                                border.width: 1
+                                border.color: "#2e2e2e"
+                                Column {
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: "Пока нет копий"
+                                        color: "#c5d0d8"; font.pixelSize: 13; font.family: root.uiFontBold
+                                    }
+                                    Text {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        text: "Нажмите «Создать копию сейчас» — займёт минуту."
+                                        color: "#6b7785"; font.pixelSize: 11; font.family: root.uiFont
+                                    }
+                                }
+                            }
+
                             Repeater {
                                 model: root.recoveryBackups
                                 delegate: Rectangle {
-                                    width: ccMainCol.width - 16; height: 64; radius: 8; color: "#232323"
+                                    width: ccMainCol.width - 28
+                                    height: 58
+                                    radius: 10
+                                    color: "#232323"
+                                    border.width: 1
+                                    border.color: "#2e2e2e"
                                     Row {
-                                        anchors.fill: parent; anchors.margins: 10; spacing: 10
-                                        Column {
-                                            width: parent.width - 160
-                                            anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                                            Text { text: modelData.title; color: "#f0f0f0"; font.pixelSize: 13; font.family: root.uiFontBold }
-                                            Text { text: "Размер: " + modelData.size; color: "#8b98a3"; font.pixelSize: 11 }
-                                        }
+                                        anchors.fill: parent
+                                        anchors.leftMargin: 12
+                                        anchors.rightMargin: 10
+                                        spacing: 12
                                         Rectangle {
-                                            width: 140; height: 32; radius: 6
+                                            width: 36; height: 36; radius: 8
                                             anchors.verticalCenter: parent.verticalCenter
                                             color: "#1a2a24"
-                                            Text { anchors.centerIn: parent; text: "Восстановить"; color: root.accentColor; font.pixelSize: 12; font.bold: true }
+                                            DeskIconArt {
+                                                anchors.centerIn: parent
+                                                width: 22; height: 22
+                                                kind: "drive"
+                                            }
+                                        }
+                                        Column {
+                                            width: parent.width - 36 - 12 - 132
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            spacing: 2
+                                            Text {
+                                                width: parent.width
+                                                text: modelData.title
+                                                color: "#f0f0f0"; font.pixelSize: 13; font.family: root.uiFontBold
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                text: modelData.size
+                                                color: "#8b98a3"; font.pixelSize: 11; font.family: root.uiFont
+                                            }
+                                        }
+                                        Rectangle {
+                                            width: 120; height: 32; radius: 8
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            color: "#1a2a24"
+                                            border.width: 1; border.color: "#2a3a34"
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "Восстановить"
+                                                color: root.accentColor; font.pixelSize: 12; font.family: root.uiFontBold
+                                            }
                                             MouseArea {
                                                 anchors.fill: parent; enabled: !root.recoveryBusy
                                                 cursorShape: Qt.PointingHandCursor
@@ -24054,27 +25001,59 @@ Rectangle {
         id: updatesPage
         Item {
             property string appTitle: ""
+            // отдельное окно — тот же лёгкий UI, без авто-apk
             Rectangle {
-                anchors.fill: parent; color: "#0c1216"
+                anchors.fill: parent
+                color: "#141414"
+            }
+            Flickable {
+                anchors.fill: parent
+                contentWidth: width
+                contentHeight: updCol.height + 48
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
                 Column {
-                    anchors.fill: parent; anchors.margins: 24; spacing: 16
-                    Text { text: "Центр обновлений GT"; color: "#f4f7f8"; font.pixelSize: 22; font.bold: true }
+                    id: updCol
+                    x: 28
+                    width: parent.width - 56
+                    topPadding: 28
+                    spacing: 16
+                    Text { text: "Центр обновлений"; color: "#fff"; font.pixelSize: 26; font.family: root.uiFontBold }
                     Text {
                         width: parent.width
                         wrapMode: Text.WordWrap
-                        text: "Проверка → установка → перезагрузка. Перед установкой создаётся снимок для отката."
-                        color: "#9aa7b2"; font.pixelSize: 13
+                        text: "Проверка → установка → при необходимости перезагрузка. Перед установкой создаётся снимок."
+                        color: "#8b98a3"; font.pixelSize: 14
                     }
-                    Text { text: root.updateStatus; color: "#e8eef2"; font.pixelSize: 14; font.bold: true }
+                    Rectangle {
+                        width: parent.width
+                        height: 120
+                        radius: 16
+                        color: "#1a2220"
+                        Column {
+                            anchors.fill: parent
+                            anchors.margins: 22
+                            spacing: 8
+                            Text { text: "GT/OS " + root.osVersion; color: "#fff"; font.pixelSize: 20; font.family: root.uiFontBold }
+                            Text {
+                                width: parent.width
+                                text: root.updateStatus
+                                color: "#a8b4bc"; font.pixelSize: 13; wrapMode: Text.WordWrap
+                            }
+                            Text { text: "Проверка: " + root.updateLastCheck; color: "#6b7785"; font.pixelSize: 11 }
+                        }
+                    }
                     Row {
                         spacing: 10
+                        width: parent.width
                         Rectangle {
-                            width: 180; height: 40; radius: 10
-                            color: root.updateChecking || root.updateApplying ? "#1c262e" : root.accentColor
+                            width: (parent.width - 20) / 3; height: 46; radius: 12
+                            color: root.updateChecking || root.updateApplying ? "#2a2a2a" : root.accentColor
                             Text {
                                 anchors.centerIn: parent
-                                text: root.updateChecking ? "Проверка…" : "1. Проверить"
-                                color: root.updateChecking || root.updateApplying ? "#9aa7b2" : "#06210f"; font.bold: true; font.pixelSize: 13
+                                text: root.updateChecking ? "Проверка…" : "Проверить"
+                                color: root.updateChecking || root.updateApplying ? "#9aa7b2" : "#06210f"
+                                font.bold: true; font.pixelSize: 13
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -24083,12 +25062,12 @@ Rectangle {
                             }
                         }
                         Rectangle {
-                            width: 200; height: 40; radius: 10
-                            color: root.updateApplying ? "#1c262e" : "#1a2a24"
+                            width: (parent.width - 20) / 3; height: 46; radius: 12
+                            color: root.updateApplying ? "#2a2a2a" : "#243028"
                             border.width: 1; border.color: root.accentColor
                             Text {
                                 anchors.centerIn: parent
-                                text: root.updateApplying ? "Установка…" : "2. Установить"
+                                text: root.updateApplying ? "Установка…" : "Установить"
                                 color: root.accentColor; font.bold: true; font.pixelSize: 13
                             }
                             MouseArea {
@@ -24098,12 +25077,13 @@ Rectangle {
                             }
                         }
                         Rectangle {
-                            width: 240; height: 40; radius: 10
-                            color: root.updateApplying ? "#1c262e" : root.accentColor
+                            width: (parent.width - 20) / 3; height: 46; radius: 12
+                            color: root.updateApplying ? "#2a2a2a" : "#1e1e1e"
+                            border.width: 1; border.color: "#333"
                             Text {
                                 anchors.centerIn: parent
-                                text: root.updateApplying ? "Установка…" : "3. Установить и перезагрузить"
-                                color: root.updateApplying ? "#9aa7b2" : "#06210f"; font.bold: true; font.pixelSize: 13
+                                text: "И перезагрузить"
+                                color: "#e8eef2"; font.bold: true; font.pixelSize: 12
                             }
                             MouseArea {
                                 anchors.fill: parent
@@ -24112,12 +25092,12 @@ Rectangle {
                             }
                         }
                     }
-                    Text { text: "История выпусков"; color: "#e8eef2"; font.pixelSize: 15; font.bold: true }
+                    Text { text: "История выпусков"; color: "#9aa7b2"; font.pixelSize: 13; font.family: root.uiFontBold }
                     Repeater {
                         model: root.updateLog
                         delegate: Rectangle {
-                            width: parent.width; height: 64; radius: 12; color: "#121a20"
-                            border.width: 1; border.color: "#243038"
+                            width: parent.width; height: 58; radius: 12; color: index === 0 ? "#1a2220" : "#1a1a1a"
+                            border.width: index === 0 ? 1 : 0; border.color: root.accentColor
                             Column {
                                 anchors.fill: parent; anchors.margins: 12; spacing: 4
                                 Row {
@@ -24193,743 +25173,891 @@ Rectangle {
         Item {
             id: installer
             property string appTitle: ""
-            readonly property var stepNames: root.installLang === "en"
-                ? ["Language", "Disk", "Account", "Review", "Install", "Done"]
-                : ["Язык", "Диск", "Аккаунт", "Проверка", "Установка", "Готово"]
-            readonly property string stepTitle: {
-                if (root.installStep === 0) return root.installLang === "en" ? "Choose your language" : "Выберите язык"
-                if (root.installStep === 1) return root.installLang === "en" ? "Where should GT/OS live?" : "Куда установить GT/OS?"
-                if (root.installStep === 2) return root.installLang === "en" ? "Create your account" : "Создайте учётную запись"
-                if (root.installStep === 3) return root.installLang === "en" ? "Ready to install" : "Всё готово к установке"
-                if (root.installStep === 4) return root.installLang === "en" ? "Installing GT/OS…" : "Устанавливаем GT/OS…"
-                return root.installLang === "en" ? "Welcome to GT/OS" : "Добро пожаловать в GT/OS"
+            // 0 welcome · 1 lang · 2 license · 3 disk · 4 params · 5 progress · 6 done
+            readonly property bool uiEn: root.installLang !== "ru"
+            readonly property color mint: root.accentColor
+            property real welcomeOpacity: 1
+            property real welcomeSlide: 0
+            property real langOpacity: 0
+            property real langSlide: 36
+            property bool welcomeAlive: true
+            property int progressPhase: 0
+            property real progressPct: 0
+            property bool installOk: false
+            readonly property var topSteps: uiEn
+                ? ["Language", "License", "Disk", "Options", "Install"]
+                : ["Язык", "Лицензия", "Раздел", "Параметры", "Установка"]
+            readonly property int topActive: {
+                if (root.installStep <= 0) return 0
+                if (root.installStep >= 5) return 4
+                return root.installStep - 1
             }
-            readonly property string stepHint: {
-                if (root.installStep === 0) return root.installLang === "en" ? "You can change language later in Settings." : "Язык можно будет сменить позже в Параметрах."
-                if (root.installStep === 1) return root.installLang === "en" ? "The selected disk will be erased completely." : "Выбранный диск будет полностью очищен."
-                if (root.installStep === 2) return root.installLang === "en" ? "This user will be the owner of the system." : "Этот пользователь станет владельцем системы."
-                if (root.installStep === 3) return root.installLang === "en" ? "Double-check the summary before continuing." : "Проверьте сводку перед продолжением."
-                if (root.installStep === 4) return root.installLang === "en" ? "Please keep the PC powered on." : "Не выключайте компьютер."
-                return root.installLang === "en" ? "Remove the install media and reboot." : "Извлеките носитель и перезагрузите ПК."
+            readonly property string licenseText: uiEn
+                ? ("GT/OS SOFTWARE LICENSE TERMS\n"
+                   + "Glukhov Technologies — End User License Agreement (EULA)\n"
+                   + "Last updated: November 2026 · Product: GT/OS " + root.osVersion + "\n\n"
+                   + "IMPORTANT — READ CAREFULLY. By selecting \"I accept\", installing, copying, or otherwise using GT/OS (the \"Software\"), you agree to be bound by these license terms. If you do not agree, do not install or use the Software and exit the installer.\n\n"
+                   + "1. LICENSE GRANT\n"
+                   + "Subject to your compliance with this agreement, Glukhov Technologies (\"Licensor\") grants you a personal, limited, non-exclusive, non-transferable, revocable license to install and use one copy of the Software on devices that you own or control, for personal, educational, evaluation, or internal business use.\n\n"
+                   + "2. INSTALLATION AND USE RIGHTS\n"
+                   + "a. You may install the Software on a single primary device and keep a reasonable number of backup copies solely for reinstallation.\n"
+                   + "b. The installer may erase or reformat the storage device you select. You are solely responsible for backing up your data before continuing.\n"
+                   + "c. Features, system requirements, and included components may change between releases without prior notice.\n\n"
+                   + "3. SCOPE OF LICENSE\n"
+                   + "The Software is licensed, not sold. This agreement only gives you some rights to use the Software. Licensor reserves all other rights. Unless applicable law gives you more rights despite this limitation, you may use the Software only as expressly permitted in this agreement.\n\n"
+                   + "4. RESTRICTIONS\n"
+                   + "You may not: (a) reverse engineer, decompile, or disassemble the Software, except and only to the extent that applicable law expressly permits despite this limitation; (b) rent, lease, lend, sell, sublicense, or host the Software for third parties as a service without prior written consent; (c) remove or alter any proprietary notices; (d) use the Software to violate law or the rights of others; (e) circumvent technical limitations or license checks, if any.\n\n"
+                   + "5. OPEN SOURCE AND THIRD-PARTY COMPONENTS\n"
+                   + "The Software may include components licensed under open-source or third-party terms (including Linux kernel and related libraries). Those components are licensed to you under their own licenses, which prevail for those components. Applications obtained from the GT/OS Store or elsewhere remain under their respective licenses.\n\n"
+                   + "6. UPDATES\n"
+                   + "Licensor may provide updates, patches, or new versions. Updates may modify or remove features. This agreement applies to updates unless accompanied by different terms.\n\n"
+                   + "7. PRIVACY AND TELEMETRY\n"
+                   + "Unless you enable optional network features (for example updates or Store downloads), the Software is designed to operate locally. Any optional online services are subject to their own notices.\n\n"
+                   + "8. DISCLAIMER OF WARRANTIES\n"
+                   + "THE SOFTWARE IS PROVIDED \"AS IS\" AND \"AS AVAILABLE\", WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE, AND NON-INFRINGEMENT. YOU BEAR THE ENTIRE RISK OF USING THE SOFTWARE.\n\n"
+                   + "9. LIMITATION OF LIABILITY\n"
+                   + "TO THE MAXIMUM EXTENT PERMITTED BY LAW, LICENSOR AND ITS SUPPLIERS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, OR ANY LOSS OF DATA, PROFITS, OR BUSINESS INTERRUPTION, ARISING OUT OF OR RELATED TO THE SOFTWARE OR THIS AGREEMENT, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES. LICENSOR'S TOTAL LIABILITY SHALL NOT EXCEED THE AMOUNT YOU PAID FOR THE SOFTWARE (IF ANY), OR USD 0 IF THE SOFTWARE WAS PROVIDED FREE OF CHARGE.\n\n"
+                   + "10. TERMINATION\n"
+                   + "This agreement is effective until terminated. Your rights terminate automatically if you fail to comply with any term. Upon termination you must stop using the Software and destroy all copies in your possession.\n\n"
+                   + "11. GOVERNING LAW\n"
+                   + "This agreement is governed by the laws applicable in the Licensor's principal place of business, without regard to conflict-of-law rules, except where mandatory consumer protection laws of your country require otherwise.\n\n"
+                   + "12. ENTIRE AGREEMENT\n"
+                   + "This agreement is the entire agreement between you and Licensor regarding the Software and supersedes all prior or contemporaneous communications. If any provision is unenforceable, the remainder remains in effect.\n\n"
+                   + "By checking \"I accept the terms of the license agreement\" and continuing, you acknowledge that you have read, understood, and agree to be bound by these terms.\n\n"
+                   + "© Glukhov Technologies. All rights reserved. GT/OS and related marks are trademarks of Glukhov Technologies.")
+                : ("ЛИЦЕНЗИОННОЕ СОГЛАШЕНИЕ НА ПРОГРАММНОЕ ОБЕСПЕЧЕНИЕ GT/OS\n"
+                   + "Glukhov Technologies — лицензионное соглашение с конечным пользователем (EULA)\n"
+                   + "Дата обновления: ноябрь 2026 г. · Продукт: GT/OS " + root.osVersion + "\n\n"
+                   + "ВАЖНО — ВНИМАТЕЛЬНО ПРОЧТИТЕ. Выбирая «Я принимаю», устанавливая, копируя или иным образом используя GT/OS (далее — «Программное обеспечение» / «ПО»), вы соглашаетесь соблюдать условия настоящего соглашения. Если вы не согласны — не устанавливайте и не используйте ПО и прервите установку.\n\n"
+                   + "1. ПРЕДОСТАВЛЕНИЕ ЛИЦЕНЗИИ\n"
+                   + "При условии соблюдения вами настоящего соглашения Glukhov Technologies (далее — «Лицензиар») предоставляет вам личную, ограниченную, неисключительную, непередаваемую, отзывную лицензию на установку и использование одной копии ПО на устройствах, которыми вы владеете или которые контролируете, для личных, образовательных, ознакомительных или внутренних рабочих целей.\n\n"
+                   + "2. ПРАВА НА УСТАНОВКУ И ИСПОЛЬЗОВАНИЕ\n"
+                   + "а. Вы можете установить ПО на одно основное устройство и хранить разумное число резервных копий исключительно для переустановки.\n"
+                   + "б. Установщик может стереть или переразметить выбранный вами накопитель. Вы самостоятельно отвечаете за резервное копирование данных до продолжения установки.\n"
+                   + "в. Функции, системные требования и состав компонентов могут изменяться между выпусками без предварительного уведомления.\n\n"
+                   + "3. ОБЪЁМ ЛИЦЕНЗИИ\n"
+                   + "ПО предоставляется по лицензии, а не продаётся. Настоящее соглашение даёт вам лишь некоторые права на использование ПО. Все остальные права сохраняются за Лицензиаром. Если применимое законодательство не предоставляет вам больше прав вопреки этим ограничениям, вы можете использовать ПО только способами, прямо разрешёнными в настоящем соглашении.\n\n"
+                   + "4. ОГРАНИЧЕНИЯ\n"
+                   + "Вам запрещается: (а) выполнять обратную разработку, декомпиляцию или дизассемблирование ПО, за исключением случаев, когда это прямо разрешено императивными нормами закона; (б) сдавать ПО в аренду, прокат, заём, продавать, сублицензировать или предоставлять как услугу третьим лицам без предварительного письменного согласия; (в) удалять или изменять уведомления о правах; (г) использовать ПО с нарушением закона или прав третьих лиц; (д) обходить технические ограничения или проверки лицензии, если таковые имеются.\n\n"
+                   + "5. ОТКРЫТЫЕ И СТОРОННИЕ КОМПОНЕНТЫ\n"
+                   + "ПО может включать компоненты по открытым или сторонним лицензиям (в том числе ядро Linux и связанные библиотеки). Такие компоненты предоставляются вам на условиях их собственных лицензий, которые имеют приоритет в отношении этих компонентов. Приложения из Магазина GT/OS и из других источников регулируются своими лицензиями.\n\n"
+                   + "6. ОБНОВЛЕНИЯ\n"
+                   + "Лицензиар может предоставлять обновления, исправления или новые версии. Обновления могут изменять или удалять функции. К обновлениям применяется настоящее соглашение, если к ним не прилагаются иные условия.\n\n"
+                   + "7. КОНФИДЕНЦИАЛЬНОСТЬ И ТЕЛЕМЕТРИЯ\n"
+                   + "Если вы не включаете необязательные сетевые функции (например, обновления или загрузки из Магазина), ПО рассчитано на локальную работу. Любые необязательные сетевые службы регулируются отдельными уведомлениями.\n\n"
+                   + "8. ОТКАЗ ОТ ГАРАНТИЙ\n"
+                   + "ПО ПРЕДОСТАВЛЯЕТСЯ «КАК ЕСТЬ» И «КАК ДОСТУПНО», БЕЗ КАКИХ-ЛИБО ГАРАНТИЙ, ЯВНЫХ ИЛИ ПОДРАЗУМЕВАЕМЫХ, ВКЛЮЧАЯ, ПОМИМО ПРОЧЕГО, ГАРАНТИИ ТОВАРНОЙ ПРИГОДНОСТИ, ПРИГОДНОСТИ ДЛЯ ОПРЕДЕЛЁННОЙ ЦЕЛИ, ПРАВА СОБСТВЕННОСТИ И НЕНАРУШЕНИЯ ПРАВ. ВЕСЬ РИСК, СВЯЗАННЫЙ С ИСПОЛЬЗОВАНИЕМ ПО, ЛЕЖИТ НА ВАС.\n\n"
+                   + "9. ОГРАНИЧЕНИЕ ОТВЕТСТВЕННОСТИ\n"
+                   + "В МАКСИМАЛЬНОЙ СТЕПЕНИ, ДОПУСКАЕМОЙ ЗАКОНОМ, ЛИЦЕНЗИАР И ЕГО ПОСТАВЩИКИ НЕ НЕСУТ ОТВЕТСТВЕННОСТИ ЗА КОСВЕННЫЕ, СЛУЧАЙНЫЕ, ОСОБЫЕ, ШТРАФНЫЕ ИЛИ ПОСЛЕДУЮЩИЕ УБЫТКИ, А ТАКЖЕ ЗА УТРАТУ ДАННЫХ, ПРИБЫЛИ ИЛИ ПРЕРЫВАНИЕ ДЕЯТЕЛЬНОСТИ, ВОЗНИКШИЕ В СВЯЗИ С ПО ИЛИ НАСТОЯЩИМ СОГЛАШЕНИЕМ, ДАЖЕ ЕСЛИ ИМ БЫЛО ИЗВЕСТНО О ВОЗМОЖНОСТИ ТАКИХ УБЫТКОВ. СОВОКУПНАЯ ОТВЕТСТВЕННОСТЬ ЛИЦЕНЗИАРА НЕ ПРЕВЫШАЕТ СУММУ, УПЛАЧЕННУЮ ВАМИ ЗА ПО (ЕСЛИ УПЛАЧИВАЛАСЬ), ЛИБО 0 (НОЛЬ), ЕСЛИ ПО ПРЕДОСТАВЛЕНО БЕСПЛАТНО.\n\n"
+                   + "10. ПРЕКРАЩЕНИЕ\n"
+                   + "Соглашение действует до его прекращения. Ваши права автоматически прекращаются при нарушении любого условия. После прекращения вы обязаны прекратить использование ПО и уничтожить все имеющиеся копии.\n\n"
+                   + "11. ПРИМЕНИМОЕ ПРАВО\n"
+                   + "К настоящему соглашению применяется право по месту основной деятельности Лицензиара, без учёта коллизионных норм, за исключением случаев, когда императивные нормы защиты прав потребителей вашей страны требуют иного.\n\n"
+                   + "12. ПОЛНОТА СОГЛАШЕНИЯ\n"
+                   + "Настоящее соглашение составляет полное соглашение между вами и Лицензиаром в отношении ПО и заменяет все предшествующие договорённости. Если какое-либо положение будет признано недействительным, остальные сохраняют силу.\n\n"
+                   + "Отмечая пункт «Я принимаю условия лицензионного соглашения» и продолжая установку, вы подтверждаете, что прочитали, поняли и соглашаетесь соблюдать настоящие условия.\n\n"
+                   + "© Glukhov Technologies. Все права защищены. GT/OS и связанные обозначения являются товарными знаками Glukhov Technologies.")
+
+            function goWelcomeToLang() {
+                if (welcomeToLang.running)
+                    return
+                root.installStep = 1
+                langOpacity = 0
+                langSlide = 36
+                welcomeToLang.restart()
+            }
+            function goLangBackToWelcome() {
+                root.installStep = 0
+                welcomeAlive = true
+                welcomeOpacity = 1
+                welcomeSlide = 0
+                langOpacity = 0
+                langSlide = 36
+            }
+            function startInstallFlow() {
+                if (!root.installDisk.length) {
+                    root.notify(uiEn ? "Installer" : "Установка", uiEn ? "Select a disk first" : "Сначала выберите диск", "info")
+                    return
+                }
+                installOk = false
+                progressPhase = 0
+                progressPct = 0.08
+                root.installBusy = true
+                root.installStep = 5
+                root.installLog = "GT/OS " + root.osVersion + " · установка\n"
+                progressAnim.restart()
             }
 
-            Rectangle {
-                anchors.fill: parent
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#0a1412" }
-                    GradientStop { position: 1.0; color: "#07100e" }
+            ParallelAnimation {
+                id: welcomeToLang
+                NumberAnimation { target: installer; property: "welcomeOpacity"; to: 0; duration: 420; easing.type: Easing.InOutCubic }
+                NumberAnimation { target: installer; property: "welcomeSlide"; to: -48; duration: 480; easing.type: Easing.InOutCubic }
+                NumberAnimation { target: installer; property: "langOpacity"; from: 0; to: 1; duration: 520; easing.type: Easing.OutCubic }
+                NumberAnimation { target: installer; property: "langSlide"; from: 40; to: 0; duration: 520; easing.type: Easing.OutCubic }
+                onStopped: installer.welcomeAlive = false
+            }
+
+            SequentialAnimation {
+                id: progressAnim
+                NumberAnimation { target: installer; property: "progressPct"; to: 0.22; duration: 700; easing.type: Easing.OutCubic }
+                ScriptAction { script: installer.progressPhase = 0 }
+                NumberAnimation { target: installer; property: "progressPct"; to: 0.48; duration: 900; easing.type: Easing.InOutCubic }
+                ScriptAction {
+                    script: {
+                        installer.progressPhase = 1
+                        installer.installOk = root.runInstaller() === true
+                    }
+                }
+                NumberAnimation { target: installer; property: "progressPct"; to: 0.72; duration: 600; easing.type: Easing.OutCubic }
+                ScriptAction { script: installer.progressPhase = 2 }
+                NumberAnimation { target: installer; property: "progressPct"; to: 0.92; duration: 500; easing.type: Easing.OutCubic }
+                ScriptAction { script: installer.progressPhase = 3 }
+                NumberAnimation { target: installer; property: "progressPct"; to: 1; duration: 400; easing.type: Easing.OutCubic }
+                ScriptAction {
+                    script: {
+                        root.installBusy = false
+                        if (installer.installOk || root.installLog.indexOf("GTOS_INSTALL_DONE") >= 0) {
+                            installer.installOk = true
+                            installer.progressPhase = 4
+                            root.installStep = 6
+                        }
+                    }
                 }
             }
 
-            // soft glow
-            Rectangle {
-                width: 420; height: 420; radius: 210
-                x: -120; y: -80
-                color: "#183be182"
-            }
-            Rectangle {
-                width: 320; height: 320; radius: 160
-                anchors.right: parent.right; anchors.bottom: parent.bottom
-                anchors.rightMargin: -80; anchors.bottomMargin: -100
-                color: "#1426a069"
-            }
-
-            Row {
-                anchors.fill: parent
-
-                // —— left rail ——
-                Rectangle {
-                    width: 280
-                    height: parent.height
-                    color: "#0c1814"
-                    Rectangle {
-                        anchors.right: parent.right
-                        width: 1; height: parent.height
-                        color: "#1e3a32"
-                    }
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 28
-                        spacing: 22
-
-                        Row {
-                            spacing: 14
+            component InstallTopBar: Item {
+                property int activeIndex: 0
+                width: parent ? parent.width : 800
+                height: 78
+                Text {
+                    anchors.left: parent.left; anchors.top: parent.top
+                    anchors.leftMargin: 28; anchors.topMargin: 22
+                    text: installer.uiEn ? "GT/OS Installer" : "GT/OS Установщик"
+                    color: "#f4f7f8"; font.pixelSize: 14; font.family: root.uiFont; z: 1
+                }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top; anchors.topMargin: 18
+                    spacing: 0
+                    Repeater {
+                        model: installer.topSteps
+                        delegate: Item {
+                            width: 108; height: 58
+                            readonly property bool active: index === activeIndex
+                            readonly property bool done: index < activeIndex
                             Rectangle {
-                                width: 52; height: 52; radius: 16
-                                color: "#121a18"
-                                border.width: 1
-                                border.color: "#3be18255"
-                                CloverMark {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 28; height: 28; radius: 14
+                                color: active ? installer.mint : (done ? "#16352e" : "#1c2420")
+                                border.width: (active || done) ? 0 : 1
+                                border.color: "#2a3a34"
+                                Text {
                                     anchors.centerIn: parent
-                                    width: 34; height: 34
-                                    ink: root.accentColor
+                                    text: done ? "✓" : String(index + 1)
+                                    color: (active || done) ? "#06210f" : "#8b98a3"
+                                    font.pixelSize: done ? 12 : 13; font.bold: true; font.family: root.uiFont
                                 }
                             }
-                            Column {
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                anchors.bottom: parent.bottom
+                                text: modelData
+                                color: active ? installer.mint : "#8b98a3"
+                                font.pixelSize: 12; font.family: root.uiFont
+                            }
+                            Rectangle {
+                                visible: index < installer.topSteps.length - 1
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 2
-                                Text {
-                                    text: "GT/OS"
-                                    color: "#f4f7f8"
-                                    font.pixelSize: 20
-                                    font.bold: true
-                                    font.family: root.displayFont
-                                }
-                                Text {
-                                    text: (root.installLang === "en" ? "Installer · v" : "Установщик · v") + root.osVersion
-                                    color: "#7a8a98"
-                                    font.pixelSize: 12
-                                    font.family: root.uiFont
-                                }
+                                anchors.verticalCenterOffset: -12
+                                anchors.left: parent.horizontalCenter
+                                anchors.leftMargin: 18
+                                width: 72; height: 2
+                                color: done ? "#3be18266" : "#2a3a34"
                             }
                         }
+                    }
+                }
+            }
 
+            component NavBack: Rectangle {
+                property string label: installer.uiEn ? "← Back" : "← Назад"
+                signal activated()
+                width: backLab.implicitWidth + 40; height: 42; radius: 21
+                color: backH.containsMouse ? "#1e2a28" : "#15201c"
+                border.width: 1; border.color: "#2a3a34"
+                Text {
+                    id: backLab; anchors.centerIn: parent; text: parent.label
+                    color: "#e8eef2"; font.pixelSize: 13; font.family: root.uiFont
+                }
+                MouseArea {
+                    id: backH; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: parent.activated()
+                }
+            }
+
+            component NavNext: Rectangle {
+                property string label: installer.uiEn ? "Next →" : "Далее →"
+                property bool enabledBtn: true
+                signal activated()
+                width: nextLab.implicitWidth + 48; height: 46; radius: 23
+                color: !enabledBtn ? "#1e2a26" : (nextH.containsMouse ? "#4af098" : installer.mint)
+                Text {
+                    id: nextLab; anchors.centerIn: parent; text: parent.label
+                    color: parent.enabledBtn ? "#06210f" : "#556270"
+                    font.pixelSize: 15; font.bold: true; font.family: root.uiFont
+                }
+                MouseArea {
+                    id: nextH; anchors.fill: parent; hoverEnabled: true
+                    enabled: parent.enabledBtn
+                    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
+                    onClicked: parent.activated()
+                }
+            }
+
+            // —— 0 welcome ——
+            Item {
+                anchors.fill: parent
+                visible: installer.welcomeAlive || installer.welcomeOpacity > 0.01
+                opacity: installer.welcomeOpacity
+                z: 6
+                transform: Translate { x: installer.welcomeSlide }
+                Image {
+                    id: welcomeBg
+                    anchors.fill: parent
+                    source: "file:///usr/share/gtos/install-welcome.jpg"
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true; cache: true
+                }
+                Image {
+                    anchors.fill: parent
+                    visible: welcomeBg.status !== Image.Ready
+                    source: "file:///usr/share/gtos/lock-wallpaper.jpg"
+                    fillMode: Image.PreserveAspectCrop
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#66000000" }
+                        GradientStop { position: 0.45; color: "#22000000" }
+                        GradientStop { position: 1.0; color: "#99000000" }
+                    }
+                }
+                Text {
+                    anchors.left: parent.left; anchors.top: parent.top; anchors.margins: 28
+                    text: installer.uiEn ? "GT/OS Installer" : "GT/OS Установщик"
+                    color: "#e8eef2"; font.pixelSize: 15; font.family: root.uiFont; opacity: 0.92
+                }
+                Text {
+                    anchors.right: parent.right; anchors.top: parent.top; anchors.margins: 28
+                    text: "v" + root.osVersion
+                    color: "#c5d0d8"; font.pixelSize: 14; font.family: root.uiFont; opacity: 0.85
+                }
+                Column {
+                    anchors.centerIn: parent; spacing: 18; width: parent.width
+                    CloverMark { anchors.horizontalCenter: parent.horizontalCenter; width: 96; height: 96; ink: installer.mint }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: "GT/OS"; color: "#ffffff"; font.pixelSize: 56; font.bold: true
+                        font.family: root.displayFont; font.letterSpacing: 2
+                    }
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        text: installer.uiEn ? "More than just a system." : "Больше, чем просто система."
+                        color: "#f4f7f8"; font.pixelSize: 20; font.family: root.uiFont
+                    }
+                    Item { width: 1; height: 8 }
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: startLab.implicitWidth + 56; height: 48; radius: 24
+                        color: startH.containsMouse ? "#1a3be182" : "transparent"
+                        border.width: 1.5; border.color: installer.mint
                         Text {
-                            width: parent.width
-                            text: root.installLang === "en"
-                                  ? "A calm setup for your new system."
-                                  : "Спокойная установка вашей новой системы."
-                            color: "#9aa7b2"
-                            font.pixelSize: 13
-                            wrapMode: Text.Wrap
-                            font.family: root.uiFont
+                            id: startLab; anchors.centerIn: parent
+                            text: installer.uiEn ? "Start installation →" : "Начать установку →"
+                            color: "#ffffff"; font.pixelSize: 16; font.family: root.uiFont
                         }
+                        MouseArea {
+                            id: startH; anchors.fill: parent; hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: installer.goWelcomeToLang()
+                        }
+                    }
+                }
+                Row {
+                    anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 28; spacing: 10
+                    Rectangle {
+                        width: 28; height: 28; radius: 8; color: "#121a18"
+                        border.width: 1; border.color: "#3be18266"
+                        Text { anchors.centerIn: parent; text: "GT"; color: installer.mint; font.pixelSize: 11; font.bold: true; font.family: root.uiFont }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Glukhov Technologies"; color: "#c5d0d8"; font.pixelSize: 13; font.family: root.uiFont
+                    }
+                }
+                Text {
+                    anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 28
+                    text: installer.uiEn ? "Freedom. Control. You." : "Свобода. Контроль. Ты."
+                    color: "#c5d0d8"; font.pixelSize: 13; font.family: root.uiFont
+                }
+            }
 
-                        Item { width: 1; height: 8 }
+            // —— pages 1–6 shared dark base ——
+            Rectangle {
+                anchors.fill: parent
+                visible: root.installStep >= 1
+                color: "#0a0e0c"
+                z: 1
+            }
+            Image {
+                anchors.fill: parent
+                visible: root.installStep === 1 || root.installStep === 5 || root.installStep === 6
+                source: root.installStep === 1 ? "file:///usr/share/gtos/install-lang.jpg" : "file:///usr/share/gtos/install-welcome.jpg"
+                fillMode: Image.PreserveAspectCrop
+                opacity: root.installStep === 1 ? 0.38 : 0.28
+                z: 1
+                asynchronous: true; cache: true
+            }
+            Rectangle {
+                anchors.fill: parent
+                visible: root.installStep >= 1
+                z: 1
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#aa060807" }
+                    GradientStop { position: 0.5; color: "#66060807" }
+                    GradientStop { position: 1.0; color: "#cc060807" }
+                }
+            }
 
-                        Repeater {
-                            model: installer.stepNames
-                            delegate: Item {
-                                width: parent.width
-                                height: 44
-                                Row {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    spacing: 12
+            // —— 1 language ——
+            Item {
+                anchors.fill: parent
+                visible: root.installStep === 1
+                opacity: installer.welcomeAlive ? installer.langOpacity : 1
+                z: 2
+                transform: Translate { y: installer.welcomeAlive ? installer.langSlide : 0 }
+                InstallTopBar { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; activeIndex: 0 }
+                Column {
+                    anchors.left: parent.left; anchors.leftMargin: 56
+                    anchors.verticalCenter: parent.verticalCenter; anchors.verticalCenterOffset: 12
+                    spacing: 18; width: Math.min(440, parent.width * 0.44)
+                    Text {
+                        text: installer.uiEn ? "Choose language" : "Выберите язык"
+                        color: "#ffffff"; font.pixelSize: 32; font.bold: true; font.family: root.displayFont
+                    }
+                    Rectangle {
+                        width: parent.width; height: langCol.height + 8; radius: 16
+                        color: "#cc121a18"; border.width: 1; border.color: "#3be18244"
+                        Column {
+                            id: langCol; width: parent.width; anchors.top: parent.top; anchors.topMargin: 4
+                            Repeater {
+                                model: [
+                                    { id: "ru", title: "Русский", flag: "flag-ru.png" },
+                                    { id: "en", title: "English", flag: "flag-en.png" },
+                                    { id: "de", title: "Deutsch", flag: "flag-de.png" },
+                                    { id: "es", title: "Español", flag: "flag-es.png" },
+                                    { id: "fr", title: "Français", flag: "flag-fr.png" }
+                                ]
+                                delegate: Item {
+                                    width: langCol.width; height: 52
+                                    readonly property bool selected: root.installLang === modelData.id
                                     Rectangle {
-                                        width: 28; height: 28; radius: 14
-                                        color: root.installStep === index ? root.accentColor
-                                             : (root.installStep > index ? "#16352e" : "#15201c")
-                                        border.width: root.installStep === index ? 0 : 1
-                                        border.color: root.installStep > index ? root.accentColor : "#2a3a34"
-                                        Behavior on color { ColorAnimation { duration: 180 } }
+                                        anchors.fill: parent; anchors.margins: 4; radius: 12
+                                        color: selected ? "#333be182" : (langH.containsMouse ? "#1a3be182" : "transparent")
+                                        border.width: selected ? 1 : 0; border.color: installer.mint
+                                    }
+                                    Row {
+                                        anchors.fill: parent; anchors.leftMargin: 16; anchors.rightMargin: 16; spacing: 14
+                                        Image {
+                                            anchors.verticalCenter: parent.verticalCenter; width: 28; height: 28
+                                            source: "file:///usr/share/gtos/install/" + modelData.flag
+                                            fillMode: Image.PreserveAspectFit; asynchronous: true
+                                        }
                                         Text {
-                                            anchors.centerIn: parent
-                                            text: root.installStep > index ? "ok" : String(index + 1)
-                                            color: root.installStep === index ? "#06210f"
-                                                 : (root.installStep > index ? root.accentColor : "#8b98a3")
-                                            font.pixelSize: root.installStep > index ? 10 : 12
-                                            font.bold: true
-                                            font.family: root.uiFont
+                                            anchors.verticalCenter: parent.verticalCenter; width: parent.width - 70
+                                            text: modelData.title; color: "#ffffff"; font.pixelSize: 16; font.family: root.uiFont
+                                        }
+                                        Text {
+                                            anchors.verticalCenter: parent.verticalCenter; visible: selected
+                                            text: "›"; color: installer.mint; font.pixelSize: 22
                                         }
                                     }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: modelData
-                                        color: root.installStep === index ? "#ffffff"
-                                             : (root.installStep > index ? "#c5d0d8" : "#6b7785")
-                                        font.pixelSize: 14
-                                        font.bold: root.installStep === index
-                                        font.family: root.uiFont
+                                    Rectangle {
+                                        visible: index < 4
+                                        anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+                                        anchors.leftMargin: 14; anchors.rightMargin: 14; height: 1; color: "#1e3a32"
+                                    }
+                                    MouseArea {
+                                        id: langH; anchors.fill: parent; hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.installLang = modelData.id
                                     }
                                 }
-                                // connector line
-                                Rectangle {
-                                    visible: index < installer.stepNames.length - 1
-                                    x: 13; y: 36
-                                    width: 2; height: 12
-                                    color: root.installStep > index ? "#3be18266" : "#1e2a26"
-                                }
                             }
-                        }
-
-                        Item { width: 1; height: parent.height - 460 }
-                        Text {
-                            width: parent.width
-                            text: root.installLang === "en"
-                                  ? "Your files stay private. Setup runs locally."
-                                  : "Файлы остаются у вас. Установка идёт локально."
-                            color: "#556270"
-                            font.pixelSize: 11
-                            wrapMode: Text.Wrap
-                            font.family: root.uiFont
                         }
                     }
                 }
+                NavBack { anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 28; onActivated: installer.goLangBackToWelcome() }
+                NavNext { anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 28; onActivated: root.installStep = 2 }
+                Text {
+                    anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.leftMargin: 28; anchors.bottomMargin: 78
+                    text: "GT/OS " + root.osVersion; color: "#8b98a3"; font.pixelSize: 12; font.family: root.uiFont
+                }
+            }
 
-                // —— main ——
-                Item {
-                    width: parent.width - 280
-                    height: parent.height
+            // —— 2 license ——
+            Item {
+                anchors.fill: parent; visible: root.installStep === 2; z: 2
+                InstallTopBar { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; activeIndex: 1 }
+                Column {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top; anchors.topMargin: 100
+                    width: Math.min(720, parent.width - 80); spacing: 16
+                    Text {
+                        text: installer.uiEn ? "License agreement" : "Лицензионное соглашение"
+                        color: "#ffffff"; font.pixelSize: 28; font.bold: true; font.family: root.displayFont
+                    }
+                    Rectangle {
+                        id: licBox
+                        width: parent.width
+                        height: Math.min(340, Math.max(200, installer.height - 280))
+                        radius: 16
+                        color: "#121a18"
+                        border.width: 1
+                        border.color: "#2a3a34"
+                        clip: true
 
-                    Column {
-                        anchors.fill: parent
-                        anchors.margins: 36
-                        spacing: 18
-
-                        Column {
-                            spacing: 8
-                            width: parent.width
+                        Flickable {
+                            id: licFlick
+                            anchors.fill: parent
+                            anchors.margins: 14
+                            anchors.rightMargin: 22
+                            clip: true
+                            interactive: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            flickableDirection: Flickable.VerticalFlick
+                            contentWidth: width
+                            contentHeight: Math.max(height, licBody.paintedHeight + 8)
                             Text {
-                                text: installer.stepTitle
-                                color: "#f4f7f8"
-                                font.pixelSize: 28
-                                font.bold: true
-                                font.family: root.displayFont
-                            }
-                            Text {
-                                width: parent.width
-                                text: installer.stepHint
-                                color: "#8b98a3"
-                                font.pixelSize: 14
-                                wrapMode: Text.Wrap
+                                id: licBody
+                                width: licFlick.width
+                                text: installer.licenseText
+                                color: "#c5d0d8"
+                                font.pixelSize: 12
                                 font.family: root.uiFont
+                                wrapMode: Text.Wrap
+                                lineHeight: 1.25
                             }
+                            onContentHeightChanged: if (contentY > Math.max(0, contentHeight - height))
+                                contentY = Math.max(0, contentHeight - height)
                         }
 
-                        // progress line
+                        // рабочий скроллбар с перетаскиванием
                         Item {
-                            width: parent.width
-                            height: 4
+                            id: licScroll
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            anchors.rightMargin: 6
+                            anchors.topMargin: 10
+                            anchors.bottomMargin: 10
+                            width: 8
+                            visible: licFlick.contentHeight > licFlick.height + 2
+                            readonly property real trackH: height
+                            readonly property real thumbH: Math.max(28, trackH * (licFlick.height / Math.max(1, licFlick.contentHeight)))
+                            readonly property real maxY: Math.max(0, trackH - thumbH)
+                            readonly property real maxContent: Math.max(1, licFlick.contentHeight - licFlick.height)
+                            function setFromThumb(ty) {
+                                var yy = Math.max(0, Math.min(maxY, ty))
+                                licFlick.contentY = maxY > 0 ? (yy / maxY) * maxContent : 0
+                            }
                             Rectangle {
                                 anchors.fill: parent
-                                radius: 2
+                                radius: 4
                                 color: "#1a2420"
                             }
                             Rectangle {
-                                height: parent.height
-                                radius: 2
-                                width: parent.width * ((root.installStep + 1) / 6)
-                                gradient: Gradient {
-                                    GradientStop { position: 0.0; color: "#1a9e5a" }
-                                    GradientStop { position: 1.0; color: "#3be182" }
-                                }
-                                Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
-                            }
-                        }
-
-                        // —— step bodies ——
-                        Item {
-                            width: parent.width
-                            height: parent.height - 180
-
-                            // 0 language
-                            Column {
-                                visible: root.installStep === 0
-                                anchors.fill: parent
-                                spacing: 14
-                                Row {
-                                    spacing: 14
-                                    Repeater {
-                                        model: [
-                                            { id: "ru", title: "Русский", sub: "Интерфейс на русском" },
-                                            { id: "en", title: "English", sub: "English interface" }
-                                        ]
-                                        delegate: Rectangle {
-                                            width: 220; height: 110; radius: 16
-                                            color: root.installLang === modelData.id ? "#16352e" : "#121a18"
-                                            border.width: 1
-                                            border.color: root.installLang === modelData.id ? root.accentColor : "#2a3a34"
-                                            scale: langH.containsMouse ? 1.03 : 1
-                                            Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
-                                            Behavior on color { ColorAnimation { duration: 140 } }
-                                            Column {
-                                                anchors.centerIn: parent
-                                                spacing: 6
-                                                Text {
-                                                    anchors.horizontalCenter: parent.horizontalCenter
-                                                    text: modelData.title
-                                                    color: "#ffffff"
-                                                    font.pixelSize: 18
-                                                    font.bold: true
-                                                    font.family: root.uiFont
-                                                }
-                                                Text {
-                                                    anchors.horizontalCenter: parent.horizontalCenter
-                                                    text: modelData.sub
-                                                    color: "#9aa7b2"
-                                                    font.pixelSize: 12
-                                                    font.family: root.uiFont
-                                                }
-                                            }
-                                            Rectangle {
-                                                visible: root.installLang === modelData.id
-                                                anchors.right: parent.right
-                                                anchors.top: parent.top
-                                                anchors.margins: 12
-                                                width: 22; height: 22; radius: 11
-                                                color: root.accentColor
-                                                Rectangle {
-                                                    anchors.centerIn: parent
-                                                    width: 10; height: 10; radius: 5
-                                                    color: "#06210f"
-                                                }
-                                            }
-                                            MouseArea {
-                                                id: langH; anchors.fill: parent; hoverEnabled: true
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.installLang = modelData.id
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 1 disk
-                            Column {
-                                visible: root.installStep === 1
-                                anchors.fill: parent
-                                spacing: 12
-                                Text {
-                                    text: root.installLang === "en" ? "Boot mode" : "Режим загрузки"
-                                    color: "#8b98a3"; font.pixelSize: 12; font.family: root.uiFont
-                                }
-                                Row {
-                                    spacing: 8
-                                    Repeater {
-                                        model: [
-                                            { id: "auto", ru: "Авто", en: "Auto" },
-                                            { id: "uefi", ru: "UEFI/GPT", en: "UEFI/GPT" },
-                                            { id: "bios", ru: "BIOS/MBR", en: "BIOS/MBR" },
-                                            { id: "both", ru: "Оба", en: "Both" }
-                                        ]
-                                        delegate: Rectangle {
-                                            width: 88; height: 32; radius: 8
-                                            color: root.installBootMode === modelData.id ? "#16352e" : "#15201c"
-                                            border.width: 1
-                                            border.color: root.installBootMode === modelData.id ? root.accentColor : "#2a3a34"
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: root.installLang === "en" ? modelData.en : modelData.ru
-                                                color: "#e8eef2"; font.pixelSize: 11; font.family: root.uiFont
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.installBootMode = modelData.id
-                                            }
-                                        }
-                                    }
-                                }
-                                Row {
-                                    spacing: 10
-                                    Rectangle {
-                                        width: 150; height: 34; radius: 10
-                                        color: refH.containsMouse ? "#1e2a28" : "#15201c"
-                                        border.width: 1; border.color: "#2a3a34"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: root.installLang === "en" ? "Refresh disks" : "Обновить список"
-                                            color: root.accentColor; font.pixelSize: 12; font.family: root.uiFont
-                                        }
-                                        MouseArea {
-                                            id: refH; anchors.fill: parent; hoverEnabled: true
-                                            onClicked: root.refreshInstallDisks()
-                                        }
-                                    }
-                                }
-                                Flickable {
-                                    width: parent.width
-                                    height: parent.height - 60
-                                    clip: true
-                                    contentHeight: diskCol.height
-                                    Column {
-                                        id: diskCol
-                                        width: parent.width
-                                        spacing: 10
-                                        Repeater {
-                                            model: root.installDisks
-                                            delegate: Rectangle {
-                                                width: diskCol.width
-                                                height: 72
-                                                radius: 14
-                                                color: root.installDisk === modelData.id ? "#16352e" : "#121a18"
-                                                border.width: 1
-                                                border.color: root.installDisk === modelData.id ? root.accentColor : "#2a3a34"
-                                                Behavior on color { ColorAnimation { duration: 140 } }
-                                                Row {
-                                                    anchors.fill: parent
-                                                    anchors.margins: 14
-                                                    spacing: 14
-                                                    DeskIconArt {
-                                                        width: 40; height: 40
-                                                        kind: "drive"
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                    }
-                                                    Column {
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        spacing: 4
-                                                        width: parent.width - 120
-                                                        Text {
-                                                            text: modelData.label
-                                                            color: "#f4f7f8"
-                                                            font.pixelSize: 15
-                                                            font.bold: true
-                                                            font.family: root.uiFont
-                                                            elide: Text.ElideRight
-                                                            width: parent.width
-                                                        }
-                                                        Text {
-                                                            text: "/dev/" + modelData.id
-                                                            color: "#8b98a3"
-                                                            font.pixelSize: 12
-                                                            font.family: root.monoFont
-                                                        }
-                                                    }
-                                                    Rectangle {
-                                                        visible: root.installDisk === modelData.id
-                                                        anchors.verticalCenter: parent.verticalCenter
-                                                        width: 26; height: 26; radius: 13
-                                                        color: root.accentColor
-                                                        Rectangle {
-                                                            anchors.centerIn: parent
-                                                            width: 12; height: 12; radius: 6
-                                                            color: "#06210f"
-                                                        }
-                                                    }
-                                                }
-                                                MouseArea {
-                                                    anchors.fill: parent
-                                                    cursorShape: Qt.PointingHandCursor
-                                                    onClicked: root.installDisk = modelData.id
-                                                }
-                                            }
-                                        }
-                                        Text {
-                                            visible: root.installDisks.length === 0
-                                            width: parent.width
-                                            wrapMode: Text.Wrap
-                                            color: "#f87171"
-                                            font.pixelSize: 13
-                                            font.family: root.uiFont
-                                            text: root.installLang === "en"
-                                                  ? "No disks found. Attach a target disk and refresh."
-                                                  : "Диски не найдены. Подключите целевой диск и обновите список."
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 2 user
-                            Column {
-                                visible: root.installStep === 2
-                                anchors.fill: parent
-                                spacing: 16
+                                id: licThumb
                                 width: parent.width
-                                Column {
-                                    spacing: 8
-                                    Text {
-                                        text: root.installLang === "en" ? "Full name" : "Полное имя"
-                                        color: "#c5d0d8"; font.pixelSize: 13; font.family: root.uiFont
-                                    }
-                                    Rectangle {
-                                        width: Math.min(420, parent.parent.width)
-                                        height: 46; radius: 12
-                                        color: "#121a18"
-                                        border.width: 1
-                                        border.color: nameIn.activeFocus ? root.accentColor : "#2a3a34"
-                                        TextInput {
-                                            id: nameIn
-                                            anchors.fill: parent; anchors.margins: 12
-                                            color: "#f4f7f8"; font.pixelSize: 15; font.family: root.uiFont
-                                            text: root.installFullName
-                                            selectByMouse: true
-                                            onTextChanged: root.installFullName = text
-                                        }
-                                    }
+                                height: licScroll.thumbH
+                                radius: 4
+                                color: licThumbMa.pressed || licThumbMa.containsMouse ? "#4af098" : installer.mint
+                                y: {
+                                    if (licScroll.maxY <= 0)
+                                        return 0
+                                    return Math.max(0, Math.min(licScroll.maxY,
+                                        (licFlick.contentY / licScroll.maxContent) * licScroll.maxY))
                                 }
-                                Column {
-                                    spacing: 8
-                                    Text {
-                                        text: root.installLang === "en" ? "Username" : "Логин"
-                                        color: "#c5d0d8"; font.pixelSize: 13; font.family: root.uiFont
+                                MouseArea {
+                                    id: licThumbMa
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    preventStealing: true
+                                    cursorShape: Qt.PointingHandCursor
+                                    property real grabY: 0
+                                    property real startThumb: 0
+                                    onPressed: function (m) {
+                                        grabY = m.y
+                                        startThumb = licThumb.y
                                     }
-                                    Rectangle {
-                                        width: Math.min(420, parent.parent.width)
-                                        height: 46; radius: 12
-                                        color: "#121a18"
-                                        border.width: 1
-                                        border.color: userIn.activeFocus ? root.accentColor : "#2a3a34"
-                                        TextInput {
-                                            id: userIn
-                                            anchors.fill: parent; anchors.margins: 12
-                                            color: "#f4f7f8"; font.pixelSize: 15; font.family: root.uiFont
-                                            text: root.installUser
-                                            selectByMouse: true
-                                            onTextChanged: root.installUser = text.toLowerCase().replace(/[^a-z0-9_]/g, "")
-                                        }
-                                    }
-                                    Text {
-                                        text: root.installLang === "en"
-                                              ? "Letters, numbers and underscore only."
-                                              : "Только латиница, цифры и подчёркивание."
-                                        color: "#6b7785"; font.pixelSize: 11; font.family: root.uiFont
+                                    onPositionChanged: function (m) {
+                                        if (!pressed)
+                                            return
+                                        licScroll.setFromThumb(startThumb + (m.y - grabY))
                                     }
                                 }
                             }
-
-                            // 3 confirm
-                            Column {
-                                visible: root.installStep === 3
+                            MouseArea {
                                 anchors.fill: parent
-                                spacing: 14
-                                width: parent.width
-                                Rectangle {
-                                    width: parent.width
-                                    height: summaryCol.height + 28
-                                    radius: 16
-                                    color: "#121a18"
-                                    border.width: 1
-                                    border.color: "#2a3a34"
-                                    Column {
-                                        id: summaryCol
-                                        anchors.left: parent.left; anchors.right: parent.right
-                                        anchors.top: parent.top; anchors.margins: 16
-                                        spacing: 12
-                                        Repeater {
-                                            model: [
-                                                { k: root.installLang === "en" ? "Version" : "Версия", v: "GT/OS " + root.osVersion },
-                                                { k: root.installLang === "en" ? "Disk" : "Диск", v: "/dev/" + (root.installDisk || "—") },
-                                                { k: root.installLang === "en" ? "User" : "Пользователь", v: root.installFullName + " (" + root.installUser + ")" },
-                                                { k: root.installLang === "en" ? "Boot" : "Загрузка", v: root.installBootMode === "auto" ? ("auto → " + root.detectBootMode()) : root.installBootMode },
-                                                { k: root.installLang === "en" ? "Language" : "Язык", v: root.installLang === "en" ? "English" : "Русский" }
-                                            ]
-                                            delegate: Row {
-                                                width: summaryCol.width
-                                                spacing: 12
-                                                Text {
-                                                    width: 120
-                                                    text: modelData.k
-                                                    color: "#8b98a3"
-                                                    font.pixelSize: 13
-                                                    font.family: root.uiFont
-                                                }
-                                                Text {
-                                                    text: modelData.v
-                                                    color: "#e8eef2"
-                                                    font.pixelSize: 13
-                                                    font.bold: true
-                                                    font.family: root.uiFont
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                                Rectangle {
-                                    width: parent.width
-                                    height: warnRow.height + 24
-                                    radius: 14
-                                    color: "#2a1515"
-                                    border.width: 1
-                                    border.color: "#7f1d1d"
-                                    Row {
-                                        id: warnRow
-                                        anchors.left: parent.left; anchors.right: parent.right
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        anchors.margins: 14
-                                        spacing: 12
-                                        Text {
-                                            text: "!"
-                                            color: "#fecaca"
-                                            font.pixelSize: 20
-                                            font.bold: true
-                                            anchors.verticalCenter: parent.verticalCenter
-                                        }
-                                        Text {
-                                            width: parent.width - 40
-                                            wrapMode: Text.Wrap
-                                            color: "#fecaca"
-                                            font.pixelSize: 13
-                                            font.family: root.uiFont
-                                            text: root.installLang === "en"
-                                                  ? "All data on the selected disk will be permanently erased."
-                                                  : "Все данные на выбранном диске будут безвозвратно удалены."
-                                        }
-                                    }
-                                }
-                            }
-
-                            // 4–5 install / done
-                            Column {
-                                visible: root.installStep >= 4
-                                anchors.fill: parent
-                                spacing: 16
-                                width: parent.width
-
-                                Item {
-                                    width: 72; height: 72
-                                    anchors.horizontalCenter: parent.horizontalCenter
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        radius: 20
-                                        color: root.installStep === 5 ? "#16352e" : "#121a18"
-                                        border.width: 1
-                                        border.color: root.accentColor
-                                        CloverMark {
-                                            anchors.centerIn: parent
-                                            width: 44; height: 44
-                                            ink: root.accentColor
-                                        }
-                                    }
-                                    RotationAnimation on rotation {
-                                        running: root.installStep === 4 && root.installBusy
-                                        from: 0; to: 360; loops: Animation.Infinite; duration: 2200
-                                    }
-                                }
-
-                                Item {
-                                    width: parent.width
-                                    height: 8
-                                    visible: root.installStep === 4
-                                    Rectangle { anchors.fill: parent; radius: 4; color: "#1a2420" }
-                                    Rectangle {
-                                        id: installBar
-                                        height: parent.height
-                                        radius: 4
-                                        width: root.installBusy ? parent.width * 0.72 : (root.installStep === 5 ? parent.width : parent.width * 0.18)
-                                        gradient: Gradient {
-                                            GradientStop { position: 0.0; color: "#1a9e5a" }
-                                            GradientStop { position: 1.0; color: "#3be182" }
-                                        }
-                                        Behavior on width { NumberAnimation { duration: 900; easing.type: Easing.InOutCubic } }
-                                    }
-                                }
-
-                                Rectangle {
-                                    width: parent.width
-                                    height: Math.min(220, parent.height - 120)
-                                    radius: 14
-                                    color: "#0a1010"
-                                    border.width: 1
-                                    border.color: "#1e2a26"
-                                    Flickable {
-                                        id: logFlick
-                                        anchors.fill: parent
-                                        anchors.margins: 12
-                                        contentHeight: logT.paintedHeight
-                                        clip: true
-                                        Text {
-                                            id: logT
-                                            width: parent.width
-                                            text: root.installLog.length ? root.installLog
-                                                  : (root.installLang === "en" ? "Waiting for installer…" : "Ожидание установщика…")
-                                            color: "#a7f3d0"
-                                            font.family: root.monoFont
-                                            font.pixelSize: 12
-                                            wrapMode: Text.Wrap
-                                        }
-                                        onContentHeightChanged: contentY = Math.max(0, contentHeight - height)
-                                    }
-                                }
-
-                                Text {
-                                    visible: root.installStep === 5
-                                    width: parent.width
-                                    horizontalAlignment: Text.AlignHCenter
-                                    wrapMode: Text.Wrap
-                                    color: root.accentColor
-                                    font.pixelSize: 14
-                                    font.family: root.uiFont
-                                    text: root.installLang === "en"
-                                          ? "Installation finished. Remove the USB stick and reboot from the hard disk."
-                                          : "Установка завершена. Извлеките флешку и загрузитесь с жёсткого диска."
-                                }
-                            }
-                        }
-
-                        // —— footer buttons ——
-                        Item {
-                            width: parent.width
-                            height: 48
-                            Row {
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 10
-
-                                Rectangle {
-                                    visible: root.installStep > 0 && root.installStep < 4
-                                    width: 120; height: 42; radius: 12
-                                    color: backH.containsMouse ? "#1e2a28" : "#15201c"
-                                    border.width: 1; border.color: "#2a3a34"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: root.installLang === "en" ? "Back" : "Назад"
-                                        color: "#e8eef2"; font.pixelSize: 14; font.family: root.uiFont
-                                    }
-                                    MouseArea {
-                                        id: backH; anchors.fill: parent; hoverEnabled: true
-                                        onClicked: root.installStep = Math.max(0, root.installStep - 1)
-                                    }
-                                }
-
-                                Rectangle {
-                                    visible: root.installStep < 3
-                                    width: 150; height: 42; radius: 12
-                                    color: nextH.containsMouse ? "#4af098" : root.accentColor
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: root.installLang === "en" ? "Continue" : "Продолжить"
-                                        color: "#06210f"; font.pixelSize: 14; font.bold: true; font.family: root.uiFont
-                                    }
-                                    MouseArea {
-                                        id: nextH; anchors.fill: parent; hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            if (root.installStep === 1)
-                                                root.refreshInstallDisks()
-                                            if (root.installStep === 1 && !root.installDisk.length) {
-                                                root.notify(root.installLang === "en" ? "Installer" : "Установка",
-                                                            root.installLang === "en" ? "Select a disk first" : "Сначала выберите диск", "info")
-                                                return
-                                            }
-                                            if (root.installStep === 2 && (!root.installUser.length || !root.installFullName.length)) {
-                                                root.notify(root.installLang === "en" ? "Installer" : "Установка",
-                                                            root.installLang === "en" ? "Fill in name and username" : "Заполните имя и логин", "info")
-                                                return
-                                            }
-                                            root.installStep = Math.min(3, root.installStep + 1)
-                                        }
-                                    }
-                                }
-
-                                Rectangle {
-                                    visible: root.installStep === 3 && !root.installBusy
-                                    width: 190; height: 42; radius: 12
-                                    color: goH.containsMouse ? "#ef4444" : "#dc2626"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: root.installLang === "en" ? "Erase & install" : "Стереть и установить"
-                                        color: "#ffffff"; font.pixelSize: 14; font.bold: true; font.family: root.uiFont
-                                    }
-                                    MouseArea {
-                                        id: goH; anchors.fill: parent; hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: { root.installStep = 4; root.runInstaller() }
-                                    }
-                                }
-
-                                Rectangle {
-                                    visible: root.installStep === 5
-                                    width: 170; height: 42; radius: 12
-                                    color: rebH.containsMouse ? "#4af098" : root.accentColor
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: root.installLang === "en" ? "Reboot" : "Перезагрузка"
-                                        color: "#06210f"; font.pixelSize: 14; font.bold: true; font.family: root.uiFont
-                                    }
-                                    MouseArea {
-                                        id: rebH; anchors.fill: parent; hoverEnabled: true
-                                        onClicked: root.powerAction("reboot")
-                                    }
+                                z: -1
+                                onClicked: function (m) {
+                                    licScroll.setFromThumb(m.y - licScroll.thumbH / 2)
                                 }
                             }
                         }
                     }
+                    Row {
+                        spacing: 12
+                        Rectangle {
+                            width: 22; height: 22; radius: 6
+                            color: root.installLicenseOk ? installer.mint : "#15201c"
+                            border.width: root.installLicenseOk ? 0 : 1; border.color: "#2a3a34"
+                            Text { anchors.centerIn: parent; visible: root.installLicenseOk; text: "✓"; color: "#06210f"; font.pixelSize: 13; font.bold: true }
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.installLicenseOk = !root.installLicenseOk }
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: installer.uiEn ? "I accept the terms of the license agreement" : "Я принимаю условия лицензионного соглашения"
+                            color: "#e8eef2"; font.pixelSize: 14; font.family: root.uiFont
+                            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.installLicenseOk = !root.installLicenseOk }
+                        }
+                    }
+                }
+                NavBack { anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 28; onActivated: root.installStep = 1 }
+                NavNext {
+                    anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 28
+                    enabledBtn: root.installLicenseOk
+                    onActivated: { root.refreshInstallDisks(); root.installStep = 3 }
                 }
             }
+
+            // —— 3 disk ——
+            Item {
+                anchors.fill: parent; visible: root.installStep === 3; z: 2
+                InstallTopBar { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; activeIndex: 2 }
+                Column {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top; anchors.topMargin: 100
+                    width: Math.min(760, parent.width - 80); spacing: 12
+                    Text {
+                        text: installer.uiEn ? "Select a disk for installation" : "Выберите раздел для установки"
+                        color: "#ffffff"; font.pixelSize: 28; font.bold: true; font.family: root.displayFont
+                    }
+                    Repeater {
+                        model: root.installDisks
+                        delegate: Rectangle {
+                            width: parent.width; height: 72; radius: 14
+                            color: root.installDisk === modelData.id && !root.installManualPart ? "#16352e" : "#121a18"
+                            border.width: 1
+                            border.color: root.installDisk === modelData.id && !root.installManualPart ? installer.mint : "#2a3a34"
+                            Row {
+                                anchors.fill: parent; anchors.margins: 14; spacing: 14
+                                DeskIconArt { width: 36; height: 36; kind: "drive"; anchors.verticalCenter: parent.verticalCenter }
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter; spacing: 4; width: parent.width - 160
+                                    Text {
+                                        text: (installer.uiEn ? "Disk" : "Диск") + " · " + modelData.kind + " · " + modelData.size
+                                        color: "#f4f7f8"; font.pixelSize: 15; font.bold: true; font.family: root.uiFont
+                                    }
+                                    Text {
+                                        text: "/dev/" + modelData.id + (modelData.model ? (" · " + modelData.model) : "")
+                                        color: "#8b98a3"; font.pixelSize: 12; font.family: root.monoFont
+                                        elide: Text.ElideRight; width: parent.width
+                                    }
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    visible: root.installDisk === modelData.id && !root.installManualPart
+                                    text: "→"; color: installer.mint; font.pixelSize: 18
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                onClicked: { root.installManualPart = false; root.installDisk = modelData.id }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width; height: 64; radius: 14
+                        color: root.installManualPart ? "#16352e" : "#121a18"
+                        border.width: 1; border.color: root.installManualPart ? installer.mint : "#2a3a34"
+                        Row {
+                            anchors.fill: parent; anchors.margins: 14; spacing: 14
+                            DeskIconArt { width: 32; height: 32; kind: "files"; anchors.verticalCenter: parent.verticalCenter }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: installer.uiEn ? "Create partition manually" : "Создать раздел вручную"
+                                color: "#f4f7f8"; font.pixelSize: 15; font.bold: true; font.family: root.uiFont
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter; visible: root.installManualPart
+                                text: "→"; color: installer.mint; font.pixelSize: 18
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.installManualPart = true
+                                root.notify(installer.uiEn ? "Installer" : "Установка",
+                                            installer.uiEn ? "Manual mode still uses the selected disk with the standard layout." : "Ручной режим пока использует выбранный диск и штатную разметку.", "info")
+                            }
+                        }
+                    }
+                    Rectangle {
+                        visible: root.installQemuGuest || root.installDisks.length === 0
+                        width: parent.width; height: 44; radius: 12
+                        color: "#15201c"; border.width: 1; border.color: "#3be18266"
+                        Text {
+                            anchors.centerIn: parent
+                            text: installer.uiEn ? "Skip disk selection (QEMU)" : "Пропустить выбор диска (QEMU)"
+                            color: installer.mint; font.pixelSize: 14; font.family: root.uiFont
+                        }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.skipInstallDiskForQemu() }
+                    }
+                }
+                NavBack { anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 28; onActivated: root.installStep = 2 }
+                NavNext {
+                    anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 28
+                    onActivated: {
+                        if (!root.installDisk.length) {
+                            root.notify(installer.uiEn ? "Installer" : "Установка",
+                                        installer.uiEn ? "Select a disk or skip for QEMU" : "Выберите диск или пропустите для QEMU", "info")
+                            return
+                        }
+                        root.installStep = 4
+                    }
+                }
+            }
+
+            // —— 4 parameters ——
+            Item {
+                anchors.fill: parent; visible: root.installStep === 4; z: 2
+                InstallTopBar { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; activeIndex: 3 }
+                Row {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    anchors.top: parent.top; anchors.topMargin: 100
+                    width: Math.min(860, parent.width - 64); spacing: 24
+                    Column {
+                        width: parent.width * 0.58; spacing: 14
+                        Text {
+                            text: installer.uiEn ? "Installation options" : "Параметры установки"
+                            color: "#ffffff"; font.pixelSize: 28; font.bold: true; font.family: root.displayFont
+                        }
+                        Repeater {
+                            model: [
+                                { key: "sys", ru: "Установить систему на выбранный раздел", en: "Install system to selected partition" },
+                                { key: "grub", ru: "Создать загрузчик (GRUB)", en: "Create bootloader (GRUB)" },
+                                { key: "drv", ru: "Установить необходимые драйверы", en: "Install required drivers" },
+                                { key: "upd", ru: "Автоматические обновления после установки", en: "Automatic updates after install" }
+                            ]
+                            delegate: Rectangle {
+                                width: parent.width; height: 48; radius: 12
+                                color: "#121a18"; border.width: 1; border.color: "#2a3a34"
+                                readonly property bool on: modelData.key === "sys" ? root.installOptSystem
+                                                        : modelData.key === "grub" ? root.installOptGrub
+                                                        : modelData.key === "drv" ? root.installOptDrivers
+                                                        : root.installOptUpdates
+                                Row {
+                                    anchors.fill: parent; anchors.leftMargin: 14; anchors.rightMargin: 14; spacing: 12
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 22; height: 22; radius: 6
+                                        color: parent.parent.on ? installer.mint : "#15201c"
+                                        border.width: parent.parent.on ? 0 : 1; border.color: "#2a3a34"
+                                        Text { anchors.centerIn: parent; visible: parent.parent.parent.on; text: "✓"; color: "#06210f"; font.pixelSize: 12; font.bold: true }
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: installer.uiEn ? modelData.en : modelData.ru
+                                        color: "#e8eef2"; font.pixelSize: 14; font.family: root.uiFont
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        if (modelData.key === "sys") root.installOptSystem = !root.installOptSystem
+                                        else if (modelData.key === "grub") root.installOptGrub = !root.installOptGrub
+                                        else if (modelData.key === "drv") root.installOptDrivers = !root.installOptDrivers
+                                        else root.installOptUpdates = !root.installOptUpdates
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            topPadding: 8
+                            text: installer.uiEn ? "Account" : "Учётная запись"
+                            color: "#9aa7b2"; font.pixelSize: 13; font.family: root.uiFont
+                        }
+                        Row {
+                            spacing: 10; width: parent.width
+                            Rectangle {
+                                width: (parent.width - 10) / 2; height: 44; radius: 12
+                                color: "#121a18"; border.width: 1; border.color: nameIn.activeFocus ? installer.mint : "#2a3a34"
+                                TextInput {
+                                    id: nameIn; anchors.fill: parent; anchors.margins: 12
+                                    color: "#f4f7f8"; font.pixelSize: 14; font.family: root.uiFont
+                                    text: root.installFullName; selectByMouse: true
+                                    onTextChanged: root.installFullName = text
+                                }
+                            }
+                            Rectangle {
+                                width: (parent.width - 10) / 2; height: 44; radius: 12
+                                color: "#121a18"; border.width: 1; border.color: userIn.activeFocus ? installer.mint : "#2a3a34"
+                                TextInput {
+                                    id: userIn; anchors.fill: parent; anchors.margins: 12
+                                    color: "#f4f7f8"; font.pixelSize: 14; font.family: root.uiFont
+                                    text: root.installUser; selectByMouse: true
+                                    onTextChanged: root.installUser = text.toLowerCase().replace(/[^a-z0-9_]/g, "")
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width * 0.38; height: 220; radius: 16
+                        color: "#121a18"; border.width: 1; border.color: "#2a3a34"
+                        Column {
+                            anchors.centerIn: parent; spacing: 12; width: parent.width - 28
+                            CloverMark { anchors.horizontalCenter: parent.horizontalCenter; width: 72; height: 72; ink: installer.mint }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "GT/OS " + root.osVersion
+                                color: "#ffffff"; font.pixelSize: 18; font.bold: true; font.family: root.displayFont
+                            }
+                            Text {
+                                width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+                                text: installer.uiEn ? "Install size ~12.4 GB" : "Размер установки ~12.4 ГБ"
+                                color: "#c5d0d8"; font.pixelSize: 13; font.family: root.uiFont
+                            }
+                            Text {
+                                width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+                                text: installer.uiEn ? "Space required ~20.1 GB" : "Требуется места ~20.1 ГБ"
+                                color: "#8b98a3"; font.pixelSize: 12; font.family: root.uiFont
+                            }
+                            Text {
+                                width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
+                                text: "/dev/" + (root.installDisk || "—")
+                                color: installer.mint; font.pixelSize: 12; font.family: root.monoFont
+                            }
+                        }
+                    }
+                }
+                NavBack { anchors.left: parent.left; anchors.bottom: parent.bottom; anchors.margins: 28; onActivated: root.installStep = 3 }
+                NavNext {
+                    anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 28
+                    label: installer.uiEn ? "Install →" : "Установить →"
+                    onActivated: {
+                        if (!root.installOptSystem) {
+                            root.notify(installer.uiEn ? "Installer" : "Установка",
+                                        installer.uiEn ? "Enable system install option" : "Включите установку системы", "info")
+                            return
+                        }
+                        if (!root.installUser.length || !root.installFullName.length) {
+                            root.notify(installer.uiEn ? "Installer" : "Установка",
+                                        installer.uiEn ? "Fill in name and username" : "Заполните имя и логин", "info")
+                            return
+                        }
+                        installer.startInstallFlow()
+                    }
+                }
+            }
+
+            // —— 5/6 progress + done ——
+            Item {
+                anchors.fill: parent
+                visible: root.installStep === 5 || root.installStep === 6
+                z: 2
+                InstallTopBar { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; activeIndex: 4 }
+                Column {
+                    anchors.left: parent.left; anchors.leftMargin: 56
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: Math.min(480, parent.width * 0.48); spacing: 18
+                    Text {
+                        text: root.installStep === 6
+                              ? (installer.uiEn ? "Installation complete" : "Установка завершена")
+                              : (installer.uiEn ? "Installing GT/OS…" : "Установка GT/OS…")
+                        color: "#ffffff"; font.pixelSize: 28; font.bold: true; font.family: root.displayFont
+                    }
+                    Item {
+                        width: parent.width; height: 12
+                        Rectangle { anchors.fill: parent; radius: 6; color: "#1a2420" }
+                        Rectangle {
+                            height: parent.height; radius: 6
+                            width: parent.width * Math.max(0.04, Math.min(1, installer.progressPct))
+                            gradient: Gradient {
+                                GradientStop { position: 0.0; color: "#1a9e5a" }
+                                GradientStop { position: 1.0; color: installer.mint }
+                            }
+                            Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                        }
+                    }
+                    Text {
+                        text: Math.round(installer.progressPct * 100) + "%"
+                        color: installer.mint; font.pixelSize: 14; font.family: root.uiFont
+                    }
+                    Repeater {
+                        model: installer.uiEn
+                            ? ["Copying files", "Installing system", "Setting up bootloader", "Finalizing"]
+                            : ["Копирование файлов", "Установка системы", "Настройка загрузчика", "Завершение"]
+                        delegate: Row {
+                            spacing: 12; width: parent.width
+                            readonly property int st: index < installer.progressPhase ? 2
+                                                    : (index === installer.progressPhase ? 1 : 0)
+                            Rectangle {
+                                width: 22; height: 22; radius: 11
+                                color: st === 2 ? installer.mint : (st === 1 ? "#16352e" : "#1c2420")
+                                border.width: st === 0 ? 1 : 0; border.color: "#2a3a34"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: st === 2 ? "✓" : (st === 1 ? "…" : "")
+                                    color: st === 2 ? "#06210f" : installer.mint
+                                    font.pixelSize: 11; font.bold: true
+                                }
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData
+                                color: st === 0 ? "#6b7785" : "#e8eef2"
+                                font.pixelSize: 14; font.family: root.uiFont
+                            }
+                        }
+                    }
+                    Text {
+                        visible: root.installStep === 5
+                        topPadding: 8
+                        text: installer.uiEn ? "Please do not turn off the computer" : "Пожалуйста, не выключайте компьютер"
+                        color: "#8b98a3"; font.pixelSize: 13; font.family: root.uiFont
+                    }
+                    Text {
+                        visible: root.installStep === 6
+                        width: parent.width; wrapMode: Text.Wrap
+                        text: installer.uiEn
+                              ? "Remove the install media and reboot from the hard disk."
+                              : "Извлеките носитель и загрузитесь с жёсткого диска."
+                        color: installer.mint; font.pixelSize: 14; font.family: root.uiFont
+                    }
+                }
+                NavNext {
+                    visible: root.installStep === 6
+                    anchors.right: parent.right; anchors.bottom: parent.bottom; anchors.margins: 28
+                    label: installer.uiEn ? "Reboot →" : "Перезагрузка →"
+                    onActivated: root.powerAction("reboot")
+                }
+            }
+
             Component.onCompleted: root.refreshInstallDisks()
         }
     }
-
     Component {
         id: infoPage
         Item {
@@ -24996,27 +26124,30 @@ Rectangle {
             if (kind === "grid" || kind === "icons" || kind === "calc") return "calc"
             if (kind === "monitor") return "monitor"
             if (kind === "control" || kind === "controlcenter") return "control"
-            if (kind === "updates" || kind === "storage" || kind === "privacy" || kind === "install") return "system"
+            if (kind === "updates" || kind === "storage" || kind === "privacy") return "system"
             if (kind === "file" || kind === "doc" || kind === "app") return "doc"
             if (kind === "drive" || kind === "disk") return "drive"
             if (kind === "bluetooth" || kind === "accounts" || kind === "about") return "settings"
-            if (kind === "network") return "browser"
+            if (kind === "network") return "globe"
             if (kind === "personalize") return "draw"
             if (kind === "apps") return "store"
             if (kind === "notespro") return "notes"
             if (kind === "paint") return "draw"
             if (kind === "player") return "music"
             if (kind === "mailplus") return "mail"
-            if (kind === "maps") return "browser"
+            if (kind === "maps") return "globe"
             if (kind === "docs" || kind === "document" || kind === "pdfviewer") return "pdf"
             if (kind === "openwith" || kind === "choose") return "open"
             if (kind === "edit") return "notes"
             if (kind === "share" || kind === "send") return "share"
             if (kind === "path" || kind === "link") return "link"
             if (kind === "cut") return "cut"
+            if (kind === "kbd" || kind === "keyboard") return "keyboard"
+            if (kind === "mouse" || kind === "pointer" || kind === "touchpad") return "mouse"
+            if (kind === "hid" || kind === "input") return "hid"
             if (kind === "pin" || kind === "close" || kind === "undo" || kind === "refresh" || kind === "wallpaper") return "system"
             if (kind !== "pc" && kind !== "files" && kind !== "trash" && kind !== "settings"
-                    && kind !== "browser" && kind !== "term" && kind !== "mail" && kind !== "notes"
+                    && kind !== "browser" && kind !== "globe" && kind !== "term" && kind !== "mail" && kind !== "notes"
                     && kind !== "store" && kind !== "cal" && kind !== "music" && kind !== "video"
                     && kind !== "draw" && kind !== "calc" && kind !== "monitor" && kind !== "doc"
                     && kind !== "drive" && kind !== "system" && kind !== "copy" && kind !== "paste"
@@ -25025,7 +26156,8 @@ Rectangle {
                     && kind !== "usb" && kind !== "zip" && kind !== "font" && kind !== "link"
                     && kind !== "cpu" && kind !== "network" && kind !== "bluetooth" && kind !== "power"
                     && kind !== "printer" && kind !== "code" && kind !== "image" && kind !== "share"
-                    && kind !== "cut" && kind !== "open" && kind !== "warning")
+                    && kind !== "cut" && kind !== "open" && kind !== "warning" && kind !== "install"
+                    && kind !== "keyboard" && kind !== "mouse" && kind !== "hid")
                 return "files"
             return kind
         }
@@ -25220,9 +26352,248 @@ Rectangle {
             }
         }
 
-        // Browser — globe
+        // Установка — диск + стрелка, без цветной подложки
+        Item {
+            visible: k === "install"
+            anchors.centerIn: parent
+            width: 40; height: 36
+            Canvas {
+                id: installArrow
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 0
+                width: 18; height: 14
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    ctx.fillStyle = "#14b8a6"
+                    ctx.fillRect(7, 0, 4, 7)
+                    ctx.beginPath()
+                    ctx.moveTo(1, 7)
+                    ctx.lineTo(17, 7)
+                    ctx.lineTo(9, 14)
+                    ctx.closePath()
+                    ctx.fill()
+                }
+                Component.onCompleted: requestPaint()
+                onVisibleChanged: if (visible) requestPaint()
+            }
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 18
+                width: 30; height: 14; radius: 3
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#d1fae5" }
+                    GradientStop { position: 1.0; color: "#5eead4" }
+                }
+                border.color: "#0f766e"; border.width: 1
+                Rectangle {
+                    anchors.left: parent.left; anchors.leftMargin: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 5; height: 5; radius: 2.5
+                    color: "#0f766e"
+                }
+                Rectangle {
+                    anchors.right: parent.right; anchors.rightMargin: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 10; height: 2; radius: 1
+                    color: "#0d9488"
+                }
+                Rectangle {
+                    anchors.right: parent.right; anchors.rightMargin: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.verticalCenterOffset: 3
+                    width: 7; height: 2; radius: 1
+                    color: "#0f766e"
+                }
+            }
+        }
+
+        // Клавиатура — без подложки
+        Item {
+            visible: k === "keyboard"
+            anchors.centerIn: parent
+            width: 36; height: 24
+            Rectangle {
+                anchors.fill: parent; radius: 4
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#e2e8f0" }
+                    GradientStop { position: 1.0; color: "#94a3b8" }
+                }
+                border.color: "#64748b"; border.width: 1
+                Grid {
+                    anchors.centerIn: parent
+                    columns: 5; rows: 3; spacing: 1.6
+                    Repeater {
+                        model: 15
+                        Rectangle {
+                            width: 4; height: 3.2; radius: 0.6
+                            color: index === 12 ? "#0f766e" : "#475569"
+                        }
+                    }
+                }
+            }
+        }
+
+        // Мышь — без подложки
+        Item {
+            visible: k === "mouse"
+            anchors.centerIn: parent
+            width: 18; height: 32
+            Rectangle {
+                anchors.fill: parent; radius: 9
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#e2e8f0" }
+                    GradientStop { position: 1.0; color: "#94a3b8" }
+                }
+                border.color: "#64748b"; border.width: 1
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 6; width: 2; height: 8; radius: 1
+                    color: "#334155"
+                }
+                Rectangle {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: 4; width: 12; height: 1
+                    color: "#64748b"
+                }
+            }
+        }
+
+        // HID — без подложки
+        Item {
+            visible: k === "hid"
+            anchors.centerIn: parent
+            width: 28; height: 34
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 0; width: 24; height: 14; radius: 3
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#e2e8f0" }
+                    GradientStop { position: 1.0; color: "#94a3b8" }
+                }
+                border.color: "#64748b"; border.width: 1
+                Row {
+                    anchors.centerIn: parent; spacing: 3
+                    Repeater {
+                        model: 3
+                        Rectangle { width: 4; height: 4; radius: 1; color: "#334155" }
+                    }
+                }
+            }
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 16; width: 12; height: 10; radius: 2
+                color: "#cbd5e1"
+                border.color: "#64748b"; border.width: 1
+            }
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 28; width: 20; height: 4; radius: 1
+                color: "#94a3b8"
+            }
+        }
+
+        // GT Browser — окно браузера + компас (не глобус, не «NVIDIA»)
         Item {
             visible: k === "browser"
+            anchors.centerIn: parent
+            width: 40; height: 36
+            Rectangle {
+                anchors.fill: parent; radius: 7
+                gradient: Gradient {
+                    GradientStop { position: 0.0; color: "#f4f7fa" }
+                    GradientStop { position: 1.0; color: "#d7e2ec" }
+                }
+                border.color: "#7a8fa3"; border.width: 1
+            }
+            // вкладки
+            Rectangle {
+                x: 0; y: 0; width: parent.width; height: 10; radius: 7
+                color: "#c5d0da"
+                Rectangle {
+                    anchors.left: parent.left; anchors.right: parent.right
+                    anchors.bottom: parent.bottom; height: 4; color: "#c5d0da"
+                }
+                Rectangle {
+                    x: 4; y: 3; width: 14; height: 7; radius: 3
+                    color: "#f4f7fa"
+                    Rectangle {
+                        anchors.left: parent.left; anchors.leftMargin: 3
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 3; height: 3; radius: 1.5; color: "#2a9d6a"
+                    }
+                }
+                Rectangle {
+                    x: 20; y: 4; width: 10; height: 5; radius: 2
+                    color: "#aeb9c4"
+                }
+            }
+            // адресная строка
+            Rectangle {
+                x: 4; y: 12; width: 32; height: 6; radius: 3
+                color: "#ffffff"
+                border.color: "#9aabba"; border.width: 1
+                Rectangle {
+                    anchors.left: parent.left; anchors.leftMargin: 3
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 2.5; height: 2.5; radius: 1.25
+                    color: "#3d7dd6"
+                }
+                Rectangle {
+                    anchors.left: parent.left; anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 16; height: 1.5; radius: 0.75
+                    color: "#b0bec8"
+                }
+            }
+            // компас в области страницы
+            Canvas {
+                id: browserCompass
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 20
+                width: 14; height: 14
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    var cx = 7, cy = 7
+                    ctx.beginPath()
+                    ctx.arc(cx, cy, 6.2, 0, Math.PI * 2)
+                    ctx.fillStyle = "#e8f1f8"
+                    ctx.fill()
+                    ctx.strokeStyle = "#5b7c99"
+                    ctx.lineWidth = 1.1
+                    ctx.stroke()
+                    // N (синий) / S (коралл) — узнаваемый компас браузера
+                    ctx.beginPath()
+                    ctx.moveTo(cx, cy - 5.2)
+                    ctx.lineTo(cx + 2.2, cy)
+                    ctx.lineTo(cx, cy + 1.2)
+                    ctx.closePath()
+                    ctx.fillStyle = "#2f6fed"
+                    ctx.fill()
+                    ctx.beginPath()
+                    ctx.moveTo(cx, cy + 5.2)
+                    ctx.lineTo(cx - 2.2, cy)
+                    ctx.lineTo(cx, cy - 1.2)
+                    ctx.closePath()
+                    ctx.fillStyle = "#e35d5d"
+                    ctx.fill()
+                    ctx.beginPath()
+                    ctx.arc(cx, cy, 1.2, 0, Math.PI * 2)
+                    ctx.fillStyle = "#ffffff"
+                    ctx.fill()
+                    ctx.strokeStyle = "#5b7c99"
+                    ctx.lineWidth = 0.8
+                    ctx.stroke()
+                }
+                Component.onCompleted: requestPaint()
+                onVisibleChanged: if (visible) requestPaint()
+            }
+        }
+
+        // Globe — сеть / карты (не путать с браузером GT)
+        Item {
+            visible: k === "globe"
             anchors.centerIn: parent
             width: 40; height: 40
             Rectangle {
@@ -26228,19 +27599,47 @@ Rectangle {
     }
 
     Timer {
+        id: updateBootCheckTimer
+        interval: 90000
+        repeat: false
+        running: false
+        onTriggered: {
+            if (root.locked || root.booting || root.setupOpen || root.safeMode)
+                return
+            if (!root.updateAutoCheck || root.updateChecking || root.updateApplying)
+                return
+            root.checkUpdates()
+        }
+    }
+
+    Timer {
         id: updateCheckTimer
-        interval: 2500
+        property int ticks: 0
+        interval: 1200
         onTriggered: {
             var done = sys.readFile("/tmp/gtos-upd-done").trim()
             if (done !== "done") {
-                updateCheckTimer.interval = 1500
-                updateCheckTimer.restart()
+                ticks += 1
+                // ~45 с максимум ожидания — дальше не крутим вечно
+                if (ticks < 40) {
+                    updateCheckTimer.interval = 1200
+                    updateCheckTimer.restart()
+                    return
+                }
+                sys.run("echo done >/tmp/gtos-upd-done")
+                root.updateChecking = false
+                root.updateStatus = "Проверка прервана по таймауту (сеть/репозиторий)"
+                root.notify("GT Update Engine", root.updateStatus, "info")
+                ticks = 0
                 return
             }
+            ticks = 0
             root.updateChecking = false
             root.updateLastCheck = Qt.formatDateTime(new Date(), "dd.MM.yyyy HH:mm")
             var sim = sys.readFile("/tmp/gtos-upd-sim.txt")
-            var lines = sim.split("\n").filter(function (l) { return l.indexOf("Upgrading") >= 0 || l.indexOf("Installing") >= 0 })
+            var lines = sim.length ? sim.split("\n").filter(function (l) {
+                return l.indexOf("Upgrading") >= 0 || l.indexOf("Installing") >= 0
+            }) : []
             var shellAvail = sys.readFile("/tmp/gtos-shell-upd-check.log").indexOf("GTOS_SHELL_UPDATE_AVAILABLE") >= 0
             if (lines.length || shellAvail) {
                 root.updateStatus = (lines.length ? ("Пакетов: " + lines.length) : "Пакеты ок")
@@ -26250,7 +27649,14 @@ Rectangle {
                 root.updateStatus = "GT/OS " + root.osVersion + " · пакеты и оболочка актуальны"
                 root.notify("GT Update Engine", "Система актуальна", "ok")
             }
-            root.checkUpdateDependencies()
+            // без notify в checkUpdateDependencies при авто-завершении
+            var pkgs = []
+            for (var i = 0; i < lines.length && i < 24; ++i)
+                pkgs.push(lines[i].trim())
+            root.updatePendingPkgs = pkgs
+            root.updateDepsStatus = pkgs.length
+                ? ("Затронуто пакетов: " + pkgs.length)
+                : "Конфликтов нет · зависимости согласованы"
             sys.run("rm -f /tmp/gtos-upd-done")
         }
     }
@@ -28161,6 +29567,16 @@ Rectangle {
                     x: root.bootSweep * (parent.width - width)
                 }
             }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                visible: root.bootStatus.length > 0
+                text: root.bootStatus
+                color: "#6a7a74"
+                font.pixelSize: 12
+                font.family: root.uiFont
+                opacity: root.bootBarOpacity
+            }
         }
     }
 
@@ -28536,6 +29952,11 @@ Rectangle {
                     anchors.centerIn: parent
                     width: 92; height: 92; radius: 46
                     color: root.userAvatar
+                    opacity: root.lockUserTransit ? 0.25 : 1
+                    scale: root.lockUserTransit ? 0.86 : 1
+                    Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                    Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutBack } }
+                    Behavior on color { ColorAnimation { duration: 280 } }
                     Text {
                         anchors.centerIn: parent
                         text: (root.userFullName.length ? root.userFullName : root.currentUser).charAt(0).toUpperCase()
@@ -28553,8 +29974,10 @@ Rectangle {
                 font.family: root.uiFont
                 style: Text.Outline
                 styleColor: "#66000000"
-                opacity: root.lockReveal ? 1 : 0
-                Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
+                opacity: root.lockReveal ? (root.lockUserTransit ? 0.15 : 1) : 0
+                scale: root.lockUserTransit ? 0.92 : 1
+                Behavior on opacity { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
             }
             Text {
                 anchors.horizontalCenter: parent.horizontalCenter
@@ -28563,35 +29986,8 @@ Rectangle {
                 font.pixelSize: 13
                 font.family: root.uiFont
                 visible: root.userFullName.length > 0 && root.userFullName !== root.currentUser
-            }
-
-            Flow {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: 320
-                spacing: 8
-                visible: root.lockReveal && root.osUsers.length > 1
-                Repeater {
-                    model: root.osUsers
-                    delegate: Rectangle {
-                        width: Math.min(110, lockULab.implicitWidth + 20)
-                        height: 28; radius: 14
-                        color: root.currentUser === modelData.user ? "#3be182" : "#44ffffff"
-                        Text {
-                            id: lockULab
-                            anchors.centerIn: parent
-                            text: modelData.name || modelData.user
-                            color: root.currentUser === modelData.user ? "#06210f" : "#fff"
-                            font.pixelSize: 11
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            onClicked: {
-                                if (modelData.user !== root.currentUser)
-                                    root.switchOsUser(modelData.user)
-                            }
-                        }
-                    }
-                }
+                opacity: root.lockUserTransit ? 0.2 : 1
+                Behavior on opacity { NumberAnimation { duration: 280 } }
             }
 
             Item {
@@ -28691,15 +30087,118 @@ Rectangle {
                     lockField.forceActiveFocus()
             }
         }
+        Timer {
+            id: lockUserTransitAnim
+            interval: 340
+            repeat: false
+            onTriggered: root.lockUserTransit = false
+        }
 
         MouseArea {
             anchors.fill: parent
             z: -1
+            enabled: root.bootHeavyDone && !root.booting
             acceptedButtons: Qt.LeftButton | Qt.RightButton
             onClicked: {
+                if (!root.bootHeavyDone || root.booting)
+                    return
                 if (!root.lockReveal && !root.lockUnlocking) {
                     root.lockReveal = true
                     lockFocusTimer.restart()
+                }
+            }
+        }
+
+        // выбор пользователя — слева внизу (текущий + остальные)
+        Item {
+            id: lockUserBar
+            anchors.left: parent.left
+            anchors.bottom: parent.bottom
+            anchors.leftMargin: 28
+            anchors.bottomMargin: 28
+            width: Math.min(420, parent.width * 0.42)
+            height: 72
+            visible: root.lockReveal
+            opacity: root.lockReveal ? 1 : 0
+            z: 5
+            Behavior on opacity { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+
+            Row {
+                id: lockUserRow
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 12
+
+                Repeater {
+                    model: {
+                        root.loadOsUsers()
+                        var list = root.osUsers || []
+                        // текущий первым, остальные следом
+                        var out = []
+                        var seen = {}
+                        for (var i = 0; i < list.length; ++i) {
+                            if (list[i] && list[i].user === root.currentUser) {
+                                out.push(list[i])
+                                seen[list[i].user] = true
+                                break
+                            }
+                        }
+                        for (var j = 0; j < list.length; ++j) {
+                            if (!list[j] || !list[j].user || seen[list[j].user])
+                                continue
+                            seen[list[j].user] = true
+                            out.push(list[j])
+                        }
+                        return out
+                    }
+                    delegate: Item {
+                        width: 56
+                        height: 68
+                        opacity: root.lockUserTransit && modelData.user === root.currentUser ? 0.55 : 1
+                        scale: root.currentUser === modelData.user ? 1.06 : (lockUH.containsMouse ? 1.04 : 1)
+                        Behavior on opacity { NumberAnimation { duration: 220 } }
+                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                        Column {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 6
+                            Rectangle {
+                                width: 44; height: 44; radius: 22
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                color: modelData.avatar || "#4a5560"
+                                border.width: root.currentUser === modelData.user ? 2 : 1
+                                border.color: root.currentUser === modelData.user ? root.accentColor : "#66ffffff"
+                                Behavior on border.color { ColorAnimation { duration: 200 } }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: ((modelData.name || modelData.user || "?").charAt(0)).toUpperCase()
+                                    color: "#fff"; font.pixelSize: 16; font.bold: true
+                                    font.family: root.uiFont
+                                }
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: 56
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
+                                text: modelData.name || modelData.user
+                                color: root.currentUser === modelData.user ? "#ffffff" : "#c8d0d8"
+                                font.pixelSize: 10
+                                font.family: root.uiFont
+                            }
+                        }
+                        MouseArea {
+                            id: lockUH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            enabled: modelData.user !== root.currentUser
+                            onClicked: {
+                                root.switchOsUser(modelData.user, { silent: true, keepUnlocked: true })
+                                lockFocusTimer.restart()
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -28722,10 +30221,13 @@ Rectangle {
                 root.lockInput = ""
                 root.lockError = ""
                 root.lockShake = false
+                root.loadOsUsers()
                 lockEnter.start()
             }
         }
         Keys.onPressed: {
+            if (!root.bootHeavyDone || root.booting)
+                return
             if (!root.lockReveal && !root.lockUnlocking) {
                 root.lockReveal = true
                 lockFocusTimer.restart()

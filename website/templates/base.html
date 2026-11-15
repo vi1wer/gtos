@@ -5,7 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="GT/OS — настольная операционная система от Glukhov Mikhail. Скачайте официальный образ.">
   <title>{{ title }}</title>
-  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='img/gt-mark.svg') }}">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}?v=4">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16.png') }}?v=4">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='img/gtos-icon-256.png') }}?v=4">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Sora:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
@@ -14,10 +16,12 @@
 <body class="page-{{ page }}">
   <header class="nav-shell" data-nav>
     <a class="logo" href="{{ url_for('home') }}" aria-label="GT/OS">
-      <img class="logo-clover" src="{{ url_for('static', filename='img/gt-mark.svg') }}" width="36" height="36" alt="">
+      <img class="logo-clover" src="{{ url_for('static', filename='img/gtos-clover.png') }}?v=3" width="48" height="48" alt="">
       <span class="logo-text">GT/OS</span>
     </a>
+    <button class="nav-backdrop" type="button" aria-label="Закрыть меню" data-nav-backdrop tabindex="-1"></button>
     <nav class="nav-links" aria-label="Основное меню">
+      <p class="nav-sheet-label">Навигация</p>
       <a href="{{ url_for('home') }}" class="{{ 'is-active' if page == 'home' else '' }}">Главная</a>
       <a href="{{ url_for('product') }}" class="{{ 'is-active' if page == 'product' else '' }}">Продукт</a>
       <a href="{{ url_for('blog') }}" class="{{ 'is-active' if page == 'blog' else '' }}">Блог</a>
@@ -31,6 +35,7 @@
           Ещё
           <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
         </button>
+        <p class="nav-sheet-label nav-sheet-label-more">Ещё</p>
         <div class="nav-more-panel" role="menu">
           <a href="{{ url_for('whats_new') }}" role="menuitem" class="{{ 'is-active' if page == 'whats-new' else '' }}">Что нового</a>
           <a href="{{ url_for('tips') }}" role="menuitem" class="{{ 'is-active' if page == 'tips' else '' }}">Советы</a>
@@ -40,8 +45,9 @@
           <a href="{{ url_for('about') }}" role="menuitem" class="{{ 'is-active' if page == 'about' else '' }}">О нас</a>
         </div>
       </div>
+      <a class="nav-cta nav-cta-mobile" href="{{ url_for('download') }}">Скачать GT/OS</a>
     </nav>
-    <a class="nav-cta" href="{{ url_for('download') }}">Скачать GT/OS</a>
+    <a class="nav-cta nav-cta-desktop" href="{{ url_for('download') }}">Скачать GT/OS</a>
     <button class="nav-toggle" type="button" aria-label="Меню" data-nav-toggle>
       <span></span><span></span>
     </button>
@@ -55,7 +61,7 @@
     <div class="footer-inner">
       <div class="footer-top">
         <div class="footer-brand">
-          <img class="logo-clover" src="{{ url_for('static', filename='img/gt-mark.svg') }}" width="40" height="40" alt="">
+          <img class="logo-clover" src="{{ url_for('static', filename='img/gtos-clover.png') }}?v=2" width="56" height="56" alt="">
           <div>
             <strong>GT/OS</strong>
             <p>Рабочий стол, в котором всё на своих местах — как в Windows, на своём ядре.</p>

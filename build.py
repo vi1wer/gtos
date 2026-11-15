@@ -82,6 +82,7 @@ RUNTIME_PACKAGES = [
     "pciutils",
     "wireless-tools",
     "su-exec",
+    "proot",
     "util-linux-misc",
     "nano",
     "openssh-client",
@@ -1041,6 +1042,17 @@ fi
 echo GTOS_SESSION_1_2 > /dev/ttyS0
 # Перезапуск оболочки при падении (0 = штатный выход)
 GT_SHELL=/usr/bin/gt-shell
+(
+    sleep 45
+    while :; do
+        grep -E 'qrc:|file:///|Main\.qml|TypeError|ReferenceError|notify history' /var/log/gtos.log 2>/dev/null | tail -n 15 > /tmp/gtos-qmlerr.new
+        if ! cmp -s /tmp/gtos-qmlerr.new /tmp/gtos-qmlerr.old 2>/dev/null; then
+            sed 's/^/GTOS_QML /' /tmp/gtos-qmlerr.new | cut -c1-400 > /dev/ttyS0
+            mv -f /tmp/gtos-qmlerr.new /tmp/gtos-qmlerr.old
+        fi
+        sleep 30
+    done
+) &
 while true; do
     if command -v stdbuf >/dev/null 2>&1; then
         stdbuf -oL -eL "$GT_SHELL" >>/var/log/gtos.log 2>&1
@@ -1117,6 +1129,12 @@ GTOS_KERNEL={kernel_version}
     overlay_text(tree, "usr/bin/gtos-notifyd", notifyd, executable=True)
     store_inst = (ROOT / "scripts" / "gtos-store-install.sh").read_text(encoding="utf-8").replace("\r\n", "\n")
     overlay_text(tree, "usr/bin/gtos-store-install", store_inst, executable=True)
+    glibc_run = (ROOT / "scripts" / "gtos-glibc-run.sh").read_text(encoding="utf-8").replace("\r\n", "\n")
+    overlay_text(tree, "usr/bin/gtos-glibc-run", glibc_run, executable=True)
+    proot_bin = ROOT / "assets" / "bin" / "proot"
+    if proot_bin.is_file():
+        add_node(tree, "usr/bin/proot", FsNode("reg", 0o100755, proot_bin.read_bytes()))
+        add_node(tree, "usr/bin/proot.static", FsNode("reg", 0o100755, proot_bin.read_bytes()))
     dunst_cfg = (ROOT / "scripts" / "gtos-dunst.conf").read_text(encoding="utf-8").replace("\r\n", "\n")
     overlay_text(tree, "usr/share/gtos/dunst.conf", dunst_cfg)
     overlay_text(tree, "etc/dunst/dunstrc", dunst_cfg)
