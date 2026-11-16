@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "out"
 CACHE = ROOT / "cache" / "syslinux"
 EFI_CACHE = ROOT / "cache" / "efi"
-USER_AGENT = "GTOS-iso/1.6"
+USER_AGENT = "GTOS-iso/1.6.1"
 
 
 def _download(url: str, dest: Path) -> None:
@@ -298,7 +298,7 @@ QEMU:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Сборка загружаемого ISO GT/OS")
-    parser.add_argument("--version", default="1.6", help="Версия выпуска")
+    parser.add_argument("--version", default="1.6.1", help="Версия выпуска")
     args = parser.parse_args()
     build_iso(args.version)
     return 0

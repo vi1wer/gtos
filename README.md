@@ -35,7 +35,7 @@
 
 GT/OS is a full desktop operating system: its own Start menu, dock, Settings, Control Center, Store, Files, and system services — not a theme on someone else’s desktop.
 
-Current stable release: **1.6**.
+Current stable release: **1.6.1**.
 
 | | |
 |---|---|
@@ -61,17 +61,18 @@ Current stable release: **1.6**.
 
 ## Download
 
-**[→ GT/OS 1.6 (latest)](https://github.com/vi1wer/gtos/releases/latest)**
+**[→ GT/OS 1.6.1 (latest)](https://github.com/vi1wer/gtos/releases/latest)**
 
 Verify after download:
 
 ```bash
-sha256sum -c GTOS-1.6-x86_64.iso.sha256
+sha256sum -c GTOS-1.6.1-x86_64.iso.sha256
 ```
 
 | Release | File |
 |---------|------|
-| 1.6 (current) | [`GTOS-1.6-x86_64.iso`](https://github.com/vi1wer/gtos/releases/tag/v1.6) |
+| 1.6.1 (current) | [`GTOS-1.6.1-x86_64.iso`](https://github.com/vi1wer/gtos/releases/tag/v1.6.1) |
+| 1.6 | [`GTOS-1.6-x86_64.iso`](https://github.com/vi1wer/gtos/releases/tag/v1.6) |
 | Archive | [All releases](https://github.com/vi1wer/gtos/releases) |
 
 ## Install
@@ -109,7 +110,7 @@ sha256sum -c GTOS-1.6-x86_64.iso.sha256
 
 ```bash
 python build.py
-python make_iso.py --version 1.6
+python make_iso.py --version 1.6.1
 python run.py
 python run.py --safe
 

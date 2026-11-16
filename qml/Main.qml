@@ -178,8 +178,25 @@ Window {
     property string tileMode: "snap"
     property int dockSize: 72
     property string dockEdge: "bottom"
+    property string dockAlign: "center"   // center | left
+    property string dockSizePreset: "default" // small | default | large
+    property bool dockAutoHide: false
+    property bool dockHoverReveal: false
     property bool dockShowBrowser: true
     property bool dockShowMail: true
+    property bool dockShowOrbit: true
+    property string dockSearchMode: "box" // hide | icon | box
+    property bool dockShowTaskView: true
+    property bool dockShowWidgets: false
+    property bool dockShowResume: false
+    property string dockCombineButtons: "never" // never | always | full
+    property string dockSmallIcons: "full" // never | always | full
+    property bool dockShowBadges: true
+    property bool dockShowFlash: true
+    property bool dockShowOnAllDisplays: true
+    property bool dockShareAnyWindow: true
+    property bool dockCornerDesktop: true
+    property string dockMultiDisplayApps: "all" // all | main | taskbar_open
     property string notePath: "/home/misha/Документы/заметка.txt"
     property string noteText: ""
     property var noteTabs: []
@@ -314,7 +331,7 @@ Window {
     property real volumeBeforeMute: 0.7
     property bool nightLight: false
     property bool showDesktopActive: false
-    property var pinnedApps: ["files", "browser", "notes", "term", "settings"]
+    property var pinnedApps: ["files", "orbit", "notes", "term", "settings"]
     property string dockPreviewApp: ""
     property bool dockPreviewOpen: false
     property string dockDragApp: ""
@@ -333,7 +350,8 @@ Window {
     property var taskProcRows: []
     property var startupApps: [
         { id: "files", name: "Проводник", publisher: "GT/OS", impact: "Низкое", enabled: true, icon: "files" },
-        { id: "browser", name: "Браузер", publisher: "GT/OS", impact: "Среднее", enabled: true, icon: "browser" },
+        { id: "orbit", name: "GT Orbit", publisher: "GT/OS", impact: "Среднее", enabled: true, icon: "browser" },
+        { id: "browser", name: "GT Browser (архив)", publisher: "GT/OS", impact: "Низкое", enabled: false, icon: "browser" },
         { id: "mail", name: "Почта", publisher: "GT/OS", impact: "Низкое", enabled: false, icon: "mail" },
         { id: "store", name: "Магазин GT", publisher: "GT/OS", impact: "Среднее", enabled: false, icon: "store" },
         { id: "term", name: "Терминал", publisher: "GT/OS", impact: "Низкое", enabled: false, icon: "term" },
@@ -349,7 +367,7 @@ Window {
     property int browserTab: 0
 
     // GT/OS 1.6
-    property string osVersion: "1.6"
+    property string osVersion: "1.6.1"
     property bool safeMode: false
     property bool secureDeskOpen: false
     property var pendingOps: []
@@ -672,6 +690,11 @@ Window {
         if (appId === "security") { openSettingsSection("security"); return }
         if (appId === "power") { openSettingsSection("power"); return }
         if (appId === "recovery") { openControlTab("recovery"); return }
+        if (appId === "orbit") {
+            if (launchOrbitBrowser())
+                return
+            title = title || "GT Orbit"
+        }
         for (var i = 0; i < windows.count; ++i) {
             if (windows.get(i).appId === appId) {
                 windows.setProperty(i, "desk", deskIndex)
@@ -715,7 +738,7 @@ Window {
         else if (appId === "archive") { ww = 860; hh = 520 }
         else if (appId === "fonts") { ww = 920; hh = 560 }
         else if (appId === "term") { ww = 920; hh = 560 }
-        else if (appId === "browser") { ww = 980; hh = 640 }
+        else if (appId === "browser" || appId === "orbit") { ww = 980; hh = 640 }
         else if (appId === "mail") { ww = 820; hh = 560 }
         else if (appId === "calc") { ww = 340; hh = 460 }
         else if (appId === "cal") { ww = 720; hh = 560 }
@@ -764,7 +787,9 @@ Window {
         if (appId === "recovery")
             recoveryRefreshSoon.restart()
         if (appId === "browser")
-            browserBody = "<p>Введите адрес сайта и нажмите <b>Открыть</b>. Страница откроется как обычный текст с разметкой.</p>"
+            browserBody = "<p><b>GT Browser (архив)</b> — встроенный просмотрщик. Новый браузер: <b>GT Orbit</b> (Chromium).</p><p>Введите адрес и нажмите <b>Открыть</b>.</p>"
+        if (appId === "orbit")
+            browserBody = "<p><b>GT Orbit</b> — браузер GT/OS на движке Chromium.</p><p>Chromium ещё не установлен: откройте <b>Магазин GT</b> → Chromium, либо введите адрес ниже для упрощённого просмотра.</p>"
         if (appId === "mail" && !mailBody.length)
             mailBody = "Здравствуйте,\n\n"
         if (appId === "term")
@@ -943,7 +968,8 @@ Window {
 
     function allLauncherApps() {
         var out = [
-            { id: "browser", name: "Браузер", kind: "browser", color: "#3d7dd6", cats: ["internet"] },
+            { id: "orbit", name: "GT Orbit", kind: "browser", color: "#22d3ee", cats: ["internet"] },
+            { id: "browser", name: "GT Browser (архив)", kind: "browser", color: "#64748b", cats: ["internet"] },
             { id: "files", name: "Файлы", kind: "files", color: "#3d6b4a", cats: ["office", "tools"] },
             { id: "store", name: "Магазин", kind: "store", color: "#2563eb", cats: ["internet", "tools"] },
             { id: "music", name: "Медиаплеер", kind: "music", color: "#b83280", cats: ["media"] },
@@ -2441,7 +2467,7 @@ Window {
             return sa.iconKind || "store"
         if (appId === "files") return "files"
         if (appId === "term") return "term"
-        if (appId === "browser") return "browser"
+        if (appId === "browser" || appId === "orbit") return "browser"
         if (appId === "mail") return "mail"
         if (appId === "settings") return "settings"
         if (appId === "store") return "store"
@@ -2625,7 +2651,7 @@ Window {
         saveDesktop()
         // умный док: если часто открывают незакреплённое в этот час
         if (pinnedApps.indexOf(appId) < 0 && log[key] >= 3 && !dockSuggestVisible) {
-            var names = { files: "Файлы", browser: "Браузер", notes: "Заметки", term: "Терминал", settings: "Параметры", mail: "Почту", store: "Магазин", calc: "Калькулятор" }
+            var names = { files: "Файлы", orbit: "GT Orbit", browser: "GT Browser", notes: "Заметки", term: "Терминал", settings: "Параметры", mail: "Почту", store: "Магазин", calc: "Калькулятор" }
             dockSuggestApp = appId
             dockSuggest = "Вы часто открываете «" + (names[appId] || appId) + "» около " + hour + ":00 — закрепить в доке?"
             dockSuggestVisible = true
@@ -4575,7 +4601,7 @@ Window {
         if (host === "weather") return weatherPage
         if (host === "docs") return docsPage
         if (host === "monitor") return monitorPage
-        if (host === "browser") return browserPage
+        if (host === "browser" || host === "orbit") return browserPage
         if (host === "mail") return mailPage
         if (host === "calc") return calcPage
         if (host === "cal") return calPage
@@ -4917,6 +4943,32 @@ Window {
         return u.length ? u : "misha"
     }
 
+    function launchOrbitBrowser() {
+        var hasCr = sys.run("command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 || test -x /usr/lib/chromium/chromium; echo $?").trim() === "0"
+        if (!hasCr)
+            return false
+        var log = "/tmp/gtos-pkg-orbit.log"
+        var u = desktopUserName()
+        var run = "/usr/bin/gtos-orbit"
+        sys.run(
+            "export DISPLAY=${DISPLAY:-:0}; "
+            + "mkdir -p /tmp /dev/shm; chmod 1777 /tmp /dev/shm 2>/dev/null; "
+            + "xhost + >/dev/null 2>&1 || true; "
+            + "echo 'GTOS_PKG_LAUNCH orbit' > /dev/ttyS0 2>/dev/null || true; "
+            + ": > " + shQuote(log) + "; "
+            + "if [ -x /usr/bin/gtos-orbit ]; then RUN=" + shQuote(run) + "; "
+            + "else RUN=" + shQuote("/sbin/su-exec " + u + " env DISPLAY=:0 HOME=/home/" + u
+                + " chromium --user-data-dir=/home/" + u + "/.config/gt-orbit --class=GTOrbit --no-sandbox --disable-gpu") + "; fi; "
+            + "if command -v setsid >/dev/null 2>&1; then setsid sh -c \"$RUN >>" + shQuote(log) + " 2>&1 < /dev/null\" & "
+            + "elif command -v nohup >/dev/null 2>&1; then nohup sh -c \"$RUN >>" + shQuote(log) + " 2>&1 < /dev/null\" >/dev/null 2>&1 & "
+            + "else ( sh -c \"$RUN >>" + shQuote(log) + " 2>&1 < /dev/null\" & ); fi; "
+            + "echo STARTED"
+        )
+        notify("GT Orbit", "Запуск на Chromium…", "ok")
+        trackAppLaunch("orbit")
+        return true
+    }
+
     // Внешние GUI: от пользователя через gtos-runuser (Firefox не любит root).
     function runAsDesktopUser(cmd, logFile) {
         var log = logFile || "/tmp/gtos-user-app.log"
@@ -5192,12 +5244,28 @@ Window {
             "opacity=" + windowOpacity,
             "dockSize=" + dockSize,
             "dockEdge=" + dockEdge,
+            "dockAlign=" + dockAlign,
+            "dockSizePreset=" + dockSizePreset,
+            "dockAutoHide=" + (dockAutoHide ? "1" : "0"),
             "tileMode=" + tileMode,
             "volume=" + volume,
             "brightness=" + brightness,
             "bluetooth=" + (bluetoothOn ? "1" : "0"),
             "dockBrowser=" + (dockShowBrowser ? "1" : "0"),
             "dockMail=" + (dockShowMail ? "1" : "0"),
+            "dockOrbit=" + (dockShowOrbit ? "1" : "0"),
+            "dockSearchMode=" + dockSearchMode,
+            "dockTaskView=" + (dockShowTaskView ? "1" : "0"),
+            "dockWidgets=" + (dockShowWidgets ? "1" : "0"),
+            "dockResume=" + (dockShowResume ? "1" : "0"),
+            "dockCombine=" + dockCombineButtons,
+            "dockSmallIcons=" + dockSmallIcons,
+            "dockBadges=" + (dockShowBadges ? "1" : "0"),
+            "dockFlash=" + (dockShowFlash ? "1" : "0"),
+            "dockAllDisplays=" + (dockShowOnAllDisplays ? "1" : "0"),
+            "dockShare=" + (dockShareAnyWindow ? "1" : "0"),
+            "dockCornerDesk=" + (dockCornerDesktop ? "1" : "0"),
+            "dockMultiDisp=" + dockMultiDisplayApps,
             "passwordHash=" + passwordHash,
             "passwordSalt=" + passwordSalt,
             "avatar=" + userAvatar,
@@ -5263,12 +5331,28 @@ Window {
             else if (k === "opacity") windowOpacity = Math.max(0.55, Math.min(1, parseFloat(v) || 0.92))
             else if (k === "dockSize") dockSize = parseInt(v, 10) || 72
             else if (k === "dockEdge") dockEdge = v
+            else if (k === "dockAlign") dockAlign = v === "left" ? "left" : "center"
+            else if (k === "dockSizePreset") dockSizePreset = v || "default"
+            else if (k === "dockAutoHide") dockAutoHide = v === "1"
             else if (k === "tileMode") tileMode = v
             else if (k === "volume") volume = Math.max(0, Math.min(1, parseFloat(v) || 0.7))
             else if (k === "brightness") brightness = Math.max(0.3, Math.min(1, parseFloat(v) || 0.88))
             else if (k === "bluetooth") bluetoothOn = v === "1"
             else if (k === "dockBrowser") dockShowBrowser = v !== "0"
             else if (k === "dockMail") dockShowMail = v !== "0"
+            else if (k === "dockOrbit") dockShowOrbit = v !== "0"
+            else if (k === "dockSearchMode") dockSearchMode = v || "box"
+            else if (k === "dockTaskView") dockShowTaskView = v !== "0"
+            else if (k === "dockWidgets") dockShowWidgets = v === "1"
+            else if (k === "dockResume") dockShowResume = v === "1"
+            else if (k === "dockCombine") dockCombineButtons = v || "never"
+            else if (k === "dockSmallIcons") dockSmallIcons = v || "full"
+            else if (k === "dockBadges") dockShowBadges = v !== "0"
+            else if (k === "dockFlash") dockShowFlash = v !== "0"
+            else if (k === "dockAllDisplays") dockShowOnAllDisplays = v !== "0"
+            else if (k === "dockShare") dockShareAnyWindow = v !== "0"
+            else if (k === "dockCornerDesk") dockCornerDesktop = v !== "0"
+            else if (k === "dockMultiDisp") dockMultiDisplayApps = v || "all"
             else if (k === "passwordHash") passwordHash = v
             else if (k === "passwordSalt" && v.length) passwordSalt = v
             else if (k === "password" && v.length) {
@@ -5871,12 +5955,16 @@ Window {
                 "pkill -KILL -f '[/]cursor' 2>/dev/null",
                 "pkill -KILL -f 'Cursor' 2>/dev/null"
             ]
-        } else if (id === "chromium" || id === "chrome") {
+        } else if (id === "chromium" || id === "chrome" || id === "orbit") {
             patterns = [
+                "pkill -TERM -f 'user-data-dir=.*/gt-orbit' 2>/dev/null",
                 "pkill -TERM -x chromium 2>/dev/null",
+                "pkill -TERM -x chromium-browser 2>/dev/null",
                 "pkill -TERM -x chrome 2>/dev/null",
                 "sleep 1",
+                "pkill -KILL -f 'user-data-dir=.*/gt-orbit' 2>/dev/null",
                 "pkill -KILL -x chromium 2>/dev/null",
+                "pkill -KILL -x chromium-browser 2>/dev/null",
                 "pkill -KILL -x chrome 2>/dev/null"
             ]
         } else if (id.length) {
@@ -5945,9 +6033,25 @@ Window {
             return sys.run("pgrep -x firefox >/dev/null 2>&1 || pgrep -x firefox-bin >/dev/null 2>&1 || pgrep -f '[/]usr/lib/firefox/firefox' >/dev/null 2>&1; echo $?").trim() === "0"
         if (id === "cursor-linux" || id === "cursor" || id.indexOf("cursor") >= 0)
             return sys.run("ps w 2>/dev/null | grep -Ei '[c]ursor|[A]ppRun' | head -n 1").trim().length > 0
-        if (id === "chromium" || id === "chrome")
-            return sys.run("pgrep -x chromium >/dev/null 2>&1 || pgrep -x chrome >/dev/null 2>&1; echo $?").trim() === "0"
+        if (id === "chromium" || id === "chrome" || id === "orbit")
+            return sys.run("pgrep -x chromium >/dev/null 2>&1 || pgrep -x chromium-browser >/dev/null 2>&1 || pgrep -f 'user-data-dir=.*/gt-orbit' >/dev/null 2>&1; echo $?").trim() === "0"
         return false
+    }
+
+    function applyDockSizePreset(preset) {
+        dockSizePreset = preset
+        if (preset === "small") dockSize = 56
+        else if (preset === "large") dockSize = 88
+        else dockSize = 72
+        saveDesktop()
+    }
+
+    function dockDropdownPick(options, current) {
+        // options: [{id,name},...] — cycle for compact UI
+        var ix = 0
+        for (var i = 0; i < options.length; ++i)
+            if (options[i].id === current) { ix = i; break }
+        return options[(ix + 1) % options.length]
     }
 
     function filesCtxItems() {
@@ -6410,7 +6514,7 @@ Window {
         if (sa)
             return sa.name
         var map = {
-            files: "Файлы", browser: "Браузер", mail: "Почта", notes: "Блокнот",
+            files: "Файлы", orbit: "GT Orbit", browser: "GT Browser (архив)", mail: "Почта", notes: "Блокнот",
             term: "Терминал", settings: "Параметры", store: "Магазин", monitor: "Диспетчер задач",
             calc: "Калькулятор", cal: "Календарь", draw: "Графика", music: "Медиаплеер",
             video: "Медиаплеер", photos: "Галерея", weather: "Погода", docs: "GT Document Viewer",
@@ -12962,18 +13066,35 @@ Rectangle {
         }
     }
 
+    // зона у края для автоскрытия панели
+    MouseArea {
+        z: 199
+        visible: root.dockAutoHide && root.dockEdge === "bottom"
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 6
+        hoverEnabled: true
+        onEntered: root.dockHoverReveal = true
+        onExited: Qt.callLater(function () {
+            if (!dock.containsMouse)
+                root.dockHoverReveal = false
+        })
+    }
+
     Rectangle {
         id: dock
         z: 200
-        anchors.horizontalCenter: root.dockEdge === "bottom" || root.dockEdge === "top" ? parent.horizontalCenter : undefined
+        property bool containsMouse: dockHoverMa.containsMouse
+        anchors.horizontalCenter: (root.dockEdge === "bottom" || root.dockEdge === "top") && root.dockAlign !== "left" ? parent.horizontalCenter : undefined
+        anchors.left: root.dockEdge === "left" || ((root.dockEdge === "bottom" || root.dockEdge === "top") && root.dockAlign === "left") ? parent.left : undefined
         anchors.verticalCenter: root.dockEdge === "left" || root.dockEdge === "right" ? parent.verticalCenter : undefined
         anchors.bottom: root.dockEdge === "bottom" ? parent.bottom : undefined
         anchors.top: root.dockEdge === "top" ? parent.top : undefined
-        anchors.left: root.dockEdge === "left" ? parent.left : undefined
         anchors.right: root.dockEdge === "right" ? parent.right : undefined
-        anchors.bottomMargin: root.dockEdge === "bottom" ? 16 : 0
+        anchors.bottomMargin: root.dockEdge === "bottom" ? (root.dockAutoHide && !root.dockHoverReveal && !dock.containsMouse ? -root.dockSize + 4 : 16) : 0
         anchors.topMargin: root.dockEdge === "top" ? 54 : 0
-        anchors.leftMargin: root.dockEdge === "left" ? 16 : 0
+        anchors.leftMargin: root.dockEdge === "left" ? 16 : ((root.dockEdge === "bottom" || root.dockEdge === "top") && root.dockAlign === "left" ? 16 : 0)
         anchors.rightMargin: root.dockEdge === "right" ? 16 : 0
         width: root.dockEdge === "left" || root.dockEdge === "right" ? root.dockSize : dockRow.width + 28
         height: root.dockEdge === "left" || root.dockEdge === "right" ? dockRow.height + 28 : root.dockSize
@@ -12982,11 +13103,23 @@ Rectangle {
         border.width: root.dockDropHot ? 2 : 1
         border.color: root.dockDropHot ? root.accentColor : "#2c3840"
         Behavior on border.color { ColorAnimation { duration: 140 } }
+        Behavior on anchors.bottomMargin { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
         opacity: root.dockReady ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
         transform: Translate {
             y: root.dockReady || root.dockEdge !== "bottom" ? 0 : 120
             Behavior on y { NumberAnimation { duration: 560; easing.type: Easing.OutCubic } }
+        }
+        MouseArea {
+            id: dockHoverMa
+            anchors.fill: parent
+            hoverEnabled: true
+            acceptedButtons: Qt.NoButton
+            onEntered: root.dockHoverReveal = true
+            onExited: {
+                if (root.dockAutoHide)
+                    root.dockHoverReveal = false
+            }
         }
 
         DropArea {
@@ -13189,13 +13322,113 @@ Rectangle {
                 }
             }
 
+            // Поиск на панели
+            Item {
+                visible: root.dockSearchMode !== "hide"
+                width: root.dockSearchMode === "box" ? 168 : 40
+                height: root.dockSearchMode === "box" ? Math.max(36, root.dockSize - 28) : 40
+                Rectangle {
+                    anchors.fill: parent
+                    radius: root.dockSearchMode === "box" ? 10 : 10
+                    color: dockSearchH.containsMouse || root.gtSearchOpen ? "#1e2a28" : (root.dockSearchMode === "box" ? "#141c1a" : "transparent")
+                    border.width: root.dockSearchMode === "box" ? 1 : 0
+                    border.color: "#2a3a34"
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: root.dockSearchMode === "box" ? 10 : 0
+                        anchors.rightMargin: 8
+                        spacing: 8
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: root.dockSearchMode === "box" ? 18 : parent.parent.width
+                            horizontalAlignment: Text.AlignHCenter
+                            text: "⌕"
+                            color: "#e8eef2"
+                            font.pixelSize: 16
+                        }
+                        Text {
+                            visible: root.dockSearchMode === "box"
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Поиск"
+                            color: "#9aa7b2"
+                            font.pixelSize: 13
+                            font.family: root.uiFont
+                        }
+                    }
+                    MouseArea {
+                        id: dockSearchH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.openGtSearch()
+                    }
+                }
+            }
+
+            // Мини-приложения
+            Item {
+                visible: root.dockShowWidgets
+                width: 40; height: 40
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 10
+                    color: dockWidgetsH.containsMouse ? "#1e2a28" : "transparent"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "▦"
+                        color: dockWidgetsH.containsMouse ? "#60a5fa" : "#e8eef2"
+                        font.pixelSize: 16
+                    }
+                    MouseArea {
+                        id: dockWidgetsH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.notifyCenterOpen = !root.notifyCenterOpen
+                            if (root.notifyCenterOpen) {
+                                root.startOpen = false
+                                root.quickOpen = false
+                                root.calendarOpen = false
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Возобновить
+            Item {
+                visible: root.dockShowResume
+                width: 40; height: 40
+                Rectangle {
+                    anchors.fill: parent
+                    radius: 10
+                    color: dockResumeH.containsMouse ? "#1e2a28" : "transparent"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "↷"
+                        color: dockResumeH.containsMouse ? root.accentColor : "#e8eef2"
+                        font.pixelSize: 16
+                    }
+                    MouseArea {
+                        id: dockResumeH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.notify("Возобновить", "Нет незавершённых сеансов", "info")
+                    }
+                }
+            }
+
             Repeater {
                 model: root.dockAppList()
                 delegate: Item {
                     id: dockSlot
                     width: 46
                     height: 50
-                    visible: (modelData !== "browser" || root.dockShowBrowser) && (modelData !== "mail" || root.dockShowMail)
+                    visible: (modelData !== "browser" || root.dockShowBrowser)
+                             && (modelData !== "orbit" || root.dockShowOrbit)
+                             && (modelData !== "mail" || root.dockShowMail)
                     opacity: root.dockDragApp === modelData ? 0.35 : 1
                     scale: root.dockDropIndex === root.pinnedApps.indexOf(modelData) && root.dockDragApp.length && root.dockDragApp !== modelData ? 1.08 : 1
                     Behavior on opacity { NumberAnimation { duration: 120 } }
@@ -13449,6 +13682,7 @@ Rectangle {
             }
             Item {
                 width: 40; height: 40
+                visible: root.dockShowTaskView
                 Rectangle {
                     anchors.fill: parent
                     radius: 10
@@ -13533,6 +13767,7 @@ Rectangle {
             // Свернуть все окна / показать рабочий стол
             Item {
                 width: 40; height: 40
+                visible: root.dockCornerDesktop
                 Rectangle {
                     anchors.fill: parent
                     radius: 10
@@ -16063,6 +16298,8 @@ Rectangle {
             function sectionTitle() {
                 if (root.settingsSection === "home")
                     return "Главная"
+                if (root.settingsSection === "taskbar")
+                    return "Панель задач"
                 for (var i = 0; i < sections.length; ++i)
                     if (sections[i].id === root.settingsSection)
                         return sections[i].name
@@ -17050,55 +17287,63 @@ Rectangle {
                         }
 
                         Text { text: "Панель задач"; color: "#a0a0a0"; font.pixelSize: 12; font.family: root.uiFont }
-                        SettingCard {
-                            title: "Расположение панели"
-                            subtitle: root.dockEdge === "bottom" ? "Внизу экрана" : root.dockEdge === "top" ? "Вверху" : root.dockEdge === "left" ? "Слева" : "Справа"
-                        }
-                        Row {
-                            spacing: 8
-                            Repeater {
-                                model: [
-                                    { id: "bottom", name: "Внизу" },
-                                    { id: "top", name: "Вверху" },
-                                    { id: "left", name: "Слева" },
-                                    { id: "right", name: "Справа" }
-                                ]
-                                delegate: Rectangle {
-                                    width: 84; height: 32; radius: 4
-                                    color: root.dockEdge === modelData.id ? root.accentColor : "#3a3a3a"
-                                    Text {
-                                        anchors.centerIn: parent; text: modelData.name
-                                        color: root.dockEdge === modelData.id ? "#06210f" : "#fff"
-                                        font.pixelSize: 12; font.family: root.uiFont
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.dockEdge = modelData.id
-                                    }
-                                }
-                            }
-                        }
-
-                        SettingCard {
-                            title: "Размер панели"
-                            subtitle: root.dockSize + " пикселей"
-                        }
                         Rectangle {
                             width: parent.width
-                            height: 8
-                            radius: 4
-                            color: "#3a3a3a"
-                            Rectangle {
-                                width: parent.width * ((root.dockSize - 56) / 40)
-                                height: parent.height
-                                radius: 4
-                                color: root.accentColor
+                            height: 72
+                            radius: 10
+                            color: taskbarNavH.containsMouse ? "#323232" : "#2c2c2c"
+                            border.width: 1
+                            border.color: "#3a3a3a"
+                            Row {
+                                anchors.fill: parent
+                                anchors.leftMargin: 16
+                                anchors.rightMargin: 16
+                                spacing: 14
+                                // иконка монитора / панели
+                                Item {
+                                    width: 28; height: 28
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    Rectangle {
+                                        anchors.centerIn: parent
+                                        width: 24; height: 16; radius: 2
+                                        color: "transparent"
+                                        border.width: 1.6; border.color: "#e8eef2"
+                                    }
+                                    Rectangle {
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 2
+                                        width: 14; height: 2; radius: 1
+                                        color: "#e8eef2"
+                                    }
+                                }
+                                Column {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 3
+                                    width: parent.width - 70
+                                    Text {
+                                        text: "Панель задач"
+                                        color: "#ffffff"; font.pixelSize: 15; font.family: root.uiFontBold
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: "Поведение панели задач, закреплённые элементы системы"
+                                        color: "#a0a0a0"; font.pixelSize: 12; font.family: root.uiFont
+                                        elide: Text.ElideRight
+                                    }
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "›"
+                                    color: "#c8c8c8"; font.pixelSize: 22; font.family: root.uiFont
+                                }
                             }
                             MouseArea {
+                                id: taskbarNavH
                                 anchors.fill: parent
-                                onClicked: root.dockSize = Math.round(56 + 40 * Math.max(0, Math.min(1, mouse.x / width)))
-                                onPositionChanged: if (pressed) root.dockSize = Math.round(56 + 40 * Math.max(0, Math.min(1, mouse.x / width)))
+                                hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: root.settingsSection = "taskbar"
                             }
                         }
 
@@ -17131,6 +17376,595 @@ Rectangle {
                                 }
                             }
                         }
+                }
+            }
+
+            Component {
+                id: settingsSec_taskbar
+                Column {
+                    width: parent.width
+                    spacing: 10
+
+                    component TbDrop: Rectangle {
+                        property string title: ""
+                        property string valueLabel: ""
+                        signal cycled()
+                        width: parent ? parent.width : 400
+                        height: Math.max(56, tbDropCol.height + 20)
+                        color: "transparent"
+                        Column {
+                            id: tbDropCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+                            Text {
+                                width: parent.width
+                                text: title
+                                color: "#e8e8e8"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                                wrapMode: Text.WordWrap
+                            }
+                            Rectangle {
+                                width: Math.min(parent.width, 280)
+                                height: 32
+                                radius: 4
+                                color: "#3a3a3a"
+                                border.width: 1
+                                border.color: "#4a4a4a"
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 12
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - 36
+                                    text: valueLabel
+                                    color: "#ffffff"
+                                    font.pixelSize: 13
+                                    font.family: root.uiFont
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "▾"
+                                    color: "#c8c8c8"
+                                    font.pixelSize: 12
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: cycled()
+                                }
+                            }
+                        }
+                    }
+
+                    component TbToggle: Rectangle {
+                        property string title: ""
+                        property string subtitle: ""
+                        property bool on: false
+                        property bool enabled: true
+                        signal toggled()
+                        width: parent ? parent.width : 400
+                        height: Math.max(52, tbTogCol.height + 18)
+                        color: "transparent"
+                        opacity: enabled ? 1 : 0.45
+                        Column {
+                            id: tbTogCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.rightMargin: 56
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+                            Text {
+                                width: parent.width
+                                text: title
+                                color: "#ffffff"
+                                font.pixelSize: 14
+                                font.family: root.uiFont
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                width: parent.width
+                                visible: subtitle.length > 0
+                                text: subtitle
+                                color: "#a0a0a0"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                        ToggleSwitch {
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            on: parent.on
+                            onToggled: if (parent.enabled) parent.toggled()
+                        }
+                    }
+
+                    component TbCheck: Rectangle {
+                        property string title: ""
+                        property string note: ""
+                        property bool checked: false
+                        property bool enabled: true
+                        signal toggled()
+                        width: parent ? parent.width : 400
+                        height: Math.max(36, tbChkCol.height + 12)
+                        color: "transparent"
+                        opacity: enabled ? 1 : 0.45
+                        Row {
+                            anchors.left: parent.left
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 10
+                            Rectangle {
+                                width: 18; height: 18; radius: 3
+                                color: checked ? root.accentColor : "transparent"
+                                border.width: 1.5
+                                border.color: checked ? root.accentColor : "#888"
+                                Text {
+                                    anchors.centerIn: parent
+                                    visible: checked
+                                    text: "✓"
+                                    color: "#06210f"
+                                    font.pixelSize: 12
+                                    font.bold: true
+                                }
+                            }
+                            Column {
+                                id: tbChkCol
+                                spacing: 2
+                                width: parent.parent.width - 40
+                                Text {
+                                    width: parent.width
+                                    text: title
+                                    color: "#e8e8e8"
+                                    font.pixelSize: 13
+                                    font.family: root.uiFont
+                                    wrapMode: Text.WordWrap
+                                }
+                                Text {
+                                    width: parent.width
+                                    visible: note.length > 0
+                                    text: note
+                                    color: "#888"
+                                    font.pixelSize: 11
+                                    font.family: root.uiFont
+                                    wrapMode: Text.WordWrap
+                                }
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            enabled: parent.enabled
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: parent.toggled()
+                        }
+                    }
+
+                    // ——— Элементы панели задач ———
+                    Rectangle {
+                        width: parent.width
+                        radius: 10
+                        color: "#252525"
+                        height: tbItemsCol.height + 24
+                        Column {
+                            id: tbItemsCol
+                            width: parent.width - 28
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.top: parent.top
+                            anchors.topMargin: 14
+                            spacing: 4
+                            Row {
+                                width: parent.width
+                                Text {
+                                    width: parent.width - 24
+                                    text: "Элементы панели задач"
+                                    color: "#ffffff"
+                                    font.pixelSize: 15
+                                    font.family: root.uiFontBold
+                                }
+                                Text {
+                                    text: "⌃"
+                                    color: "#a0a0a0"
+                                    font.pixelSize: 14
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: "Отобразить или скрыть кнопки, отображаемые на панели задач"
+                                color: "#a0a0a0"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                                wrapMode: Text.WordWrap
+                            }
+                            Item { width: 1; height: 8 }
+
+                            // Поиск
+                            Rectangle {
+                                width: parent.width
+                                height: 52
+                                color: "transparent"
+                                Row {
+                                    anchors.fill: parent
+                                    spacing: 12
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "⌕"
+                                        color: "#e8e8e8"
+                                        font.pixelSize: 18
+                                        width: 22
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Поиск"
+                                        color: "#ffffff"
+                                        font.pixelSize: 14
+                                        font.family: root.uiFont
+                                        width: parent.width - 200
+                                    }
+                                    Rectangle {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 150; height: 30; radius: 4
+                                        color: "#3a3a3a"
+                                        Text {
+                                            anchors.left: parent.left
+                                            anchors.leftMargin: 10
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: root.dockSearchMode === "box" ? "Поле поиска"
+                                                  : root.dockSearchMode === "icon" ? "Значок поиска" : "Скрыть"
+                                            color: "#fff"
+                                            font.pixelSize: 12
+                                            font.family: root.uiFont
+                                        }
+                                        Text {
+                                            anchors.right: parent.right
+                                            anchors.rightMargin: 8
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: "▾"; color: "#aaa"; font.pixelSize: 11
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                var n = root.dockDropdownPick([
+                                                    { id: "box", name: "Поле поиска" },
+                                                    { id: "icon", name: "Значок поиска" },
+                                                    { id: "hide", name: "Скрыть" }
+                                                ], root.dockSearchMode)
+                                                root.dockSearchMode = n.id
+                                                root.saveDesktop()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Представление задач
+                            Rectangle {
+                                width: parent.width
+                                height: 48
+                                color: "transparent"
+                                Row {
+                                    anchors.fill: parent
+                                    spacing: 12
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "⧉"
+                                        color: "#e8e8e8"
+                                        font.pixelSize: 16
+                                        width: 22
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Представление задач"
+                                        color: "#ffffff"
+                                        font.pixelSize: 14
+                                        font.family: root.uiFont
+                                        width: parent.width - 100
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: root.dockShowTaskView ? "Вкл." : "Выкл."
+                                        color: "#a0a0a0"
+                                        font.pixelSize: 12
+                                        font.family: root.uiFont
+                                    }
+                                    ToggleSwitch {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        on: root.dockShowTaskView
+                                        onToggled: {
+                                            root.dockShowTaskView = !root.dockShowTaskView
+                                            root.saveDesktop()
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Мини-приложения
+                            Rectangle {
+                                width: parent.width
+                                height: 48
+                                color: "transparent"
+                                Row {
+                                    anchors.fill: parent
+                                    spacing: 12
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "▦"
+                                        color: "#60a5fa"
+                                        font.pixelSize: 16
+                                        width: 22
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "Мини-приложения"
+                                        color: "#ffffff"
+                                        font.pixelSize: 14
+                                        font.family: root.uiFont
+                                        width: parent.width - 100
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: root.dockShowWidgets ? "Вкл." : "Выкл."
+                                        color: "#a0a0a0"
+                                        font.pixelSize: 12
+                                    }
+                                    ToggleSwitch {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        on: root.dockShowWidgets
+                                        onToggled: {
+                                            root.dockShowWidgets = !root.dockShowWidgets
+                                            root.saveDesktop()
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Возобновить
+                            Rectangle {
+                                width: parent.width
+                                height: Math.max(56, resumeCol.height + 16)
+                                color: "transparent"
+                                Row {
+                                    anchors.fill: parent
+                                    spacing: 12
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: "⧉"
+                                        color: "#e8e8e8"
+                                        font.pixelSize: 16
+                                        width: 22
+                                    }
+                                    Column {
+                                        id: resumeCol
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: parent.width - 120
+                                        spacing: 2
+                                        Text {
+                                            text: "Возобновить"
+                                            color: "#ffffff"
+                                            font.pixelSize: 14
+                                            font.family: root.uiFont
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: "Показывать приложение с уведомлением на значке, когда резюме доступно"
+                                            color: "#a0a0a0"
+                                            font.pixelSize: 11
+                                            font.family: root.uiFont
+                                            wrapMode: Text.WordWrap
+                                        }
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: root.dockShowResume ? "Вкл." : "Выкл."
+                                        color: "#a0a0a0"
+                                        font.pixelSize: 12
+                                    }
+                                    ToggleSwitch {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        on: root.dockShowResume
+                                        onToggled: {
+                                            root.dockShowResume = !root.dockShowResume
+                                            root.saveDesktop()
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // ——— Поведение ———
+                    Text {
+                        text: "Поведение панели задач"
+                        color: "#a0a0a0"
+                        font.pixelSize: 12
+                        font.family: root.uiFont
+                    }
+
+                    SettingCard {
+                        title: "Расположение панели"
+                        subtitle: root.dockEdge === "bottom" ? "Внизу экрана"
+                                  : root.dockEdge === "top" ? "Вверху"
+                                  : root.dockEdge === "left" ? "Слева" : "Справа"
+                    }
+                    Row {
+                        spacing: 8
+                        Repeater {
+                            model: [
+                                { id: "bottom", name: "Внизу" },
+                                { id: "top", name: "Вверху" },
+                                { id: "left", name: "Слева" },
+                                { id: "right", name: "Справа" }
+                            ]
+                            delegate: Rectangle {
+                                width: 84; height: 32; radius: 4
+                                color: root.dockEdge === modelData.id ? root.accentColor : "#3a3a3a"
+                                Text {
+                                    anchors.centerIn: parent; text: modelData.name
+                                    color: root.dockEdge === modelData.id ? "#06210f" : "#fff"
+                                    font.pixelSize: 12; font.family: root.uiFont
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        root.dockEdge = modelData.id
+                                        if (modelData.id !== "bottom")
+                                            root.dockAutoHide = false
+                                        root.saveDesktop()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    TbDrop {
+                        title: "Выравнивание значков на панели задач"
+                        valueLabel: root.dockAlign === "left" ? "Слева" : "По центру"
+                        onCycled: {
+                            var n = root.dockDropdownPick([
+                                { id: "center", name: "По центру" },
+                                { id: "left", name: "Слева" }
+                            ], root.dockAlign)
+                            root.dockAlign = n.id
+                            root.saveDesktop()
+                        }
+                    }
+                    TbDrop {
+                        title: "Размер панели задач"
+                        valueLabel: root.dockSizePreset === "small" ? "Маленький"
+                                    : root.dockSizePreset === "large" ? "Крупный" : "По умолчанию"
+                        onCycled: {
+                            var n = root.dockDropdownPick([
+                                { id: "small", name: "Маленький" },
+                                { id: "default", name: "По умолчанию" },
+                                { id: "large", name: "Крупный" }
+                            ], root.dockSizePreset)
+                            root.applyDockSizePreset(n.id)
+                        }
+                    }
+                    TbDrop {
+                        title: "При использовании нескольких дисплеев отображать приложения панели задач на"
+                        valueLabel: root.dockMultiDisplayApps === "main" ? "Главной панели задач"
+                                    : root.dockMultiDisplayApps === "taskbar_open" ? "Панели задач, где открыто окно"
+                                    : "Все панели задач"
+                        onCycled: {
+                            var n = root.dockDropdownPick([
+                                { id: "all", name: "Все" },
+                                { id: "main", name: "Главная" },
+                                { id: "taskbar_open", name: "Где открыто" }
+                            ], root.dockMultiDisplayApps)
+                            root.dockMultiDisplayApps = n.id
+                            root.saveDesktop()
+                        }
+                    }
+                    TbDrop {
+                        title: "Объединить кнопки панели задач и скрыть метки"
+                        valueLabel: root.dockCombineButtons === "always" ? "Всегда"
+                                    : root.dockCombineButtons === "full" ? "При заполнении панели задач"
+                                    : "Никогда"
+                        onCycled: {
+                            var n = root.dockDropdownPick([
+                                { id: "never", name: "Никогда" },
+                                { id: "full", name: "При заполнении" },
+                                { id: "always", name: "Всегда" }
+                            ], root.dockCombineButtons)
+                            root.dockCombineButtons = n.id
+                            root.saveDesktop()
+                        }
+                    }
+                    TbDrop {
+                        title: "Объединить кнопки панели задач и скрыть метки на других панелях задач"
+                        valueLabel: root.dockCombineButtons === "never" ? "Никогда" : "Всегда"
+                        onCycled: {
+                            // зеркало основного режима для secondary
+                            root.dockCombineButtons = root.dockCombineButtons === "always" ? "never" : "always"
+                            root.saveDesktop()
+                        }
+                    }
+                    TbDrop {
+                        title: "Показывать уменьшенные значки приложений"
+                        valueLabel: root.dockSmallIcons === "always" ? "Всегда"
+                                    : root.dockSmallIcons === "never" ? "Никогда"
+                                    : "При переполнении панели задач"
+                        onCycled: {
+                            var n = root.dockDropdownPick([
+                                { id: "never", name: "Никогда" },
+                                { id: "full", name: "При переполнении" },
+                                { id: "always", name: "Всегда" }
+                            ], root.dockSmallIcons)
+                            root.dockSmallIcons = n.id
+                            root.saveDesktop()
+                        }
+                    }
+
+                    Item { width: 1; height: 4 }
+                    Rectangle { width: parent.width; height: 1; color: "#333" }
+
+                    TbCheck {
+                        title: "Автоматически скрывать панель задач"
+                        note: "Этот параметр доступен только когда панель задач находится внизу."
+                        checked: root.dockAutoHide
+                        enabled: root.dockEdge === "bottom"
+                        onToggled: {
+                            root.dockAutoHide = !root.dockAutoHide
+                            root.dockHoverReveal = false
+                            root.saveDesktop()
+                        }
+                    }
+                    TbCheck {
+                        title: "Показывать значки в приложениях на панели задач"
+                        checked: root.dockShowBadges
+                        onToggled: { root.dockShowBadges = !root.dockShowBadges; root.saveDesktop() }
+                    }
+                    TbCheck {
+                        title: "Показывать мигание значков приложений на панели задач"
+                        checked: root.dockShowFlash
+                        onToggled: { root.dockShowFlash = !root.dockShowFlash; root.saveDesktop() }
+                    }
+                    TbCheck {
+                        title: "Показывать панель задач на всех дисплеях"
+                        checked: root.dockShowOnAllDisplays
+                        onToggled: { root.dockShowOnAllDisplays = !root.dockShowOnAllDisplays; root.saveDesktop() }
+                    }
+                    TbCheck {
+                        title: "Предоставление доступа к любому окну из панели задач"
+                        checked: root.dockShareAnyWindow
+                        onToggled: { root.dockShareAnyWindow = !root.dockShareAnyWindow; root.saveDesktop() }
+                    }
+                    TbCheck {
+                        title: "Щелкните в дальнем углу панели задач, чтобы показать рабочий стол"
+                        checked: root.dockCornerDesktop
+                        onToggled: { root.dockCornerDesktop = !root.dockCornerDesktop; root.saveDesktop() }
+                    }
+
+                    Item { width: 1; height: 8 }
+                    Text {
+                        text: "Закреплённые элементы"
+                        color: "#a0a0a0"
+                        font.pixelSize: 12
+                        font.family: root.uiFont
+                    }
+                    TbToggle {
+                        title: "GT Orbit"
+                        subtitle: "Новый браузер на Chromium"
+                        on: root.dockShowOrbit
+                        onToggled: { root.dockShowOrbit = !root.dockShowOrbit; root.saveDesktop() }
+                    }
+                    TbToggle {
+                        title: "GT Browser (архив)"
+                        subtitle: "Встроенный просмотрщик"
+                        on: root.dockShowBrowser
+                        onToggled: { root.dockShowBrowser = !root.dockShowBrowser; root.saveDesktop() }
+                    }
+                    TbToggle {
+                        title: "Почта"
+                        on: root.dockShowMail
+                        onToggled: { root.dockShowMail = !root.dockShowMail; root.saveDesktop() }
+                    }
                 }
             }
 
@@ -19064,7 +19898,14 @@ Rectangle {
                                 anchors.fill: parent
                                 hoverEnabled: true
                                 cursorShape: Qt.PointingHandCursor
-                                onClicked: root.settingsSection = "home"
+                                onClicked: {
+                                    if (root.settingsSection === "taskbar")
+                                        root.settingsSection = "personalize"
+                                    else if (root.settingsSection === "power")
+                                        root.settingsSection = "system"
+                                    else
+                                        root.settingsSection = "home"
+                                }
                             }
                         }
                         Text {
@@ -19531,6 +20372,7 @@ Rectangle {
                             if (sec === "bluetooth") return settingsSec_bluetooth
                             if (sec === "network") return settingsSec_network
                             if (sec === "personalize") return settingsSec_personalize
+                            if (sec === "taskbar") return settingsSec_taskbar
                             if (sec === "apps") return settingsSec_apps
                             if (sec === "accounts") return settingsSec_accounts
                             if (sec === "storage") return settingsSec_storage

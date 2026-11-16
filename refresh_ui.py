@@ -107,6 +107,8 @@ def main() -> None:
     tree["usr/bin/gtos-runuser"] = FsNode("reg", 0o100755, runuser)
     ffwrap = (ROOT / "scripts" / "gtos-firefox.sh").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/bin/gtos-firefox"] = FsNode("reg", 0o100755, ffwrap)
+    orbitwrap = (ROOT / "scripts" / "gtos-orbit.sh").read_bytes().replace(b"\r\n", b"\n")
+    tree["usr/bin/gtos-orbit"] = FsNode("reg", 0o100755, orbitwrap)
     install_sh = (ROOT / "scripts" / "gtos-install.sh").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/bin/gtos-install"] = FsNode("reg", 0o100755, install_sh)
     shell_upd = (ROOT / "scripts" / "gtos-shell-update.sh").read_bytes().replace(b"\r\n", b"\n")
