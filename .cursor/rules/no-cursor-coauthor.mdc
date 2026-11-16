@@ -1,0 +1,12 @@
+---
+description: Never add Cursor as git co-author or GitHub contributor
+alwaysApply: true
+---
+
+# No CursorAgent in git / GitHub contributors
+
+- **Never** add `Co-authored-by: Cursor`, `cursoragent@cursor.com`, or any Cursor/agent identity to commit messages, trailers, or author/committer fields.
+- Commits must be authored only as the repository owner (Glukhov / vi1wer).
+- Do not use git flags or hooks that inject Cursor as co-author.
+- If a tooling layer tries to append a Cursor co-author trailer, strip it before committing or amend immediately so it never reaches `origin`.
+- Goal: CursorAgent must **never** appear in GitHub Contributors for this repo.
