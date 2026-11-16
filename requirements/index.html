@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GT/OS — настольная операционная система от Glukhov Mikhail. Скачайте официальный образ.">
+  <title>Системные требования GT/OS</title>
+  <link rel="icon" href="/gtos/static/img/favicon.ico?v=5" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/gtos/static/img/favicon-32.png?v=5">
+  <link rel="icon" type="image/png" sizes="16x16" href="/gtos/static/img/favicon-16.png?v=5">
+  <link rel="shortcut icon" href="/gtos/static/img/favicon.ico?v=5">
+  <link rel="apple-touch-icon" href="/gtos/static/img/gtos-icon-256.png?v=5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Sora:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/gtos/static/css/site.css?v=home6">
+</head>
+<body class="page-requirements">
+  <header class="nav-shell" data-nav>
+    <a class="logo" href="/gtos/" aria-label="GT/OS">
+      <img class="logo-clover" src="/gtos/static/img/gtos-clover.png?v=3" width="48" height="48" alt="">
+      <span class="logo-text">GT/OS</span>
+    </a>
+    <button class="nav-backdrop" type="button" aria-label="Закрыть меню" data-nav-backdrop tabindex="-1"></button>
+    <nav class="nav-links" aria-label="Основное меню">
+      <p class="nav-sheet-label">Навигация</p>
+      <a href="/gtos/" class="">Главная</a>
+      <a href="/gtos/product" class="">Продукт</a>
+      <a href="/gtos/blog" class="">Блог</a>
+      <a href="/gtos/community" class="">Сообщество</a>
+      <a href="/gtos/download" class="">Скачать</a>
+      <a href="/gtos/changes" class="">Изменения</a>
+      <a href="/gtos/developers" class="">Разработчикам</a>
+      <a href="/gtos/support" class="">Поддержка</a>
+      <div class="nav-more is-active" data-nav-more>
+        <button type="button" class="nav-more-btn" data-nav-more-btn aria-expanded="false" aria-haspopup="true">
+          Ещё
+          <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <p class="nav-sheet-label nav-sheet-label-more">Ещё</p>
+        <div class="nav-more-panel" role="menu">
+          <a href="/gtos/whats-new" role="menuitem" class="">Что нового</a>
+          <a href="/gtos/tips" role="menuitem" class="">Советы</a>
+          <a href="/gtos/requirements" role="menuitem" class="is-active">Требования</a>
+          <a href="/gtos/accessibility" role="menuitem" class="">Доступность</a>
+          <a href="/gtos/privacy" role="menuitem" class="">Конфиденциальность</a>
+          <a href="/gtos/about" role="menuitem" class="">О нас</a>
+        </div>
+      </div>
+      <a class="nav-cta nav-cta-mobile" href="/gtos/download">Скачать GT/OS</a>
+    </nav>
+    <a class="nav-cta nav-cta-desktop" href="/gtos/download">Скачать GT/OS</a>
+    <button class="nav-toggle" type="button" aria-label="Меню" data-nav-toggle>
+      <span></span><span></span>
+    </button>
+  </header>
+
+  <main>
+    
+<section class="req-hero">
+  <div class="req-hero-bg" aria-hidden="true"></div>
+  <div class="req-hero-inner reveal">
+    <p class="req-brand">Системные требования · x86_64</p>
+    <h1>Что нужно,<br>чтобы поставить GT/OS</h1>
+    <p class="req-lead">Минимум — чтобы образ завелся. Рекомендуем — чтобы день за столом был спокойным. Архитектура только x86_64.</p>
+  </div>
+</section>
+
+<section class="req-compare" aria-label="Минимум и рекомендуем">
+  <div class="req-compare-head reveal">
+    <span class="req-col-label">Компонент</span>
+    <span class="req-col-label">Минимум</span>
+    <span class="req-col-label req-col-accent">Рекомендуем</span>
+  </div>
+  <div class="req-rows">
+    <div class="req-row reveal">
+      <strong>Процессор</strong>
+      <span>x86_64, 2 ядра</span>
+      <span class="req-rec">4 ядра и выше</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>ОЗУ</strong>
+      <span>2 ГБ</span>
+      <span class="req-rec">4–8 ГБ</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Накопитель</strong>
+      <span>8 ГБ свободно</span>
+      <span class="req-rec">16 ГБ+ SSD</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Загрузка</strong>
+      <span>USB 2.0, BIOS/UEFI</span>
+      <span class="req-rec">USB 3.0, Ventoy или Rufus (DD)</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Экран</strong>
+      <span>1024×768</span>
+      <span class="req-rec">1920×1080 и выше</span>
+    </div>
+    <div class="req-row reveal">
+      <strong>Сеть</strong>
+      <span>Не обязательна для установки</span>
+      <span class="req-rec">Ethernet или Wi‑Fi для магазина и обновлений</span>
+    </div>
+  </div>
+</section>
+
+<section class="req-aside">
+  <div class="req-aside-inner">
+    <div class="req-aside-block reveal">
+      <p class="req-aside-kicker">Виртуальная машина</p>
+      <h2>QEMU</h2>
+      <p>Для проверки образа хватит 2 ГБ ОЗУ гостю. В репозитории — <code>python run.py</code>.</p>
+      <a href="/gtos/developers">Разработчикам →</a>
+    </div>
+    <div class="req-aside-block req-aside-release reveal">
+      <p class="req-aside-kicker">Текущий образ</p>
+      <h2>GT/OS 1.6.1</h2>
+      <p>872,4 МБ · GTOS-1.6.1-x86_64.iso</p>
+      <a class="btn btn-primary" href="/gtos/download">Перейти к загрузке</a>
+    </div>
+  </div>
+</section>
+
+  </main>
+
+  <footer class="site-footer site-footer-v2">
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <img class="logo-clover" src="/gtos/static/img/gtos-clover.png?v=2" width="56" height="56" alt="">
+          <div>
+            <strong>GT/OS</strong>
+            <p>Рабочий стол, в котором всё на своих местах — как в Windows, на своём ядре.</p>
+          </div>
+        </div>
+        <div class="footer-cta-wrap">
+          <a class="btn btn-primary" href="/gtos/download">Скачать 1.6.1</a>
+          <a class="btn btn-quiet" href="/gtos/support">Нужна помощь?</a>
+        </div>
+      </div>
+      <div class="footer-cols footer-cols-v2">
+        <div>
+          <h4>Продукт</h4>
+          <a href="/gtos/product">Обзор GT/OS</a>
+          <a href="/gtos/whats-new">Что нового</a>
+          <a href="/gtos/download">Скачать ISO</a>
+          <a href="/gtos/requirements">Системные требования</a>
+          <a href="/gtos/changes">Список изменений</a>
+        </div>
+        <div>
+          <h4>Помощь</h4>
+          <a href="/gtos/support">Центр поддержки</a>
+          <a href="/gtos/tips">Советы и жесты</a>
+          <a href="/gtos/accessibility">Специальные возможности</a>
+          <a href="mailto:mikhail.lososka@gmail.com">Написать на почту</a>
+        </div>
+        <div>
+          <h4>Компания</h4>
+          <a href="/gtos/about">О Glukhov Mikhail</a>
+          <a href="/gtos/privacy">Конфиденциальность</a>
+          <a href="/gtos/blog">Блог</a>
+          <a href="/gtos/community">Сообщество</a>
+          <a href="/gtos/developers">Разработчикам</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p class="footer-copy">© 2026 Glukhov Mikhail · GT/OS 1.6.1</p>
+        <p class="footer-meta">Для ПК · x86_64</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/gtos/static/js/site.js"></script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>GT/OS — варианты hero</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root { --void:#061018; --ink:#f4f7f5; --dim:rgba(244,247,245,.65); --accent:#3be182; --line:rgba(255,255,255,.1); }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--void); color:var(--ink); font-family:Sora,sans-serif; }
+    main { width:min(920px, calc(100% - 40px)); margin:0 auto; padding:72px 0 96px; }
+    h1 { font-family:Syne,sans-serif; font-size:clamp(2rem,5vw,3.2rem); letter-spacing:-.04em; margin:0 0 12px; }
+    .lead { color:var(--dim); max-width:40rem; margin:0 0 40px; line-height:1.55; }
+    ol { list-style:none; margin:0; padding:0; display:grid; gap:14px; }
+    a {
+      display:grid; gap:6px; padding:22px 24px; border:1px solid var(--line);
+      border-radius:16px; color:inherit; text-decoration:none;
+      background:linear-gradient(180deg, rgba(255,255,255,.04), transparent);
+      transition: border-color .2s, transform .2s;
+    }
+    a:hover { border-color:rgba(59,225,130,.45); transform:translateY(-2px); }
+    a strong { font-family:Syne,sans-serif; font-size:1.25rem; letter-spacing:-.02em; }
+    a span { color:var(--dim); font-size:.95rem; line-height:1.45; }
+    .tag { color:var(--accent); font-size:.78rem; font-weight:600; letter-spacing:.04em; text-transform:uppercase; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Варианты hero</h1>
+    <p class="lead">Четыре отдельных макета для главной. Откройте каждый на весь экран и сравните. Ничего на живую главную не подключено — только предложения.</p>
+    <ol>
+      <li>
+        <a href="01-orbit.html">
+          <div class="tag">01 · Orbit</div>
+          <strong>Клевер в орбите</strong>
+          <span>Полный wallpaper, огромный GT/OS, мягкое кольцо вокруг клевера. Ближе к нынешнему hero, но акцент на марке.</span>
+        </a>
+      </li>
+      <li>
+        <a href="02-promo-bleed.html">
+          <div class="tag">02 · Promo bleed</div>
+          <strong>Промо на весь кадр</strong>
+          <span>Кадр gtos-promo-1.6 во весь экран. Бренд и одна фраза сидят внизу на градиенте — без карточек и врезок.</span>
+        </a>
+      </li>
+      <li>
+        <a href="03-wordmark-field.html">
+          <div class="tag">03 · Wordmark</div>
+          <strong>Поле из названия</strong>
+          <span>GT/OS занимает почти весь первый экран как визуал. Обои едва видны сзади. Один подзаголовок и CTA.</span>
+        </a>
+      </li>
+      <li>
+        <a href="04-desk-horizon.html">
+          <div class="tag">04 · Desk horizon</div>
+          <strong>Горизонт стола</strong>
+          <span>Обои как пространство стола; текст стоит на нижней «полке». Спокойный, повседневный вход в ОС.</span>
+        </a>
+      </li>
+    </ol>
+  </main>
+</body>
+</html>
