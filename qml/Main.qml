@@ -690,11 +690,8 @@ Window {
         if (appId === "security") { openSettingsSection("security"); return }
         if (appId === "power") { openSettingsSection("power"); return }
         if (appId === "recovery") { openControlTab("recovery"); return }
-        if (appId === "orbit") {
-            if (launchOrbitBrowser())
-                return
+        if (appId === "orbit")
             title = title || "GT Orbit"
-        }
         for (var i = 0; i < windows.count; ++i) {
             if (windows.get(i).appId === appId) {
                 windows.setProperty(i, "desk", deskIndex)
@@ -787,9 +784,9 @@ Window {
         if (appId === "recovery")
             recoveryRefreshSoon.restart()
         if (appId === "browser")
-            browserBody = "<p><b>GT Browser (архив)</b> — встроенный просмотрщик. Новый браузер: <b>GT Orbit</b> (Chromium).</p><p>Введите адрес и нажмите <b>Открыть</b>.</p>"
+            browserBody = "<p><b>GT Browser (архив)</b> — старый встроенный просмотрщик.</p><p>Для повседневного веба используйте <b>GT Orbit</b>.</p>"
         if (appId === "orbit")
-            browserBody = "<p><b>GT Orbit</b> — браузер GT/OS на движке Chromium.</p><p>Chromium ещё не установлен: откройте <b>Магазин GT</b> → Chromium, либо введите адрес ниже для упрощённого просмотра.</p>"
+            browserBody = root.orbitHomeHtml()
         if (appId === "mail" && !mailBody.length)
             mailBody = "Здравствуйте,\n\n"
         if (appId === "term")
@@ -2931,7 +2928,8 @@ Window {
     function browserNewTab(url) {
         commitBrowserTab()
         var tabs = browserTabs.slice()
-        tabs.push({ title: "Новая вкладка", url: url || "https://example.com", body: "<p style='color:#666'>Новая вкладка — введите адрес.</p>", busy: false })
+        var u = url || "https://www.google.com"
+        tabs.push({ title: "Новая вкладка", url: u, body: orbitHomeHtml(), busy: false })
         browserTabs = tabs
         browserTab = tabs.length - 1
         syncBrowserFromTab()
@@ -4601,7 +4599,8 @@ Window {
         if (host === "weather") return weatherPage
         if (host === "docs") return docsPage
         if (host === "monitor") return monitorPage
-        if (host === "browser" || host === "orbit") return browserPage
+        if (host === "orbit") return orbitPage
+        if (host === "browser") return browserPage
         if (host === "mail") return mailPage
         if (host === "calc") return calcPage
         if (host === "cal") return calPage
@@ -4943,29 +4942,21 @@ Window {
         return u.length ? u : "misha"
     }
 
+    function orbitHomeHtml() {
+        return "<div style='font-family:Sora,Montserrat,sans-serif;padding:28px 8px 12px 8px;'>"
+            + "<div style='font-size:28px;font-weight:700;color:#0e7490;letter-spacing:-0.5px;'>GT Orbit</div>"
+            + "<div style='margin-top:8px;font-size:15px;color:#334155;line-height:1.45;'>Встроенный браузер GT/OS. Введите адрес сверху или откройте закладку — ничего ставить не нужно.</div>"
+            + "<div style='margin-top:22px;display:flex;flex-wrap:wrap;gap:10px;'>"
+            + "<a href='https://www.google.com' style='color:#0e7490;text-decoration:none;padding:8px 14px;background:#ecfeff;border-radius:999px;'>Google</a> "
+            + "<a href='https://ya.ru' style='color:#0e7490;text-decoration:none;padding:8px 14px;background:#ecfeff;border-radius:999px;'>Яндекс</a> "
+            + "<a href='https://wikipedia.org' style='color:#0e7490;text-decoration:none;padding:8px 14px;background:#ecfeff;border-radius:999px;'>Wikipedia</a> "
+            + "<a href='https://github.com' style='color:#0e7490;text-decoration:none;padding:8px 14px;background:#ecfeff;border-radius:999px;'>GitHub</a>"
+            + "</div></div>"
+    }
+
     function launchOrbitBrowser() {
-        var hasCr = sys.run("command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1 || test -x /usr/lib/chromium/chromium; echo $?").trim() === "0"
-        if (!hasCr)
-            return false
-        var log = "/tmp/gtos-pkg-orbit.log"
-        var u = desktopUserName()
-        var run = "/usr/bin/gtos-orbit"
-        sys.run(
-            "export DISPLAY=${DISPLAY:-:0}; "
-            + "mkdir -p /tmp /dev/shm; chmod 1777 /tmp /dev/shm 2>/dev/null; "
-            + "xhost + >/dev/null 2>&1 || true; "
-            + "echo 'GTOS_PKG_LAUNCH orbit' > /dev/ttyS0 2>/dev/null || true; "
-            + ": > " + shQuote(log) + "; "
-            + "if [ -x /usr/bin/gtos-orbit ]; then RUN=" + shQuote(run) + "; "
-            + "else RUN=" + shQuote("/sbin/su-exec " + u + " env DISPLAY=:0 HOME=/home/" + u
-                + " chromium --user-data-dir=/home/" + u + "/.config/gt-orbit --class=GTOrbit --no-sandbox --disable-gpu") + "; fi; "
-            + "if command -v setsid >/dev/null 2>&1; then setsid sh -c \"$RUN >>" + shQuote(log) + " 2>&1 < /dev/null\" & "
-            + "elif command -v nohup >/dev/null 2>&1; then nohup sh -c \"$RUN >>" + shQuote(log) + " 2>&1 < /dev/null\" >/dev/null 2>&1 & "
-            + "else ( sh -c \"$RUN >>" + shQuote(log) + " 2>&1 < /dev/null\" & ); fi; "
-            + "echo STARTED"
-        )
-        notify("GT Orbit", "Запуск на Chromium…", "ok")
-        trackAppLaunch("orbit")
+        // Orbit — встроенный просмотрщик оболочки (без Chromium из магазина)
+        launch("orbit", "GT Orbit")
         return true
     }
 
@@ -24813,6 +24804,257 @@ Rectangle {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
+        id: orbitPage
+        Item {
+            property string appTitle: ""
+            readonly property color orbitInk: "#22d3ee"
+            readonly property color orbitBg: "#071018"
+            readonly property color orbitPanel: "#0d1a24"
+            Rectangle {
+                anchors.fill: parent
+                color: orbitBg
+                // верхняя полоса Orbit
+                Rectangle {
+                    id: orbitChrome
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    height: 56
+                    color: orbitPanel
+                    Row {
+                        anchors.fill: parent
+                        anchors.leftMargin: 14
+                        anchors.rightMargin: 14
+                        spacing: 10
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Orbit"
+                            color: orbitInk
+                            font.pixelSize: 16
+                            font.family: root.uiFontBold
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 1; height: 22; color: "#1e3340"
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34; height: 34; radius: 17
+                            color: root.browserHistIndex > 0 ? "#132230" : "#0a1520"
+                            opacity: root.browserHistIndex > 0 ? 1 : 0.4
+                            Text { anchors.centerIn: parent; text: "←"; color: "#e8eef2"; font.pixelSize: 15 }
+                            MouseArea { anchors.fill: parent; enabled: root.browserHistIndex > 0; onClicked: root.browseBack() }
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34; height: 34; radius: 17
+                            color: root.browserHistIndex >= 0 && root.browserHistIndex < root.browserHistory.length - 1 ? "#132230" : "#0a1520"
+                            opacity: root.browserHistIndex >= 0 && root.browserHistIndex < root.browserHistory.length - 1 ? 1 : 0.4
+                            Text { anchors.centerIn: parent; text: "→"; color: "#e8eef2"; font.pixelSize: 15 }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: root.browserHistIndex >= 0 && root.browserHistIndex < root.browserHistory.length - 1
+                                onClicked: root.browseForward()
+                            }
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 34; height: 34; radius: 17; color: "#132230"
+                            Text { anchors.centerIn: parent; text: root.browserBusy ? "…" : "↻"; color: "#e8eef2"; font.pixelSize: 14 }
+                            MouseArea { anchors.fill: parent; onClicked: root.browseReload() }
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: Math.max(160, parent.width - 34 * 3 - 200)
+                            height: 36
+                            radius: 18
+                            color: "#061018"
+                            border.width: 1
+                            border.color: orbitUrlFocus.activeFocus ? orbitInk : "#1e3340"
+                            TextInput {
+                                id: orbitUrlFocus
+                                anchors.fill: parent
+                                anchors.leftMargin: 14
+                                anchors.rightMargin: 14
+                                color: "#f0f9ff"
+                                font.pixelSize: 14
+                                font.family: root.uiFont
+                                text: root.browserUrl
+                                selectByMouse: true
+                                clip: true
+                                onTextChanged: root.browserUrl = text
+                                Keys.onReturnPressed: root.browseGo()
+                            }
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 36; height: 36; radius: 18
+                            color: root.isBrowserBookmarked() ? "#0e3a3a" : "#132230"
+                            border.width: 1
+                            border.color: root.isBrowserBookmarked() ? orbitInk : "#1e3340"
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.isBrowserBookmarked() ? "★" : "☆"
+                                color: root.isBrowserBookmarked() ? orbitInk : "#e8eef2"
+                                font.pixelSize: 15
+                            }
+                            MouseArea { anchors.fill: parent; onClicked: root.toggleBrowserBookmark() }
+                        }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 88; height: 36; radius: 18
+                            color: orbitInk
+                            Text { anchors.centerIn: parent; text: root.browserBusy ? "…" : "Перейти"; color: "#042f2e"; font.bold: true; font.pixelSize: 13 }
+                            MouseArea { anchors.fill: parent; onClicked: root.browseGo() }
+                        }
+                    }
+                }
+                // вкладки + закладки
+                Column {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: orbitChrome.bottom
+                    anchors.bottom: parent.bottom
+                    anchors.margins: 12
+                    spacing: 8
+                    Row {
+                        width: parent.width
+                        spacing: 4
+                        Repeater {
+                            model: root.browserTabs
+                            delegate: Rectangle {
+                                width: Math.min(148, (parent.width - 40) / Math.max(1, root.browserTabs.length))
+                                height: 28
+                                radius: 8
+                                color: index === root.browserTab ? "#132230" : "#0a1520"
+                                border.width: 1
+                                border.color: index === root.browserTab ? orbitInk : "#1e3340"
+                                Text {
+                                    anchors.left: parent.left; anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: parent.width - 26
+                                    text: modelData.title || "Вкладка"
+                                    color: "#e0f2fe"; font.pixelSize: 11; elide: Text.ElideRight
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                    onClicked: {
+                                        if (mouse.button === Qt.MiddleButton)
+                                            root.browserCloseTab(index)
+                                        else
+                                            root.browserSelectTab(index)
+                                    }
+                                }
+                                Text {
+                                    anchors.right: parent.right; anchors.rightMargin: 6
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "×"; color: "#7dd3fc"; font.pixelSize: 13
+                                    MouseArea { anchors.fill: parent; anchors.margins: -4; onClicked: root.browserCloseTab(index) }
+                                }
+                            }
+                        }
+                        Rectangle {
+                            width: 28; height: 28; radius: 8; color: "#132230"
+                            Text { anchors.centerIn: parent; text: "+"; color: orbitInk; font.pixelSize: 15 }
+                            MouseArea { anchors.fill: parent; onClicked: root.browserNewTab(root.browserUrl) }
+                        }
+                    }
+                    Flickable {
+                        width: parent.width
+                        height: 30
+                        contentWidth: orbitBm.width + 8
+                        clip: true
+                        Row {
+                            id: orbitBm
+                            spacing: 6
+                            Repeater {
+                                model: root.browserBookmarks
+                                delegate: Rectangle {
+                                    height: 26; radius: 13
+                                    width: orbitBmLab.implicitWidth + 18
+                                    color: orbitBmH.containsMouse ? "#132230" : "#0a1520"
+                                    border.width: 1; border.color: "#1e3340"
+                                    Text {
+                                        id: orbitBmLab
+                                        anchors.centerIn: parent
+                                        text: modelData.title
+                                        color: "#a5f3fc"; font.pixelSize: 11; font.family: root.uiFont
+                                    }
+                                    MouseArea {
+                                        id: orbitBmH; anchors.fill: parent; hoverEnabled: true
+                                        onClicked: root.openBrowserBookmark(modelData.url)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width
+                        height: 2
+                        radius: 1
+                        color: "#132230"
+                        visible: root.browserBusy || root.browserProgress > 0
+                        Rectangle {
+                            width: parent.width * Math.max(0.05, root.browserProgress)
+                            height: parent.height
+                            radius: 1
+                            color: orbitInk
+                            Behavior on width { NumberAnimation { duration: 180 } }
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width
+                        height: Math.max(120, parent.height - 78)
+                        radius: 14
+                        color: "#f8fafc"
+                        border.width: 1
+                        border.color: "#cbd5e1"
+                        Flickable {
+                            anchors.fill: parent
+                            anchors.margins: 20
+                            contentWidth: width
+                            contentHeight: orbitPageTxt.paintedHeight + 28
+                            clip: true
+                            boundsBehavior: Flickable.StopAtBounds
+                            Text {
+                                id: orbitPageTxt
+                                width: parent.width
+                                wrapMode: Text.Wrap
+                                color: "#0f172a"
+                                font.pixelSize: 15
+                                font.family: root.uiFont
+                                textFormat: Text.RichText
+                                text: root.browserBody
+                                onLinkActivated: function(link) {
+                                    var href = link
+                                    if (href.indexOf("http://") !== 0 && href.indexOf("https://") !== 0) {
+                                        if (href.indexOf("/") === 0) {
+                                            var base = root.browserUrl.replace(/^(https?:\/\/[^\/]+).*/, "$1")
+                                            href = base + href
+                                        } else {
+                                            href = "https://" + href
+                                        }
+                                    }
+                                    root.browserUrl = href
+                                    root.browseGo()
+                                }
+                            }
+                        }
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 56; height: 56; radius: 28
+                            color: "#ecfeff"
+                            visible: root.browserBusy
+                            Text { anchors.centerIn: parent; text: "…"; color: "#0e7490"; font.pixelSize: 24; font.bold: true }
                         }
                     }
                 }
