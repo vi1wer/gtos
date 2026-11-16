@@ -85,6 +85,11 @@ user_pref("browser.startup.homepage", "about:blank");
 user_pref("startup.homepage_welcome_url", "");
 user_pref("startup.homepage_welcome_url.additional", "");
 user_pref("browser.aboutwelcome.enabled", false);
+user_pref("browser.tabs.warnOnClose", false);
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("toolkit.asyncshutdown.crash_timeout", 5000);
+user_pref("toolkit.asyncshutdown.timeout", 5000);
+user_pref("browser.shell.forceCloseExternal", true);
 // Память: больше кэшей, меньше процессов (TCG плохо переносит кучу content-процессов)
 user_pref("dom.ipc.processCount", 2);
 user_pref("dom.ipc.processCount.webIsolated", 1);

@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hero 03 — Wordmark field · GT/OS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #f4f7f5;
+      --dim: rgba(244, 247, 245, 0.72);
+      --void: #061018;
+      --accent: #3be182;
+      --accent-ink: #04170c;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(ellipse 80% 50% at 50% 0%, rgba(59, 225, 130, 0.1), transparent 55%),
+        var(--void);
+      color: var(--ink);
+      font-family: Sora, sans-serif;
+    }
+    .back {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 20;
+      color: var(--dim);
+      font-size: 0.85rem;
+      text-decoration: none;
+      padding: 8px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      background: rgba(6, 16, 24, 0.55);
+      backdrop-filter: blur(10px);
+    }
+
+    .hero {
+      min-height: 100vh;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 96px clamp(16px, 4vw, 40px) 48px;
+    }
+
+    /* центр: клевер + GT/OS → заголовок → описание → CTA */
+    .intro {
+      width: min(720px, 100%);
+      text-align: center;
+      margin-bottom: clamp(28px, 5vh, 44px);
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      margin: 0 0 22px;
+      animation: rise 0.85s var(--ease) both;
+    }
+    .brand img {
+      width: clamp(48px, 8vw, 64px);
+      height: clamp(48px, 8vw, 64px);
+      object-fit: contain;
+    }
+    .brand span {
+      font-family: Syne, sans-serif;
+      font-weight: 800;
+      font-size: clamp(2.8rem, 8vw, 4.6rem);
+      letter-spacing: -0.055em;
+      line-height: 1;
+    }
+    .title {
+      margin: 0 0 14px;
+      font-family: Syne, sans-serif;
+      font-weight: 700;
+      font-size: clamp(1.45rem, 3vw, 2.2rem);
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+      animation: rise 0.85s var(--ease) 0.06s both;
+    }
+    .lead {
+      margin: 0 auto 26px;
+      max-width: 36rem;
+      color: var(--dim);
+      font-size: clamp(1rem, 1.5vw, 1.12rem);
+      line-height: 1.5;
+      animation: rise 0.85s var(--ease) 0.12s both;
+    }
+    .cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      justify-content: center;
+      animation: rise 0.85s var(--ease) 0.18s both;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 22px;
+      border-radius: 999px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: var(--accent-ink); }
+    .btn-quiet { border: 1px solid rgba(255, 255, 255, 0.18); color: var(--ink); }
+
+    /* большой скрин стола — не «просто обои», а стол с иконками и панелью */
+    .shot-wrap {
+      width: min(1120px, 100%);
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      animation: rise 1s var(--ease) 0.22s both;
+    }
+    .shot {
+      position: relative;
+      flex: 1;
+      min-height: min(52vh, 560px);
+      border-radius: 18px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow:
+        0 0 0 1px rgba(0, 0, 0, 0.35),
+        0 30px 80px rgba(0, 0, 0, 0.55),
+        0 0 60px rgba(59, 225, 130, 0.08);
+      background: #0a141c;
+    }
+    .shot-wall {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      object-position: center 30%;
+    }
+    .shot-icons {
+      position: absolute;
+      left: 22px;
+      top: 22px;
+      display: grid;
+      grid-template-columns: repeat(2, 72px);
+      gap: 18px 14px;
+      z-index: 2;
+    }
+    .shot-ico {
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      width: 72px;
+      text-align: center;
+      color: #fff;
+      text-shadow: 0 1px 4px rgba(0, 0, 0, 0.75);
+      font-size: 0.72rem;
+      font-weight: 500;
+    }
+    .shot-ico img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+      filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.4));
+    }
+
+    /* окно поверх стола — чтобы было видно «систему», а не только фон */
+    .shot-win {
+      position: absolute;
+      left: 18%;
+      top: 16%;
+      width: min(52%, 520px);
+      height: min(58%, 320px);
+      border-radius: 12px;
+      overflow: hidden;
+      background: rgba(18, 24, 28, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45);
+      z-index: 3;
+      display: grid;
+      grid-template-rows: 36px 1fr;
+    }
+    .shot-win-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 12px;
+      background: rgba(255, 255, 255, 0.04);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.78rem;
+      color: var(--dim);
+    }
+    .shot-win-bar i {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #3a3a3a;
+      display: block;
+    }
+    .shot-win-bar i:nth-child(1) { background: #ff5f57; }
+    .shot-win-bar i:nth-child(2) { background: #febc2e; }
+    .shot-win-bar i:nth-child(3) { background: #28c840; }
+    .shot-win-bar span { margin-left: 6px; }
+    .shot-win-body {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      min-height: 0;
+    }
+    .shot-win-side {
+      padding: 12px 10px;
+      border-right: 1px solid rgba(255, 255, 255, 0.06);
+      background: rgba(0, 0, 0, 0.2);
+      display: grid;
+      gap: 6px;
+      align-content: start;
+      font-size: 0.72rem;
+      color: var(--dim);
+    }
+    .shot-win-side b {
+      color: var(--accent);
+      font-weight: 600;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: rgba(59, 225, 130, 0.1);
+    }
+    .shot-win-side span { padding: 5px 8px; }
+    .shot-win-grid {
+      padding: 14px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      align-content: start;
+    }
+    .shot-win-grid div {
+      height: 64px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      display: grid;
+      place-items: center;
+      gap: 4px;
+      font-size: 0.68rem;
+      color: var(--dim);
+    }
+    .shot-win-grid s {
+      width: 22px;
+      height: 18px;
+      border-radius: 4px;
+      background: rgba(59, 225, 130, 0.35);
+      display: block;
+      text-decoration: none;
+    }
+
+    /* панель задач */
+    .shot-bar {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      height: 48px;
+      z-index: 4;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 0 14px;
+      background: rgba(8, 14, 18, 0.82);
+      backdrop-filter: blur(16px);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .shot-bar-left,
+    .shot-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .shot-start {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: rgba(59, 225, 130, 0.15);
+      display: grid;
+      place-items: center;
+    }
+    .shot-start img { width: 22px; height: 22px; object-fit: contain; }
+    .shot-pin {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      display: grid;
+      place-items: center;
+      background: transparent;
+    }
+    .shot-pin img { width: 20px; height: 20px; object-fit: contain; opacity: 0.92; }
+    .shot-pin.is-on {
+      background: rgba(255, 255, 255, 0.08);
+      box-shadow: inset 0 -2px 0 var(--accent);
+    }
+    .shot-clock {
+      font-size: 0.78rem;
+      color: var(--dim);
+      text-align: right;
+      line-height: 1.25;
+      padding-right: 4px;
+    }
+
+    .shot-caption {
+      margin: 14px 0 0;
+      text-align: center;
+      color: rgba(244, 247, 245, 0.45);
+      font-size: 0.82rem;
+    }
+
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(18px); }
+      to { opacity: 1; transform: none; }
+    }
+
+    @media (max-width: 720px) {
+      .shot-win { display: none; }
+      .shot-icons { grid-template-columns: repeat(2, 64px); }
+      .shot { min-height: 42vh; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">← все варианты</a>
+  <section class="hero">
+    <div class="intro">
+      <p class="brand">
+        <img src="../img/gtos-clover.png" alt="">
+        <span>GT/OS</span>
+      </p>
+      <h1 class="title">Рабочий стол, который чувствуется своим.</h1>
+      <p class="lead">Повседневная ОС: сеть, файлы, браузер, почта и привычный стол — без лишнего шума.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#">Скачать GT/OS 1.6</a>
+        <a class="btn btn-quiet" href="#">Узнать больше</a>
+      </div>
+    </div>
+
+    <div class="shot-wrap">
+      <div class="shot" role="img" aria-label="Макет рабочего стола GT/OS">
+        <img class="shot-wall" src="../img/wallpaper.jpg" alt="">
+
+        <div class="shot-icons">
+          <div class="shot-ico"><img src="../img/desk-icons/files.png" alt=""><span>Файлы</span></div>
+          <div class="shot-ico"><img src="../img/desk-icons/browser.png" alt=""><span>Браузер</span></div>
+          <div class="shot-ico"><img src="../img/desk-icons/term.png" alt=""><span>Терминал</span></div>
+          <div class="shot-ico"><img src="../img/desk-icons/store.png" alt=""><span>Магазин</span></div>
+          <div class="shot-ico"><img src="../img/desk-icons/settings.png" alt=""><span>Параметры</span></div>
+          <div class="shot-ico"><img src="../img/desk-icons/notes.png" alt=""><span>Заметки</span></div>
+        </div>
+
+        <div class="shot-win" aria-hidden="true">
+          <div class="shot-win-bar">
+            <i></i><i></i><i></i>
+            <span>Файлы — Домашняя</span>
+          </div>
+          <div class="shot-win-body">
+            <aside class="shot-win-side">
+              <b>Домашняя</b>
+              <span>Документы</span>
+              <span>Загрузки</span>
+              <span>Изображения</span>
+            </aside>
+            <div class="shot-win-grid">
+              <div><s></s>Документы</div>
+              <div><s></s>Загрузки</div>
+              <div><s></s>Проекты</div>
+              <div><s></s>Медиа</div>
+              <div><s></s>GT/OS</div>
+              <div><s></s>Корзина</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="shot-bar" aria-hidden="true">
+          <div class="shot-bar-left">
+            <div class="shot-start"><img src="../img/gtos-clover.png" alt=""></div>
+            <div class="shot-pin is-on"><img src="../img/desk-icons/files.png" alt=""></div>
+            <div class="shot-pin"><img src="../img/desk-icons/browser.png" alt=""></div>
+            <div class="shot-pin"><img src="../img/desk-icons/term.png" alt=""></div>
+            <div class="shot-pin"><img src="../img/desk-icons/store.png" alt=""></div>
+          </div>
+          <div class="shot-bar-right">
+            <div class="shot-clock">21:54<br>15.11.2026</div>
+          </div>
+        </div>
+      </div>
+      <p class="shot-caption">Макет рабочего стола GT/OS · иконки, окно «Файлы», панель задач</p>
+    </div>
+  </section>
+</body>
+</html>

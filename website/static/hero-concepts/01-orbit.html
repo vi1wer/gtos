@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hero 01 — Orbit · GT/OS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink:#f4f7f5; --dim:rgba(244,247,245,.72); --void:#061018;
+      --accent:#3be182; --accent-ink:#04170c; --ease:cubic-bezier(.22,1,.36,1);
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--void); color:var(--ink); font-family:Sora,sans-serif; }
+    .back {
+      position:fixed; top:20px; left:20px; z-index:10;
+      color:var(--dim); font-size:.85rem; text-decoration:none;
+      padding:8px 12px; border:1px solid rgba(255,255,255,.12); border-radius:999px;
+      background:rgba(6,16,24,.5); backdrop-filter:blur(10px);
+    }
+    .hero { position:relative; min-height:100vh; min-height:100dvh; display:grid; align-items:end;
+      padding:0 clamp(20px,5vw,64px) clamp(48px,8vh,88px); overflow:hidden; }
+    .media { position:absolute; inset:0; }
+    .media img { width:100%; height:100%; object-fit:cover; object-position:center 32%;
+      transform:scale(1.06); animation:zoom 16s var(--ease) forwards; }
+    .veil {
+      position:absolute; inset:0;
+      background:
+        linear-gradient(180deg, rgba(6,16,24,.35) 0%, rgba(6,16,24,.15) 40%, rgba(6,16,24,.88) 78%, #061018 100%),
+        radial-gradient(ellipse 50% 45% at 62% 36%, rgba(59,225,130,.18), transparent 70%);
+    }
+    .orbit {
+      position:absolute; left:62%; top:36%; width:min(42vw,460px); height:min(42vw,460px);
+      border:1.5px solid rgba(59,225,130,.4); border-radius:50%;
+      transform:translate(-50%,-50%); animation:pulse 5s ease-in-out infinite; pointer-events:none;
+    }
+    .clover {
+      position:absolute; left:62%; top:36%; width:min(18vw,168px); height:min(18vw,168px);
+      transform:translate(-50%,-50%); object-fit:contain;
+      filter:drop-shadow(0 20px 40px rgba(0,0,0,.45));
+      animation:rise .9s var(--ease) .05s both;
+    }
+    .content { position:relative; max-width:720px; padding-top:100px; }
+    .brand {
+      margin:0 0 14px; font-family:Syne,sans-serif; font-weight:800;
+      font-size:clamp(4rem,12vw,8rem); line-height:.86; letter-spacing:-.06em;
+      animation:rise .9s var(--ease) both;
+    }
+    .title {
+      margin:0 0 14px; font-family:Syne,sans-serif; font-weight:700;
+      font-size:clamp(1.55rem,3.2vw,2.4rem); line-height:1.12; letter-spacing:-.03em; max-width:15ch;
+      animation:rise .9s var(--ease) .08s both;
+    }
+    .lead { margin:0 0 28px; color:var(--dim); max-width:34rem; font-size:clamp(1rem,1.4vw,1.12rem);
+      animation:rise .9s var(--ease) .14s both; }
+    .cta { display:flex; flex-wrap:wrap; gap:12px; animation:rise .9s var(--ease) .2s both; }
+    .btn {
+      display:inline-flex; align-items:center; justify-content:center; min-height:48px;
+      padding:0 22px; border-radius:999px; font-weight:600; font-size:.95rem; text-decoration:none;
+    }
+    .btn-primary { background:var(--accent); color:var(--accent-ink); }
+    .btn-quiet { border:1px solid rgba(255,255,255,.18); color:var(--ink); }
+    @keyframes rise { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:none} }
+    @keyframes zoom { from{transform:scale(1.1)} to{transform:scale(1.03)} }
+    @keyframes pulse {
+      0%,100%{opacity:.5;transform:translate(-50%,-50%) scale(1)}
+      50%{opacity:.85;transform:translate(-50%,-50%) scale(1.04)}
+    }
+    @media (max-width:720px) {
+      .orbit, .clover { left:50%; top:28%; }
+      .clover { width:112px; height:112px; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">← все варианты</a>
+  <section class="hero">
+    <div class="media" aria-hidden="true">
+      <img src="../img/wallpaper.jpg" alt="">
+      <div class="veil"></div>
+      <div class="orbit"></div>
+      <img class="clover" src="../img/gtos-clover.png" alt="">
+    </div>
+    <div class="content">
+      <p class="brand">GT/OS</p>
+      <h1 class="title">Стол, который чувствуется своим.</h1>
+      <p class="lead">Повседневная ОС: сеть, файлы, браузер и привычный вход — без лишнего шума.</p>
+      <div class="cta">
+        <a class="btn btn-primary" href="#">Скачать 1.6</a>
+        <a class="btn btn-quiet" href="#">Узнать больше</a>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

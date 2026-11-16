@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hero 04 — Desk horizon · GT/OS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink:#f4f7f5; --dim:rgba(244,247,245,.72); --void:#061018;
+      --accent:#3be182; --accent-ink:#04170c; --ease:cubic-bezier(.22,1,.36,1);
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--void); color:var(--ink); font-family:Sora,sans-serif; }
+    .back {
+      position:fixed; top:20px; left:20px; z-index:10;
+      color:var(--dim); font-size:.85rem; text-decoration:none;
+      padding:8px 12px; border:1px solid rgba(255,255,255,.12); border-radius:999px;
+      background:rgba(6,16,24,.5); backdrop-filter:blur(10px);
+    }
+    .hero {
+      position:relative; min-height:100vh; min-height:100dvh;
+      display:grid; grid-template-rows:1fr auto; overflow:hidden;
+    }
+    .sky {
+      position:relative; min-height:58vh;
+    }
+    .sky img {
+      position:absolute; inset:0; width:100%; height:100%;
+      object-fit:cover; object-position:center 28%;
+      animation:lift 18s var(--ease) forwards;
+    }
+    .sky-veil {
+      position:absolute; inset:0;
+      background:linear-gradient(180deg, rgba(6,16,24,.45) 0%, rgba(6,16,24,.1) 45%, rgba(6,16,24,.55) 100%);
+    }
+    .shelf {
+      position:relative;
+      padding:clamp(28px,5vh,48px) clamp(20px,5vw,64px) clamp(40px,7vh,72px);
+      background:
+        linear-gradient(180deg, rgba(10,20,28,.92), #061018 55%);
+      border-top:1px solid rgba(255,255,255,.08);
+      animation:shelf .9s var(--ease) .05s both;
+    }
+    .shelf::before {
+      content:""; position:absolute; left:0; right:0; top:-1px; height:1px;
+      background:linear-gradient(90deg, transparent, rgba(59,225,130,.45), transparent);
+      animation:line 1.4s var(--ease) .2s both;
+    }
+    .row {
+      display:flex; flex-wrap:wrap; align-items:end; justify-content:space-between;
+      gap:28px 40px; max-width:1180px; margin:0 auto;
+    }
+    .copy { max-width:560px; }
+    .brand {
+      display:flex; align-items:center; gap:14px; margin:0 0 16px;
+      animation:rise .85s var(--ease) .1s both;
+    }
+    .brand img { width:52px; height:52px; object-fit:contain; }
+    .brand span {
+      font-family:Syne,sans-serif; font-weight:800;
+      font-size:clamp(2.4rem,6vw,3.8rem); letter-spacing:-.05em; line-height:1;
+    }
+    .title {
+      margin:0 0 12px; font-family:Syne,sans-serif; font-weight:700;
+      font-size:clamp(1.45rem,2.8vw,2.1rem); letter-spacing:-.03em; line-height:1.15;
+      animation:rise .85s var(--ease) .16s both;
+    }
+    .lead {
+      margin:0; color:var(--dim); max-width:36rem; font-size:1.02rem;
+      animation:rise .85s var(--ease) .22s both;
+    }
+    .cta {
+      display:flex; flex-wrap:wrap; gap:12px; align-items:center;
+      animation:rise .85s var(--ease) .28s both;
+    }
+    .btn {
+      display:inline-flex; align-items:center; min-height:48px; padding:0 22px;
+      border-radius:999px; font-weight:600; text-decoration:none; white-space:nowrap;
+    }
+    .btn-primary { background:var(--accent); color:var(--accent-ink); }
+    .btn-quiet { border:1px solid rgba(255,255,255,.18); color:var(--ink); }
+    @keyframes rise { from{opacity:0;transform:translateY(16px)} to{opacity:1;transform:none} }
+    @keyframes shelf { from{opacity:0;transform:translateY(24px)} to{opacity:1;transform:none} }
+    @keyframes lift { from{transform:scale(1.07) translateY(2%)} to{transform:scale(1.02) translateY(0)} }
+    @keyframes line { from{opacity:0;transform:scaleX(.4)} to{opacity:1;transform:none} }
+    @media (max-width:720px) {
+      .sky { min-height:48vh; }
+      .cta { width:100%; }
+      .btn { flex:1; justify-content:center; }
+    }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">← все варианты</a>
+  <section class="hero">
+    <div class="sky" aria-hidden="true">
+      <img src="../img/wallpaper.jpg" alt="">
+      <div class="sky-veil"></div>
+    </div>
+    <div class="shelf">
+      <div class="row">
+        <div class="copy">
+          <p class="brand">
+            <img src="../img/gtos-clover.png" alt="">
+            <span>GT/OS</span>
+          </p>
+          <h1 class="title">Открой стол. Дальше — обычный день за компьютером.</h1>
+          <p class="lead">Файлы, браузер, уведомления и магазин уже на местах.</p>
+        </div>
+        <div class="cta">
+          <a class="btn btn-primary" href="#">Скачать 1.6</a>
+          <a class="btn btn-quiet" href="#">Как поставить</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

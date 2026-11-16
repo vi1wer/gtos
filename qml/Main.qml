@@ -81,6 +81,11 @@ Window {
     property int storeInstallPct: 0
     property real storeExpectBytes: 0
     property real storeLastBytes: 0
+    property real storeInstallBytes: 0
+    property real storeInstallSpeed: 0
+    property int storeInstallEta: -1
+    property string storeInstallLabel: ""
+    property bool storeInstallStalled: false
     property int storeStallTicks: 0
     property var storePendingApp: null
     property var storeLaunchCheckApp: null
@@ -310,6 +315,14 @@ Window {
     property bool nightLight: false
     property bool showDesktopActive: false
     property var pinnedApps: ["files", "browser", "notes", "term", "settings"]
+    property string dockPreviewApp: ""
+    property bool dockPreviewOpen: false
+    property string dockDragApp: ""
+    property int dockDragFrom: -1
+    property int dockDropIndex: -1
+    property bool dockDropHot: false
+    property real dockGhostX: 0
+    property real dockGhostY: 0
     property string filesAddress: ""
 
     // GT/OS 1.3
@@ -515,6 +528,10 @@ Window {
     property bool installOptGrub: true
     property bool installOptDrivers: false
     property bool installOptUpdates: false
+    property double installPayloadBytes: 0
+    property double installNeedBytes: 0
+    property string installSizeText: "…"
+    property string installNeedText: "…"
 
     readonly property var months: ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"]
 
@@ -4624,6 +4641,11 @@ Window {
         if (app.id === "cursor-linux" && storeExpectBytes < 1000000)
             storeExpectBytes = 326973944
         storeLastBytes = 0
+        storeInstallBytes = 0
+        storeInstallSpeed = 0
+        storeInstallEta = -1
+        storeInstallLabel = "Подготовка…"
+        storeInstallStalled = false
         storeStallTicks = 0
         var plat = storePlatformOf(app)
         var src = String(app.source || (app.apk ? "alpine" : "web"))
@@ -4653,13 +4675,20 @@ Window {
                       + "PORTABLE='" + portable + "'\n"
                       + "BRANCH='" + storeAlpineBranch + "'\n"
                       + "GTOS_USER='" + desktopUserName() + "'\n")
+        if (storeExpectBytes > 1000)
+            sys.writeFile("/tmp/gtos-store-expect", String(Math.floor(storeExpectBytes)) + "\n")
         sys.run(
             "mkdir -p /var/lib/gtos/apk-cache /var/lib/gtos/apps /home/" + currentUser + "/Загрузки; "
             + "pkill -f 'grep -aobm1 hsqs' 2>/dev/null || true; "
-            + "rm -f /tmp/gtos-apk-done /tmp/gtos-apk-rc /tmp/gtos-store-done /tmp/gtos-store-rc /tmp/gtos-store-phase /tmp/gtos-store-bytes; "
+            + "rm -f /tmp/gtos-apk-done /tmp/gtos-apk-rc /tmp/gtos-store-done /tmp/gtos-store-rc "
+            + "/tmp/gtos-store-phase /tmp/gtos-store-bytes /tmp/gtos-store-speed /tmp/gtos-store-label /tmp/gtos-store-eta; "
+            + "echo prepare >/tmp/gtos-store-phase; echo 0 >/tmp/gtos-store-bytes; "
+            + "echo 'Подготовка…' >/tmp/gtos-store-label; "
+            + (storeExpectBytes > 1000 ? ("echo " + Math.floor(storeExpectBytes) + " >/tmp/gtos-store-expect; ") : "")
             + "export GTOS_USER=" + shQuote(desktopUserName()) + "; "
             + "( /usr/bin/gtos-store-install /tmp/gtos-store-job.env "
-            + "|| ( echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done ); "
+            + "|| ( echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; "
+            + "echo error >/tmp/gtos-store-phase; echo 'Сбой установщика' >/tmp/gtos-store-label ); "
             + "cp -f /tmp/gtos-apk-log /home/" + currentUser + "/Загрузки/" + pkg + "-install.log 2>/dev/null ) &"
         )
         storeInstallTimer.start()
@@ -4670,6 +4699,9 @@ Window {
         storeInstallTimer.stop()
         storeInstallingId = ""
         storeInstallPct = 100
+        storeInstallStalled = false
+        storeInstallSpeed = 0
+        storeInstallEta = -1
         storePendingApp = null
         if (!app || !app.id)
             return
@@ -4972,10 +5004,14 @@ Window {
                 sys.writeFile(launchSh,
                     "#!/bin/sh\n"
                     + "export DISPLAY=${DISPLAY:-:0}\n"
+                    + "export LIBGL_ALWAYS_SOFTWARE=1\n"
+                    + "export ELECTRON_DISABLE_GPU=1\n"
+                    + "export ELECTRON_OZONE_PLATFORM_HINT=x11\n"
                     + "exec /usr/bin/gtos-glibc-run " + shQuote(appRoot) + " \"$@\"\n")
                 sys.run("tr -d '\\r' < " + shQuote(launchSh) + " > " + shQuote(launchSh + ".lf")
                         + " && mv -f " + shQuote(launchSh + ".lf") + " " + shQuote(launchSh)
-                        + " && chmod 755 " + shQuote(launchSh))
+                        + " && chmod 755 " + shQuote(launchSh)
+                        + " && chmod -R a+rX " + shQuote(appRoot) + " 2>/dev/null; true")
                 // rootfs Ubuntu — один раз от root; proot уже в образе
                 if (sys.run("test -x /usr/bin/proot -o -x /usr/bin/proot.static && echo yes").trim() !== "yes") {
                     notify("«" + (app.name || app.id) + "»", "В образе нет proot — обновите систему (refresh_ui / ISO)", "info")
@@ -4986,6 +5022,26 @@ Window {
                     storePendingGlibcApp = app
                     ensureGlibcRootAsync()
                     return
+                }
+                // Cursor: битый snapshot → авто-repair перед запуском
+                if (String(app.id).indexOf("cursor") >= 0) {
+                    var snap = sys.run("stat -c%s " + shQuote(appRoot + "/usr/share/cursor/v8_context_snapshot.bin")
+                                      + " 2>/dev/null || stat -c%s " + shQuote(appRoot + "/v8_context_snapshot.bin")
+                                      + " 2>/dev/null || echo 0").trim()
+                    if ((parseInt(snap, 10) || 0) < 100000
+                            && sys.run("test -f " + shQuote(appImg) + " && echo yes").trim() === "yes") {
+                        notify("«" + (app.name || app.id) + "»", "Чиним Cursor (V8 snapshot)…", "ok")
+                        bootKick("chmod -R a+rX " + shQuote("/var/lib/gtos/apps/" + app.id) + " 2>/dev/null; "
+                                 + "rm -rf " + shQuote(appRoot) + "; "
+                                 + "/usr/bin/gtos-store-install --repair-appimage " + app.id
+                                 + " >/tmp/gtos-repair-" + app.id + ".log 2>&1; "
+                                 + "chmod -R a+rX " + shQuote("/var/lib/gtos/apps/" + app.id) + " 2>/dev/null; true")
+                        storePendingGlibcApp = app
+                        storeRepairPoll.appId = app.id
+                        storeRepairPoll.tries = 0
+                        storeRepairPoll.start()
+                        return
+                    }
                 }
             }
             runAsDesktopUser("/bin/sh " + launchSh, logL)
@@ -5788,16 +5844,110 @@ Window {
             if (windows.get(i).appId === appId)
                 windows.remove(i)
         }
+        killStoreAppProcesses(appId)
+    }
+
+    function killStoreAppProcesses(appId) {
+        var id = String(appId || "")
+        if (id.indexOf("pkg-") === 0)
+            id = id.slice(4)
+        var patterns = []
+        if (id === "firefox" || id.indexOf("firefox") >= 0) {
+            patterns = [
+                "pkill -TERM -x firefox 2>/dev/null",
+                "pkill -TERM -x firefox-bin 2>/dev/null",
+                "pkill -TERM -f '[/]usr/lib/firefox/firefox' 2>/dev/null",
+                "sleep 1",
+                "pkill -KILL -x firefox 2>/dev/null",
+                "pkill -KILL -x firefox-bin 2>/dev/null",
+                "pkill -KILL -f '[/]usr/lib/firefox/firefox' 2>/dev/null"
+            ]
+        } else if (id === "cursor-linux" || id === "cursor" || id.indexOf("cursor") >= 0) {
+            patterns = [
+                "pkill -TERM -f '[/]cursor' 2>/dev/null",
+                "pkill -TERM -f 'Cursor' 2>/dev/null",
+                "pkill -TERM -f 'gtos-glibc-run.*cursor' 2>/dev/null",
+                "sleep 1",
+                "pkill -KILL -f '[/]cursor' 2>/dev/null",
+                "pkill -KILL -f 'Cursor' 2>/dev/null"
+            ]
+        } else if (id === "chromium" || id === "chrome") {
+            patterns = [
+                "pkill -TERM -x chromium 2>/dev/null",
+                "pkill -TERM -x chrome 2>/dev/null",
+                "sleep 1",
+                "pkill -KILL -x chromium 2>/dev/null",
+                "pkill -KILL -x chrome 2>/dev/null"
+            ]
+        } else if (id.length) {
+            var safe = id.replace(/[^a-zA-Z0-9._+-]/g, "")
+            if (safe.length)
+                patterns = [
+                    "pkill -TERM -f " + shQuote("/var/lib/gtos/apps/" + safe) + " 2>/dev/null",
+                    "pkill -TERM -x " + shQuote(safe) + " 2>/dev/null",
+                    "sleep 1",
+                    "pkill -KILL -f " + shQuote("/var/lib/gtos/apps/" + safe) + " 2>/dev/null"
+                ]
+        }
+        if (!patterns.length)
+            return
+        sys.run(patterns.join("; ") + "; true")
+        notify("Панель задач", "Закрыто", "ok")
+    }
+
+    function formatStoreBytes(n) {
+        n = Number(n) || 0
+        if (n < 1024)
+            return "0 МБ"
+        if (n < 1024 * 1024)
+            return Math.max(1, Math.floor(n / 1024)) + " КБ"
+        if (n < 1024 * 1024 * 1024)
+            return (n / (1024 * 1024)).toFixed(n >= 100 * 1024 * 1024 ? 0 : 1) + " МБ"
+        return (n / (1024 * 1024 * 1024)).toFixed(2) + " ГБ"
+    }
+
+    function storeProgressCaption() {
+        if (!storeInstallingId.length)
+            return ""
+        var parts = []
+        if (storeInstallLabel.length)
+            parts.push(storeInstallLabel)
+        if (storeExpectBytes > 1000 && storeInstallBytes > 0)
+            parts.push(formatStoreBytes(storeInstallBytes) + " / " + formatStoreBytes(storeExpectBytes))
+        else if (storeInstallBytes > 0)
+            parts.push(formatStoreBytes(storeInstallBytes))
+        if (storeInstallSpeed > 1024)
+            parts.push(formatStoreBytes(storeInstallSpeed) + "/с")
+        if (storeInstallEta >= 0 && storeInstallEta < 7200 && storeInstallSpeed > 0)
+            parts.push("~" + storeInstallEta + " с")
+        if (storeInstallStalled)
+            parts.push("нет прогресса " + Math.floor(storeStallTicks * 0.5) + " с")
+        if (!parts.length)
+            return storeInstallPct + "%"
+        return parts.join(" · ")
     }
 
     function dockCtxItems(appId) {
         var pinned = pinnedApps.indexOf(appId) >= 0
-        var running = isAppRunning(appId)
+        var running = isAppRunning(appId) || isExternalAppAlive(appId)
         return compactCtxItems([
             { label: appTitleOf(appId), action: "header", icon: winIconKind(appId), bold: true },
             { label: pinned ? "Открепить от панели задач" : "Закрепить на панели задач", action: "pin:" + appId, icon: "pin" },
-            { label: "Закрыть окно", action: "closeapp:" + appId, icon: "close", disabled: !running }
+            { label: "Закрыть", action: "closeapp:" + appId, icon: "close", disabled: !running }
         ])
+    }
+
+    function isExternalAppAlive(appId) {
+        var id = String(appId || "")
+        if (id.indexOf("pkg-") === 0)
+            id = id.slice(4)
+        if (id === "firefox" || id.indexOf("firefox") >= 0)
+            return sys.run("pgrep -x firefox >/dev/null 2>&1 || pgrep -x firefox-bin >/dev/null 2>&1 || pgrep -f '[/]usr/lib/firefox/firefox' >/dev/null 2>&1; echo $?").trim() === "0"
+        if (id === "cursor-linux" || id === "cursor" || id.indexOf("cursor") >= 0)
+            return sys.run("ps w 2>/dev/null | grep -Ei '[c]ursor|[A]ppRun' | head -n 1").trim().length > 0
+        if (id === "chromium" || id === "chrome")
+            return sys.run("pgrep -x chromium >/dev/null 2>&1 || pgrep -x chrome >/dev/null 2>&1; echo $?").trim() === "0"
+        return false
     }
 
     function filesCtxItems() {
@@ -6367,6 +6517,108 @@ Window {
         pinnedApps = arr
         saveDesktop()
         notify("Панель задач", ix >= 0 ? "Откреплено" : "Закреплено: " + appTitleOf(appId), "ok")
+    }
+
+    function windowsForApp(appId) {
+        var out = []
+        var n = windows.count
+        for (var i = 0; i < n; ++i) {
+            var w = windows.get(i)
+            if (w.appId !== appId)
+                continue
+            out.push({
+                index: i,
+                title: w.title || appTitleOf(appId),
+                hidden: !!w.hidden,
+                z: w.z || 0
+            })
+        }
+        return out
+    }
+
+    function focusWindowAt(idx) {
+        if (idx < 0 || idx >= windows.count)
+            return
+        windows.setProperty(idx, "desk", deskIndex)
+        windows.setProperty(idx, "hidden", false)
+        windows.setProperty(idx, "z", ++zseq)
+        showDesktopActive = false
+        dockPreviewOpen = false
+        dockPreviewApp = ""
+        startOpen = false
+        closeCtxMenu()
+    }
+
+    function closeWindowAt(idx) {
+        if (idx < 0 || idx >= windows.count)
+            return
+        var appId = windows.get(idx).appId
+        windows.remove(idx)
+        if (dockPreviewApp.length && windowsForApp(dockPreviewApp).length === 0) {
+            dockPreviewOpen = false
+            dockPreviewApp = ""
+        } else if (appId === dockPreviewApp) {
+            dockPreviewOpen = windowsForApp(appId).length > 0
+        }
+    }
+
+    function pinAppAt(appId, atIndex) {
+        if (!appId || !String(appId).length)
+            return
+        var arr = pinnedApps.slice()
+        var ix = arr.indexOf(appId)
+        if (ix >= 0)
+            arr.splice(ix, 1)
+        var dest = (typeof atIndex === "number") ? atIndex : arr.length
+        if (ix >= 0 && ix < dest)
+            dest -= 1
+        dest = Math.max(0, Math.min(dest, arr.length))
+        arr.splice(dest, 0, appId)
+        pinnedApps = arr
+        saveDesktop()
+    }
+
+    function reorderPinnedApp(appId, toIndex) {
+        if (!appId || !String(appId).length)
+            return
+        if (pinnedApps.indexOf(appId) < 0) {
+            pinAppAt(appId, toIndex)
+            notify("Панель задач", "Закреплено: " + appTitleOf(appId), "ok")
+            return
+        }
+        pinAppAt(appId, toIndex)
+    }
+
+    function ensurePinned(appId, atIndex) {
+        if (!appId || !String(appId).length)
+            return false
+        if (pinnedApps.indexOf(appId) >= 0) {
+            if (typeof atIndex === "number" && atIndex >= 0)
+                reorderPinnedApp(appId, atIndex)
+            else
+                notify("Панель задач", "Уже на панели: " + appTitleOf(appId), "info")
+            return true
+        }
+        pinAppAt(appId, typeof atIndex === "number" ? atIndex : pinnedApps.length)
+        notify("Панель задач", "Закреплено: " + appTitleOf(appId), "ok")
+        return true
+    }
+
+    function deskAppIdForPin(item) {
+        if (!item)
+            return ""
+        if (item.app && String(item.app).length)
+            return String(item.app)
+        if (item.type === "app" && item.id && String(item.id).indexOf("system:") !== 0)
+            return String(item.id)
+        return ""
+    }
+
+    function clearDockDrag() {
+        dockDragApp = ""
+        dockDragFrom = -1
+        dockDropIndex = -1
+        dockDropHot = false
     }
 
     function toggleShowDesktop() {
@@ -8681,8 +8933,72 @@ Window {
         return installQemuGuest
     }
 
+    function formatInstallGb(bytes, en) {
+        var n = Number(bytes) || 0
+        if (n <= 0)
+            return en ? "…" : "…"
+        var gb = n / (1024 * 1024 * 1024)
+        var s
+        if (gb >= 100)
+            s = String(Math.round(gb))
+        else if (gb >= 10)
+            s = gb.toFixed(1)
+        else
+            s = gb.toFixed(2)
+        if (!en)
+            s = String(s).replace(".", ",")
+        return s + (en ? " GB" : " ГБ")
+    }
+
+    function refreshInstallSizeEstimate() {
+        var payload = 0
+        var need = 0
+        var baked = sys.run("cat /var/lib/gtos/install-payload-bytes 2>/dev/null").trim()
+        var bakedNeed = sys.run("cat /var/lib/gtos/install-need-bytes 2>/dev/null").trim()
+        if (baked.length)
+            payload = parseInt(baked, 10) || 0
+        if (bakedNeed.length)
+            need = parseInt(bakedNeed, 10) || 0
+
+        // живой замер: занято на / + ядро/initrd (их копируют отдельно)
+        var live = 0
+        if (typeof sys.runTimeout === "function") {
+            var df = sys.runTimeout("df -B1 / 2>/dev/null | awk 'NR==2 {print $3}'", 1200).trim()
+            live = parseInt(df, 10) || 0
+            var bootSz = sys.runTimeout(
+                "s=0; "
+                + "for d in /usr/share/gtos/boot /boot /mnt/cdrom/boot /media/cdrom/boot; do "
+                + "  for f in \"$d/vmlinuz\" \"$d/initrd.gz\" \"$d/gtos-rootfs.cpio.gz\"; do "
+                + "    [ -f \"$f\" ] || continue; "
+                + "    b=$(stat -c%s \"$f\" 2>/dev/null || echo 0); s=$((s+b)); "
+                + "  done; "
+                + "  [ \"$s\" -gt 0 ] && break; "
+                + "done; echo \"$s\"",
+                2000
+            ).trim()
+            var bootBytes = parseInt(bootSz, 10) || 0
+            if (live > 50 * 1024 * 1024) {
+                var measured = live + bootBytes
+                // если live уже близок к baked — берём max, чтобы не занизить
+                if (measured > payload)
+                    payload = measured
+            }
+        }
+
+        if (payload <= 0)
+            payload = 3 * 1024 * 1024 * 1024
+        if (need <= payload)
+            need = payload + (512 * 1024 * 1024) + Math.max(4 * 1024 * 1024 * 1024, Math.floor(payload / 2))
+
+        installPayloadBytes = payload
+        installNeedBytes = need
+        installSizeText = formatInstallGb(payload, false)
+        installNeedText = formatInstallGb(need, false)
+    }
+
     function refreshInstallDisks() {
         detectQemuGuest()
+        refreshInstallSizeEstimate()
         var raw = sys.listDisks()
         var lines = raw.length ? raw.split("\n") : []
         var disks = []
@@ -8691,6 +9007,9 @@ Window {
             if (!line.length) continue
             var parts = line.split(/\s+/)
             var name = parts[0]
+            // не предлагать дискеты / loop / ram
+            if (/^(fd|loop|ram|sr)[0-9]/.test(name) || name.indexOf("fd") === 0)
+                continue
             var size = parts.length > 1 ? parts[1] : "?"
             var model = ""
             var tran = ""
@@ -8721,6 +9040,8 @@ Window {
             })
         }
         installDisks = disks
+        if (installDisk.length && /^(fd|loop|ram|sr)/.test(installDisk))
+            installDisk = ""
         if (!installDisk.length && disks.length)
             installDisk = disks[0].id
     }
@@ -9889,8 +10210,16 @@ Window {
             if (!(bytes > 0)) {
                 bytes = parseFloat(sys.run("stat -c%s /var/lib/gtos/apps/" + app.id + "/dl/app.AppImage 2>/dev/null || echo 0").trim()) || 0
             }
+            var speed = parseFloat(sys.readFile("/tmp/gtos-store-speed").trim()) || 0
+            var eta = parseInt(sys.readFile("/tmp/gtos-store-eta").trim(), 10)
+            if (isNaN(eta))
+                eta = -1
+            var statusLabel = sys.readFile("/tmp/gtos-store-label").trim()
             if (expect > 1000)
                 root.storeExpectBytes = expect
+            root.storeInstallBytes = bytes
+            root.storeInstallSpeed = speed
+            root.storeInstallEta = eta
 
             var label = "Загрузка «" + app.name + "»"
             var pct = root.storeInstallPct
@@ -9899,22 +10228,27 @@ Window {
                 pct = Math.min(99, pct + 1)
                 label = "Распаковка «" + app.name + "»"
             } else if (phase === "apk") {
-                pct = Math.min(88, Math.max(pct, 8 + Math.floor(bytes / 1024 / 8)))
+                pct = Math.min(88, Math.max(pct, 8 + Math.floor(bytes / (256 * 1024))))
                 label = "Установка «" + app.name + "»…"
-            } else if (phase === "download" || bytes > 0) {
+            } else if (phase === "download" || (bytes > 0 && phase !== "prepare" && phase !== "init")) {
                 if (expect > 1000)
                     pct = Math.max(2, Math.min(90, Math.floor(bytes * 90 / expect)))
                 else
                     pct = Math.min(85, Math.max(pct, 5 + Math.floor(bytes / (1024 * 1024))))
-                if (bytes > 0 && expect > 1000)
-                    label = "Загрузка «" + app.name + "» · " + Math.floor(bytes / (1024 * 1024)) + "/" + Math.floor(expect / (1024 * 1024)) + " МБ"
-                else if (bytes > 0)
-                    label = "Загрузка «" + app.name + "» · " + Math.floor(bytes / (1024 * 1024)) + " МБ"
-            } else if (phase === "init" || !phase.length) {
-                pct = Math.min(8, pct + 1)
+                label = "Загрузка «" + app.name + "»"
+            } else if (phase === "prepare" || phase === "init" || !phase.length) {
+                // раньше залипало на 8% — двигаем 2→35% по heartbeat
+                pct = Math.min(35, Math.max(pct, 2 + Math.floor(bytes / (512 * 1024))))
+                label = "Подготовка «" + app.name + "»…"
+            } else if (phase === "error") {
+                pct = 100
             } else {
                 pct = Math.min(90, pct + 1)
             }
+            if (statusLabel.length)
+                root.storeInstallLabel = statusLabel
+            else
+                root.storeInstallLabel = label
             root.storeInstallPct = pct
 
             if (bytes <= root.storeLastBytes && phase !== "extract" && phase !== "apk")
@@ -9923,24 +10257,26 @@ Window {
                 root.storeStallTicks = 0
                 root.storeLastBytes = bytes
             }
+            root.storeInstallStalled = root.storeStallTicks >= 10
 
             // apk может идти минутами без curl — не убивать рано
             var alive = sys.run("ps w 2>/dev/null | grep -E '[g]tos-store-install|[c]url|[u]nsquashfs|[a]pk |[t]imeout |[d]d if=' | head -n 1").trim()
-            var stallLimit = (phase === "apk") ? 360 : 48
+            var stallLimit = (phase === "apk") ? 360 : ((phase === "prepare" || phase === "init") ? 90 : 48)
             if (!alive.length && root.storeStallTicks >= stallLimit) {
-                sys.run("echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done")
+                sys.run("echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; echo error >/tmp/gtos-store-phase; echo 'Установщик не отвечает' >/tmp/gtos-store-label")
                 root.storeInstallPct = 100
                 root.finishStoreInstall()
                 return
             }
             if (phase === "download" && root.storeStallTicks >= 600) {
-                sys.run("killall curl 2>/dev/null; echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; true")
+                sys.run("killall curl 2>/dev/null; echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; echo error >/tmp/gtos-store-phase; echo 'Загрузка зависла' >/tmp/gtos-store-label; true")
                 root.storeInstallPct = 100
                 root.finishStoreInstall()
                 return
             }
 
-            root.upsertPendingOp("store-" + app.id, label, pct + "%", pct, "download")
+            var detail = root.storeProgressCaption()
+            root.upsertPendingOp("store-" + app.id, label, detail || (pct + "%"), pct, "download")
         }
     }
 
@@ -12643,13 +12979,61 @@ Rectangle {
         height: root.dockEdge === "left" || root.dockEdge === "right" ? dockRow.height + 28 : root.dockSize
         radius: 20
         color: "#1a2126"
-        border.width: 1
-        border.color: "#2c3840"
+        border.width: root.dockDropHot ? 2 : 1
+        border.color: root.dockDropHot ? root.accentColor : "#2c3840"
+        Behavior on border.color { ColorAnimation { duration: 140 } }
         opacity: root.dockReady ? 1 : 0
         Behavior on opacity { NumberAnimation { duration: 420; easing.type: Easing.OutCubic } }
         transform: Translate {
             y: root.dockReady || root.dockEdge !== "bottom" ? 0 : 120
             Behavior on y { NumberAnimation { duration: 560; easing.type: Easing.OutCubic } }
+        }
+
+        DropArea {
+            anchors.fill: parent
+            keys: ["application/x-gtos-app", "text/plain"]
+            onEntered: root.dockDropHot = true
+            onExited: {
+                if (!root.dockDragApp.length)
+                    root.dockDropHot = false
+            }
+            onDropped: function (drop) {
+                root.dockDropHot = false
+                var appId = ""
+                if (drop.source && drop.source.dockAppId)
+                    appId = drop.source.dockAppId
+                else if (drop.text)
+                    appId = String(drop.text).replace(/^gtos-app:/, "")
+                if (!appId.length && root.dockDragApp.length)
+                    appId = root.dockDragApp
+                if (appId.length) {
+                    var dest = root.dockDropIndex >= 0 ? root.dockDropIndex : root.pinnedApps.length
+                    root.ensurePinned(appId, dest)
+                }
+                root.clearDockDrag()
+            }
+        }
+
+        // Ghost while reordering dock icons
+        Rectangle {
+            visible: root.dockDragApp.length > 0
+            x: root.dockGhostX - 23
+            y: root.dockGhostY - 23
+            width: 46
+            height: 46
+            radius: 12
+            z: 120
+            color: "#1e2a28"
+            border.width: 1
+            border.color: root.accentColor
+            opacity: 0.92
+            DeskIconArt {
+                anchors.centerIn: parent
+                width: 32
+                height: 32
+                kind: root.winIconKind(root.dockDragApp)
+                appId: root.dockDragApp
+            }
         }
 
         Timer {
@@ -12808,16 +13192,155 @@ Rectangle {
             Repeater {
                 model: root.dockAppList()
                 delegate: Item {
-                    width: 46; height: 50
+                    id: dockSlot
+                    width: 46
+                    height: 50
                     visible: (modelData !== "browser" || root.dockShowBrowser) && (modelData !== "mail" || root.dockShowMail)
-                    opacity: 1
-                    scale: 1
+                    opacity: root.dockDragApp === modelData ? 0.35 : 1
+                    scale: root.dockDropIndex === root.pinnedApps.indexOf(modelData) && root.dockDragApp.length && root.dockDragApp !== modelData ? 1.08 : 1
+                    Behavior on opacity { NumberAnimation { duration: 120 } }
+                    Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+                    property string slotApp: modelData
+                    property bool previewOn: root.dockPreviewOpen && root.dockPreviewApp === modelData && root.dockDragApp.length === 0 && root.windowsForApp(modelData).length > 0
+
+                    // Предпросмотр окон над значком
+                    Rectangle {
+                        id: dockPreviewFly
+                        visible: dockSlot.previewOn
+                        anchors.bottom: parent.top
+                        anchors.bottomMargin: 14
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        z: 200
+                        width: Math.max(168, previewCol.implicitWidth + 16)
+                        height: previewCol.implicitHeight + 16
+                        radius: 14
+                        color: "#0e1816"
+                        border.width: 1
+                        border.color: "#2a4a3c"
+                        Column {
+                            id: previewCol
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Repeater {
+                                model: dockSlot.previewOn ? root.windowsForApp(dockSlot.slotApp) : []
+                                delegate: Rectangle {
+                                    width: 160
+                                    height: 108
+                                    radius: 10
+                                    color: prevHover.containsMouse ? "#1a2a24" : "#141c1a"
+                                    border.width: 1
+                                    border.color: prevHover.containsMouse ? root.accentColor : "#2a3a34"
+                                    Behavior on color { ColorAnimation { duration: 120 } }
+                                    // мини-окно
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        anchors.margins: 8
+                                        anchors.bottomMargin: 28
+                                        radius: 6
+                                        color: "#0a1210"
+                                        border.width: 1
+                                        border.color: "#24332e"
+                                        Rectangle {
+                                            anchors.left: parent.left
+                                            anchors.right: parent.right
+                                            anchors.top: parent.top
+                                            height: 14
+                                            radius: 4
+                                            color: "#15201c"
+                                            DeskIconArt {
+                                                anchors.left: parent.left
+                                                anchors.leftMargin: 4
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: 10
+                                                height: 10
+                                                kind: root.winIconKind(dockSlot.slotApp)
+                                                appId: dockSlot.slotApp
+                                            }
+                                        }
+                                        DeskIconArt {
+                                            anchors.centerIn: parent
+                                            anchors.verticalCenterOffset: 6
+                                            width: 28
+                                            height: 28
+                                            kind: root.winIconKind(dockSlot.slotApp)
+                                            appId: dockSlot.slotApp
+                                            opacity: 0.9
+                                        }
+                                    }
+                                    Text {
+                                        anchors.left: parent.left
+                                        anchors.right: prevClose.left
+                                        anchors.bottom: parent.bottom
+                                        anchors.leftMargin: 10
+                                        anchors.bottomMargin: 8
+                                        anchors.rightMargin: 4
+                                        text: modelData.title
+                                        color: "#e8eef2"
+                                        font.pixelSize: 11
+                                        font.family: root.uiFont
+                                        elide: Text.ElideRight
+                                    }
+                                    Rectangle {
+                                        id: prevClose
+                                        anchors.right: parent.right
+                                        anchors.bottom: parent.bottom
+                                        anchors.margins: 6
+                                        width: 22
+                                        height: 22
+                                        radius: 6
+                                        color: prevCloseMa.containsMouse ? "#c42b1c" : "#1a2420"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "×"
+                                            color: "#fff"
+                                            font.pixelSize: 14
+                                        }
+                                        MouseArea {
+                                            id: prevCloseMa
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.closeWindowAt(modelData.index)
+                                        }
+                                    }
+                                    MouseArea {
+                                        id: prevHover
+                                        anchors.fill: parent
+                                        anchors.bottomMargin: 28
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onEntered: {
+                                            root.dockPreviewApp = dockSlot.slotApp
+                                            root.dockPreviewOpen = true
+                                            previewHideTimer.stop()
+                                        }
+                                        onClicked: root.focusWindowAt(modelData.index)
+                                    }
+                                }
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            z: -1
+                            hoverEnabled: true
+                            onEntered: {
+                                root.dockPreviewApp = dockSlot.slotApp
+                                root.dockPreviewOpen = true
+                                previewHideTimer.stop()
+                            }
+                            onExited: previewHideTimer.restart()
+                        }
+                    }
+
                     DockButton {
+                        id: dockBtnRef
                         kind: root.winIconKind(modelData)
                         appId: modelData
                         tip: root.appTitleOf(modelData)
+                        showTip: !dockSlot.previewOn && root.dockDragApp.length === 0
+                        interactive: false
                         anchors.horizontalCenter: parent.horizontalCenter
-                        onClicked: root.focusOrToggleApp(modelData)
+                        hoveredBridge: dockSlotMa.containsMouse && !dockSlotMa.dragging
                     }
                     Rectangle {
                         anchors.horizontalCenter: parent.horizontalCenter
@@ -12832,10 +13355,95 @@ Rectangle {
                         Behavior on color { ColorAnimation { duration: 160 } }
                         Behavior on opacity { NumberAnimation { duration: 160 } }
                     }
-                    MouseArea {
+                    DropArea {
                         anchors.fill: parent
-                        acceptedButtons: Qt.RightButton
-                        onClicked: root.openCtxMenuAt(this, mouse.x, mouse.y, root.dockCtxItems(modelData), "dock")
+                        keys: ["application/x-gtos-app", "text/plain"]
+                        onEntered: {
+                            var ix = root.pinnedApps.indexOf(modelData)
+                            root.dockDropIndex = ix >= 0 ? ix : root.pinnedApps.length
+                            root.dockDropHot = true
+                        }
+                        onExited: {
+                            if (root.dockDropIndex === root.pinnedApps.indexOf(modelData))
+                                root.dockDropIndex = -1
+                        }
+                    }
+                    MouseArea {
+                        id: dockSlotMa
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+                        property bool dragging: false
+                        property real pressX: 0
+                        property real pressY: 0
+                        onEntered: {
+                            previewHideTimer.stop()
+                            root.dockPreviewApp = modelData
+                            root.dockPreviewOpen = root.windowsForApp(modelData).length > 0
+                        }
+                        onExited: {
+                            if (!dragging)
+                                previewHideTimer.restart()
+                        }
+                        onPressed: function (mouse) {
+                            if (mouse.button !== Qt.LeftButton)
+                                return
+                            pressX = mouse.x
+                            pressY = mouse.y
+                            dragging = false
+                        }
+                        onPositionChanged: function (mouse) {
+                            if (!(mouse.buttons & Qt.LeftButton))
+                                return
+                            var dx = mouse.x - pressX
+                            var dy = mouse.y - pressY
+                            if (!dragging && Math.sqrt(dx * dx + dy * dy) > 8) {
+                                dragging = true
+                                root.dockDragApp = modelData
+                                root.dockDragFrom = root.pinnedApps.indexOf(modelData)
+                                root.dockPreviewOpen = false
+                                previewHideTimer.stop()
+                            }
+                            if (dragging) {
+                                var g = mapToItem(dock, mouse.x, mouse.y)
+                                root.dockGhostX = g.x
+                                root.dockGhostY = g.y
+                                root.dockDropHot = true
+                            }
+                        }
+                        onReleased: function (mouse) {
+                            if (dragging) {
+                                var dest = root.dockDropIndex
+                                if (dest < 0)
+                                    dest = root.pinnedApps.length
+                                if (root.dockDragApp.length)
+                                    root.reorderPinnedApp(root.dockDragApp, dest)
+                                root.clearDockDrag()
+                                dragging = false
+                                return
+                            }
+                            if (mouse.button === Qt.RightButton) {
+                                root.openCtxMenuAt(this, mouse.x, mouse.y, root.dockCtxItems(modelData), "dock")
+                                return
+                            }
+                            if (mouse.button === Qt.LeftButton)
+                                root.focusOrToggleApp(modelData)
+                        }
+                        onCanceled: {
+                            dragging = false
+                            root.clearDockDrag()
+                        }
+                    }
+                    Timer {
+                        id: previewHideTimer
+                        interval: 280
+                        onTriggered: {
+                            if (root.dockPreviewApp === modelData) {
+                                root.dockPreviewOpen = false
+                                root.dockPreviewApp = ""
+                            }
+                        }
                     }
                 }
             }
@@ -14436,11 +15044,15 @@ Rectangle {
         property string kind
         property string appId: ""
         property string tip: ""
+        property bool showTip: true
+        property bool interactive: true
+        property bool hoveredBridge: false
+        property bool hovered: interactive ? hover.containsMouse : hoveredBridge
         property real pressScale: 1
         signal clicked()
         width: 46
         height: 46
-        scale: (hover.containsMouse ? 1.16 : 1) * pressScale
+        scale: (hovered ? 1.16 : 1) * pressScale
         transformOrigin: Item.Bottom
         Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutBack } }
         SequentialAnimation {
@@ -14449,10 +15061,11 @@ Rectangle {
             NumberAnimation { target: dockBtn; property: "pressScale"; to: 1.12; duration: 140; easing.type: Easing.OutBack }
             NumberAnimation { target: dockBtn; property: "pressScale"; to: 1; duration: 110 }
         }
+        function bounce() { dockClickBounce.restart() }
         Rectangle {
             anchors.fill: parent
             radius: 12
-            color: hover.containsMouse ? "#1e2a28" : "transparent"
+            color: dockBtn.hovered ? "#1e2a28" : "transparent"
             Behavior on color { ColorAnimation { duration: 120 } }
         }
         DeskIconArt {
@@ -14465,7 +15078,8 @@ Rectangle {
         MouseArea {
             id: hover
             anchors.fill: parent
-            hoverEnabled: true
+            enabled: dockBtn.interactive
+            hoverEnabled: dockBtn.interactive
             cursorShape: Qt.PointingHandCursor
             onClicked: {
                 dockClickBounce.restart()
@@ -14473,7 +15087,7 @@ Rectangle {
             }
         }
         Rectangle {
-            visible: hover.containsMouse && dockBtn.tip.length > 0
+            visible: dockBtn.showTip && dockBtn.hovered && dockBtn.tip.length > 0
             anchors.bottom: parent.top
             anchors.bottomMargin: 10
             anchors.horizontalCenter: parent.horizontalCenter
@@ -19152,13 +19766,64 @@ Rectangle {
                         }
                     }
 
+                    Rectangle {
+                        visible: root.storeInstallingId === detailApp().id
+                        width: parent.width
+                        height: storeProgCol.implicitHeight + 20
+                        radius: 12
+                        color: "#1a1a1a"
+                        border.width: 1
+                        border.color: root.storeInstallStalled ? "#c42b1c" : "#2a3a34"
+                        Column {
+                            id: storeProgCol
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            anchors.margins: 12
+                            spacing: 8
+                            Text {
+                                width: parent.width
+                                text: root.storeProgressCaption()
+                                color: root.storeInstallStalled ? "#ff8a80" : "#e8eef2"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                                wrapMode: Text.Wrap
+                            }
+                            Rectangle {
+                                width: parent.width
+                                height: 10
+                                radius: 5
+                                color: "#0e1412"
+                                Rectangle {
+                                    width: Math.max(4, parent.width * (root.storeInstallPct / 100.0))
+                                    height: parent.height
+                                    radius: 5
+                                    color: root.storeInstallStalled ? "#c42b1c" : root.accentColor
+                                    Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                                }
+                            }
+                            Text {
+                                width: parent.width
+                                text: root.storeInstallStalled
+                                      ? "Похоже, загрузка зависла — проверьте сеть. Можно подождать или закрыть Магазин и повторить."
+                                      : (root.storeExpectBytes > 1000
+                                         ? ("Осталось ≈ " + root.formatStoreBytes(Math.max(0, root.storeExpectBytes - root.storeInstallBytes)))
+                                         : "Считаем объём и скорость…")
+                                color: "#8b98a3"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                                wrapMode: Text.Wrap
+                            }
+                        }
+                    }
+
                     Text {
                         width: parent.width
                         text: detailApp().desc
                         color: "#c5d0d8"
                         font.pixelSize: 16
                         font.family: root.uiFont
-                        wrapMode: Text.WordWrap
+                        wrapMode: Text.Wrap
                     }
                 }
 
@@ -19194,8 +19859,10 @@ Rectangle {
                                 }
                                 Text {
                                     width: parent.width
-                                    text: root.storeCatalogStatus
-                                    color: "#7e8b96"
+                                    text: root.storeInstallingId.length
+                                          ? (root.storeInstallPct + "% · " + root.storeProgressCaption())
+                                          : root.storeCatalogStatus
+                                    color: root.storeInstallStalled ? "#ff8a80" : "#7e8b96"
                                     font.pixelSize: 12
                                     font.family: root.uiFont
                                     elide: Text.ElideRight
@@ -25207,8 +25874,10 @@ Rectangle {
                    + "The Software is licensed, not sold. This agreement only gives you some rights to use the Software. Licensor reserves all other rights. Unless applicable law gives you more rights despite this limitation, you may use the Software only as expressly permitted in this agreement.\n\n"
                    + "4. RESTRICTIONS\n"
                    + "You may not: (a) reverse engineer, decompile, or disassemble the Software, except and only to the extent that applicable law expressly permits despite this limitation; (b) rent, lease, lend, sell, sublicense, or host the Software for third parties as a service without prior written consent; (c) remove or alter any proprietary notices; (d) use the Software to violate law or the rights of others; (e) circumvent technical limitations or license checks, if any.\n\n"
-                   + "5. OPEN SOURCE AND THIRD-PARTY COMPONENTS\n"
-                   + "The Software may include components licensed under open-source or third-party terms (including Linux kernel and related libraries). Those components are licensed to you under their own licenses, which prevail for those components. Applications obtained from the GT/OS Store or elsewhere remain under their respective licenses.\n\n"
+                   + "5. OPEN SOURCE, LINUX DISTRIBUTION, AND SHELL\n"
+                   + "GT/OS is a Linux-based operating system distribution. The Linux kernel and many system components are open-source software licensed under their own terms (including the GNU GPL and related licenses), which continue to apply to those components and prevail over this agreement with respect to those components.\n"
+                   + "The GT/OS graphical shell — including the desktop environment, taskbar, window chrome, Start experience, installer interface, and related shell UI authored by Glukhov Technologies — is original software written from scratch by the Licensor. It is not a fork, port, or derivative of GNOME, KDE Plasma, XFCE, Windows shell, macOS UI, or other third-party desktop environments. The shell is provided under this agreement, without prejudice to the licenses of any open-source libraries or tools it may use.\n"
+                   + "The Software may also include other components licensed under open-source or third-party terms. Those components are licensed to you under their own licenses. Applications obtained from the GT/OS Store or elsewhere remain under their respective licenses.\n\n"
                    + "6. UPDATES\n"
                    + "Licensor may provide updates, patches, or new versions. Updates may modify or remove features. This agreement applies to updates unless accompanied by different terms.\n\n"
                    + "7. PRIVACY AND TELEMETRY\n"
@@ -25239,8 +25908,10 @@ Rectangle {
                    + "ПО предоставляется по лицензии, а не продаётся. Настоящее соглашение даёт вам лишь некоторые права на использование ПО. Все остальные права сохраняются за Лицензиаром. Если применимое законодательство не предоставляет вам больше прав вопреки этим ограничениям, вы можете использовать ПО только способами, прямо разрешёнными в настоящем соглашении.\n\n"
                    + "4. ОГРАНИЧЕНИЯ\n"
                    + "Вам запрещается: (а) выполнять обратную разработку, декомпиляцию или дизассемблирование ПО, за исключением случаев, когда это прямо разрешено императивными нормами закона; (б) сдавать ПО в аренду, прокат, заём, продавать, сублицензировать или предоставлять как услугу третьим лицам без предварительного письменного согласия; (в) удалять или изменять уведомления о правах; (г) использовать ПО с нарушением закона или прав третьих лиц; (д) обходить технические ограничения или проверки лицензии, если таковые имеются.\n\n"
-                   + "5. ОТКРЫТЫЕ И СТОРОННИЕ КОМПОНЕНТЫ\n"
-                   + "ПО может включать компоненты по открытым или сторонним лицензиям (в том числе ядро Linux и связанные библиотеки). Такие компоненты предоставляются вам на условиях их собственных лицензий, которые имеют приоритет в отношении этих компонентов. Приложения из Магазина GT/OS и из других источников регулируются своими лицензиями.\n\n"
+                   + "5. ОТКРЫТЫЕ КОМПОНЕНТЫ, ДИСТРИБУТИВ LINUX И ОБОЛОЧКА\n"
+                   + "GT/OS является дистрибутивом операционной системы на базе Linux. Ядро Linux и многие системные компоненты — открытое программное обеспечение, распространяемое на условиях их собственных лицензий (включая GNU GPL и связанные лицензии); эти условия продолжают действовать и имеют приоритет в отношении соответствующих компонентов.\n"
+                   + "Графическая оболочка GT/OS — включая рабочий стол, панель задач, оформление окон, меню «Пуск», интерфейс установщика и связанный UI оболочки, созданный Glukhov Technologies, — является оригинальным программным обеспечением, написанным Лицензиаром с нуля. Она не является форком, портом или производной GNOME, KDE Plasma, XFCE, оболочки Windows, интерфейса macOS или иных сторонних сред рабочего стола. Оболочка предоставляется на условиях настоящего соглашения, без ущерба для лицензий любых используемых открытых библиотек или инструментов.\n"
+                   + "ПО может также включать иные компоненты по открытым или сторонним лицензиям. Такие компоненты предоставляются вам на условиях их собственных лицензий. Приложения из Магазина GT/OS и из других источников регулируются своими лицензиями.\n\n"
                    + "6. ОБНОВЛЕНИЯ\n"
                    + "Лицензиар может предоставлять обновления, исправления или новые версии. Обновления могут изменять или удалять функции. К обновлениям применяется настоящее соглашение, если к ним не прилагаются иные условия.\n\n"
                    + "7. КОНФИДЕНЦИАЛЬНОСТЬ И ТЕЛЕМЕТРИЯ\n"
@@ -25936,17 +26607,21 @@ Rectangle {
                             }
                             Text {
                                 width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-                                text: installer.uiEn ? "Install size ~12.4 GB" : "Размер установки ~12.4 ГБ"
+                                text: installer.uiEn
+                                      ? ("Install size ~" + root.formatInstallGb(root.installPayloadBytes, true))
+                                      : ("Размер установки ~" + root.formatInstallGb(root.installPayloadBytes, false))
                                 color: "#c5d0d8"; font.pixelSize: 13; font.family: root.uiFont
                             }
                             Text {
                                 width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-                                text: installer.uiEn ? "Space required ~20.1 GB" : "Требуется места ~20.1 ГБ"
+                                text: installer.uiEn
+                                      ? ("Space required ~" + root.formatInstallGb(root.installNeedBytes, true))
+                                      : ("Требуется места ~" + root.formatInstallGb(root.installNeedBytes, false))
                                 color: "#8b98a3"; font.pixelSize: 12; font.family: root.uiFont
                             }
                             Text {
                                 width: parent.width; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.Wrap
-                                text: "/dev/" + (root.installDisk || "—")
+                                text: root.installDisk.length ? ("/dev/" + root.installDisk) : "—"
                                 color: installer.mint; font.pixelSize: 12; font.family: root.monoFont
                             }
                         }
@@ -27484,9 +28159,28 @@ Rectangle {
                         if (mouse.button === Qt.RightButton)
                             root.openCtxMenuAt(this, mouse.x, mouse.y, root.deskFileCtxItems(modelData), "desktop")
                     }
+                    onPositionChanged: {
+                        if (!drag.active)
+                            return
+                        var c = deskIcon.mapToItem(dock, deskIcon.width / 2, deskIcon.height / 2)
+                        root.dockDropHot = c.x >= -12 && c.x <= dock.width + 12 && c.y >= -12 && c.y <= dock.height + 12
+                    }
                     onReleased: {
                         if (mouse.button !== Qt.LeftButton)
                             return
+                        // перетащили приложение на панель задач
+                        if (root.dockDropHot) {
+                            var pinId = root.deskAppIdForPin(modelData)
+                            if (pinId.length) {
+                                root.ensurePinned(pinId, root.dockDropIndex >= 0 ? root.dockDropIndex : root.pinnedApps.length)
+                                deskIcon.x = root.deskIconX(modelData.id, index)
+                                deskIcon.y = root.deskIconY(modelData.id, index)
+                                root.dockDropHot = false
+                                root.dockDropIndex = -1
+                                return
+                            }
+                        }
+                        root.dockDropHot = false
                         // перетащили файл/папку на корзину
                         if (modelData.id !== "system:trash" && modelData.path !== "trash"
                                 && modelData.type !== "system" && modelData.type !== "app"

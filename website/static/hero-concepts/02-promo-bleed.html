@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hero 02 — Promo bleed · GT/OS</title>
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700&family=Syne:wght@700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink:#f4f7f5; --dim:rgba(244,247,245,.74); --void:#061018;
+      --accent:#3be182; --accent-ink:#04170c; --ease:cubic-bezier(.22,1,.36,1);
+    }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--void); color:var(--ink); font-family:Sora,sans-serif; }
+    .back {
+      position:fixed; top:20px; left:20px; z-index:10;
+      color:var(--dim); font-size:.85rem; text-decoration:none;
+      padding:8px 12px; border:1px solid rgba(255,255,255,.12); border-radius:999px;
+      background:rgba(6,16,24,.45); backdrop-filter:blur(10px);
+    }
+    .hero {
+      position:relative; min-height:100vh; min-height:100dvh;
+      display:grid; align-items:end;
+      padding:0 clamp(20px,5vw,64px) clamp(40px,7vh,72px);
+      overflow:hidden;
+    }
+    .media { position:absolute; inset:0; }
+    .media img {
+      width:100%; height:100%; object-fit:cover; object-position:center 40%;
+      animation:drift 20s var(--ease) forwards;
+    }
+    .veil {
+      position:absolute; inset:0;
+      background:
+        linear-gradient(180deg, rgba(6,16,24,.2) 0%, rgba(6,16,24,.05) 42%, rgba(6,16,24,.75) 72%, #061018 100%),
+        linear-gradient(90deg, rgba(6,16,24,.55) 0%, transparent 48%);
+    }
+    .content { position:relative; max-width:640px; }
+    .brand {
+      margin:0 0 10px; font-family:Syne,sans-serif; font-weight:800;
+      font-size:clamp(3.4rem,10vw,6.8rem); line-height:.88; letter-spacing:-.06em;
+      animation:rise .95s var(--ease) both;
+    }
+    .title {
+      margin:0 0 22px; font-family:Syne,sans-serif; font-weight:700;
+      font-size:clamp(1.35rem,2.6vw,1.85rem); line-height:1.25; letter-spacing:-.02em;
+      max-width:28ch; color:var(--dim); animation:rise .95s var(--ease) .1s both;
+    }
+    .cta { display:flex; flex-wrap:wrap; gap:12px; animation:rise .95s var(--ease) .18s both; }
+    .btn {
+      display:inline-flex; align-items:center; min-height:48px; padding:0 22px;
+      border-radius:999px; font-weight:600; text-decoration:none;
+    }
+    .btn-primary { background:var(--accent); color:var(--accent-ink); }
+    .btn-quiet { border:1px solid rgba(255,255,255,.18); color:var(--ink); }
+    @keyframes rise { from{opacity:0;transform:translateY(22px)} to{opacity:1;transform:none} }
+    @keyframes drift { from{transform:scale(1.08) translateY(1%)} to{transform:scale(1.02) translateY(0)} }
+  </style>
+</head>
+<body>
+  <a class="back" href="index.html">← все варианты</a>
+  <section class="hero">
+    <div class="media" aria-hidden="true">
+      <img src="../img/gtos-promo-1.6.jpg" alt="">
+      <div class="veil"></div>
+    </div>
+    <div class="content">
+      <p class="brand">GT/OS</p>
+      <h1 class="title">Настольная система целиком — не тема поверх чужого дистрибутива.</h1>
+      <div class="cta">
+        <a class="btn btn-primary" href="#">Скачать ISO</a>
+        <a class="btn btn-quiet" href="#">Что внутри</a>
+      </div>
+    </div>
+  </section>
+</body>
+</html>

@@ -231,6 +231,53 @@ def main() -> None:
             packed += 1
     print(f"app-icons packed: {packed}")
 
+    # Реальный объём установки: то, что gtos-install копирует с live-root,
+    # плюс ядро/initrd в /boot (их tar исключает, но скрипт кладёт отдельно).
+    payload = 0
+    root_prefixes = (
+        "bin/", "sbin/", "etc/", "usr/", "lib/", "lib64/", "var/", "opt/", "root/",
+    )
+    root_exact = {"bin", "sbin", "etc", "usr", "lib", "lib64", "var", "opt", "root"}
+    for name, node in tree.items():
+        if node.kind != "reg" or not node.data:
+            continue
+        if name in root_exact or name.startswith(root_prefixes):
+            payload += len(node.data)
+
+    boot_extra = 0
+    iso_boot = ROOT / "out"
+    for boot_name in ("vmlinuz", "initrd.gz", "gtos-rootfs.cpio.gz"):
+        # предпочтительно уже лежащее в дереве
+        for cand in (f"boot/{boot_name}", f"usr/share/gtos/boot/{boot_name}"):
+            n = tree.get(cand)
+            if n and n.kind == "reg" and n.data:
+                boot_extra += len(n.data)
+                break
+        else:
+            # запасной путь: сжатый rootfs как initrd на ISO
+            if boot_name in ("initrd.gz", "gtos-rootfs.cpio.gz") and INITRD.is_file():
+                boot_extra += INITRD.stat().st_size
+                break
+    # не дублировать, если initrd уже учтён из дерева
+    if boot_extra <= 0 and INITRD.is_file():
+        boot_extra = INITRD.stat().st_size
+
+    install_bytes = payload + boot_extra
+    # запас: ESP/boot ~512 МБ + max(4 ГБ, 50% от установки) под обновления и данные
+    need_bytes = install_bytes + (512 * 1024 * 1024) + max(4 * 1024 * 1024 * 1024, install_bytes // 2)
+    tree["var/lib/gtos"] = tree.get("var/lib/gtos") or FsNode("dir", 0o040755)
+    tree["var/lib/gtos/install-payload-bytes"] = FsNode(
+        "reg", 0o100644, f"{install_bytes}\n".encode()
+    )
+    tree["var/lib/gtos/install-need-bytes"] = FsNode(
+        "reg", 0o100644, f"{need_bytes}\n".encode()
+    )
+    print(
+        f"install size: {install_bytes / (1024**3):.2f} GB · "
+        f"required: {need_bytes / (1024**3):.2f} GB "
+        f"(root {payload / (1024**3):.2f} + boot {boot_extra / (1024**3):.2f})"
+    )
+
     write_cpio(tree, INITRD)
     print(f"updated {INITRD} ({INITRD.stat().st_size} bytes)")
 

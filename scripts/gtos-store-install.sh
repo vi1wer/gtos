@@ -17,16 +17,43 @@ if [ -n "$REPAIR_ID" ]; then
     LOG="${GTOS_STORE_LOG:-/tmp/gtos-repair-$REPAIR_ID.log}"
 fi
 
-rm -f "$DONE_FILE" "$RC_FILE" /tmp/gtos-store-phase /tmp/gtos-store-expect /tmp/gtos-store-bytes
+rm -f "$DONE_FILE" "$RC_FILE" /tmp/gtos-store-phase /tmp/gtos-store-expect /tmp/gtos-store-bytes \
+    /tmp/gtos-store-speed /tmp/gtos-store-label /tmp/gtos-store-eta
 : >"$LOG"
 echo "GTOS_STORE_INSTALL start $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG"
-echo "init" >/tmp/gtos-store-phase
+echo "prepare" >/tmp/gtos-store-phase
+echo "Подготовка…" >/tmp/gtos-store-label
+echo 0 >/tmp/gtos-store-bytes
+# ранний heartbeat — чтобы UI не залипал на 8% пока ждём сеть/apk
+(
+    n=0
+    while [ "$n" -lt 120 ]; do
+        ph=$(cat /tmp/gtos-store-phase 2>/dev/null || echo prepare)
+        case "$ph" in
+            download|extract|apk|done|error) break ;;
+        esac
+        echo "$((n * 512 * 1024))" >/tmp/gtos-store-bytes
+        # не затирать фазу, если основной скрипт уже продвинулся
+        ph2=$(cat /tmp/gtos-store-phase 2>/dev/null || echo prepare)
+        case "$ph2" in
+            download|extract|apk|done|error) break ;;
+            *) echo "prepare" >/tmp/gtos-store-phase
+               echo "Подготовка… ${n}с" >/tmp/gtos-store-label ;;
+        esac
+        n=$((n + 1))
+        sleep 1
+    done
+) &
+PREP_HB=$!
+kill_prep_hb() { kill "$PREP_HB" 2>/dev/null || true; wait "$PREP_HB" 2>/dev/null || true; }
 
 fail() {
     code="${1:-1}"
     msg="${2:-install failed}"
+    kill_prep_hb 2>/dev/null || true
     echo "ERROR: $msg" >>"$LOG"
     echo "error" >/tmp/gtos-store-phase
+    echo "$msg" >/tmp/gtos-store-label
     echo "$code" >"$RC_FILE"
     # совместимость со старым таймером оболочки
     echo "$code" >/tmp/gtos-apk-rc
@@ -36,7 +63,9 @@ fail() {
 }
 
 ok_done() {
+    kill_prep_hb 2>/dev/null || true
     echo "done" >/tmp/gtos-store-phase
+    echo "Готово" >/tmp/gtos-store-label
     echo 0 >"$RC_FILE"
     echo 0 >/tmp/gtos-apk-rc
     echo done >"$DONE_FILE"
@@ -47,6 +76,12 @@ ok_done() {
 
 set_phase() {
     echo "$1" >/tmp/gtos-store-phase
+    case "$1" in
+        download) echo "Загрузка…" >/tmp/gtos-store-label ;;
+        extract) echo "Распаковка…" >/tmp/gtos-store-label ;;
+        apk) echo "Установка пакета…" >/tmp/gtos-store-label ;;
+        prepare) echo "Подготовка…" >/tmp/gtos-store-label ;;
+    esac
 }
 
 CURL_UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 GTOS-Store/1.6"
@@ -130,7 +165,8 @@ ensure_wine() {
 probe_expect_size() {
     [ -n "$URL" ] || return 0
     command -v curl >/dev/null 2>&1 || return 0
-    exp=$(curl -fsSIL -A "$CURL_UA" --connect-timeout 15 --max-time 40 "$URL" 2>/dev/null \
+    # короткий HEAD — длинный таймаут раньше выглядел как «залипло на 8%»
+    exp=$(curl -fsSIL -A "$CURL_UA" --connect-timeout 8 --max-time 12 "$URL" 2>/dev/null \
         | awk 'BEGIN{IGNORECASE=1} /^content-length:/{print $2}' | tr -d '\r' | tail -n 1)
     if [ -n "$exp" ] && [ "$exp" -gt 0 ] 2>/dev/null; then
         echo "$exp" >/tmp/gtos-store-expect
@@ -142,28 +178,59 @@ download() {
     dest="$1"
     min_bytes="${2:-100000}"
     [ -n "$URL" ] || return 1
+    kill_prep_hb 2>/dev/null || true
     set_phase download
     echo "download $URL -> $dest (min=$min_bytes)" >>"$LOG"
     probe_expect_size || true
     rm -f "$dest"
     if command -v curl >/dev/null 2>&1; then
         (
+            prev=0
+            prev_t=$(date +%s 2>/dev/null || echo 0)
             while :; do
                 if [ -f "$dest" ]; then
                     sz=$(stat -c%s "$dest" 2>/dev/null || echo 0)
                     echo "$sz" >/tmp/gtos-store-bytes
+                    now=$(date +%s 2>/dev/null || echo 0)
+                    dt=$((now - prev_t))
+                    if [ "$dt" -ge 1 ] 2>/dev/null; then
+                        spd=$(( (sz - prev) / dt ))
+                        [ "$spd" -lt 0 ] && spd=0
+                        echo "$spd" >/tmp/gtos-store-speed
+                        exp=$(cat /tmp/gtos-store-expect 2>/dev/null || echo 0)
+                        if [ "$exp" -gt 0 ] 2>/dev/null && [ "$spd" -gt 0 ] 2>/dev/null; then
+                            left=$((exp - sz))
+                            [ "$left" -lt 0 ] && left=0
+                            eta=$((left / spd))
+                            echo "$eta" >/tmp/gtos-store-eta
+                            mb=$((sz / 1048576))
+                            emb=$((exp / 1048576))
+                            sm=$((spd / 1024))
+                            echo "Загрузка ${mb}/${emb} МБ · ${sm} КБ/с · ~${eta}с" >/tmp/gtos-store-label
+                        else
+                            mb=$((sz / 1048576))
+                            sm=$((spd / 1024))
+                            echo "Загрузка ${mb} МБ · ${sm} КБ/с" >/tmp/gtos-store-label
+                        fi
+                        prev=$sz
+                        prev_t=$now
+                    fi
+                else
+                    echo "Соединение…" >/tmp/gtos-store-label
                 fi
                 sleep 1
             done
         ) &
         watch_pid=$!
-        if curl -fL -A "$CURL_UA" --retry 3 --retry-delay 2 \
+        if curl -fL -A "$CURL_UA" --retry 4 --retry-delay 2 --retry-all-errors \
             --connect-timeout 25 --max-time 3600 \
             -o "$dest" "$URL" >>"$LOG" 2>&1; then
             kill "$watch_pid" 2>/dev/null || true
             wait "$watch_pid" 2>/dev/null || true
             sz=$(stat -c%s "$dest" 2>/dev/null || echo 0)
             echo "$sz" >/tmp/gtos-store-bytes
+            echo 0 >/tmp/gtos-store-speed
+            echo "Скачано $((sz / 1048576)) МБ" >/tmp/gtos-store-label
             [ "$sz" -gt "$min_bytes" ] 2>/dev/null || return 1
             return 0
         fi
@@ -357,13 +424,16 @@ install_alpine() {
         "https://dl-cdn.alpinelinux.org/alpine/${BRANCH}/community" \
         >/etc/apk/repositories
     echo "apk add $pkg (branch=$BRANCH)" >>"$LOG"
-    # heartbeat для таймера оболочки: apk долго без роста файла
+    kill_prep_hb 2>/dev/null || true
+    # heartbeat: имитируем прогресс 8→85%, чтобы UI не замирал на 8%
     set_phase apk
     (
         n=0
-        while [ "$n" -lt 600 ]; do
-            echo "$((n * 1024))" >/tmp/gtos-store-bytes
+        while [ "$n" -lt 900 ]; do
+            # ~1 МБ/тик — формула UI 8 + bytes/(256KiB) растёт заметно
+            echo "$((n * 256 * 1024))" >/tmp/gtos-store-bytes
             echo apk >/tmp/gtos-store-phase
+            echo "Установка «$pkg»… ${n}с" >/tmp/gtos-store-label
             n=$((n + 1))
             sleep 1
         done

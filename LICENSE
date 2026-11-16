@@ -6,6 +6,16 @@ GT/OS and accompanying materials in this repository are the product of
 Glukhov Mikhail. Redistribution of official ISO images from GitHub Releases
 for personal use and evaluation is permitted.
 
+GT/OS is a Linux-based operating system distribution. The Linux kernel and
+other open-source system components remain under their respective licenses
+(including the GNU GPL), which prevail for those components.
+
+The GT/OS graphical shell (desktop, taskbar, window chrome, Start menu,
+installer UI, and related shell interface) is original software written from
+scratch by Glukhov Mikhail / Glukhov Technologies. It is not a fork or
+derivative of GNOME, KDE Plasma, XFCE, Windows shell, or other third-party
+desktop environments.
+
 Modification, rebranding, or redistribution of the source tree, branding,
 or builds under another name requires prior written permission from the author.
 
