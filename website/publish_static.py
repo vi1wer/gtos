@@ -40,6 +40,25 @@ def write_page(url_path: str, html: str) -> None:
             return f"{m.group(1)}{PAGES_PREFIX}/"
 
         html = re.sub(r'((?:href|src|action)=["\'])/(?!/)', _pfx, html)
+        # srcset: "/static/a.jpg 1x, /static/b.jpg 2x"
+        def _srcset(m: re.Match[str]) -> str:
+            attr, body, quote = m.group(1), m.group(2), m.group(3)
+            parts = []
+            for chunk in body.split(","):
+                chunk = chunk.strip()
+                if not chunk:
+                    continue
+                if chunk.startswith("/") and not chunk.startswith("//"):
+                    chunk = PAGES_PREFIX + chunk
+                parts.append(chunk)
+            return f'{attr}{", ".join(parts)}{quote}'
+
+        html = re.sub(
+            r'(srcset=["\'])([^"\']*)(["\'])',
+            _srcset,
+            html,
+            flags=re.IGNORECASE,
+        )
     if html.startswith("\ufeff"):
         html = html.lstrip("\ufeff")
     out.write_text(html, encoding="utf-8", newline="\n")
