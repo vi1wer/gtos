@@ -25,6 +25,7 @@ echo "GTOS_STORE_INSTALL start $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG"
 echo "prepare" >/tmp/gtos-store-phase
 echo "Подготовка…" >/tmp/gtos-store-label
 echo 0 >/tmp/gtos-store-bytes
+df -h / /var/lib/gtos /tmp 2>>"$LOG" || true
 # ранний heartbeat — чтобы UI не залипал на 8% пока ждём сеть/apk
 (
     n=0
@@ -51,6 +52,7 @@ kill_prep_hb() { kill "$PREP_HB" 2>/dev/null || true; wait "$PREP_HB" 2>/dev/nul
 fail() {
     code="${1:-1}"
     msg="${2:-install failed}"
+    trap - EXIT
     kill_prep_hb 2>/dev/null || true
     echo "ERROR: $msg" >>"$LOG"
     echo "error" >/tmp/gtos-store-phase
@@ -63,6 +65,9 @@ fail() {
     exit 0
 }
 
+# любой необработанный сбой set -e → понятная ошибка в UI (раньше был пустой ERROR)
+trap 'ec=$?; [ "$ec" -eq 0 ] && exit 0; fail "$ec" "сбой установщика (код $ec, строка $LINENO)"' EXIT
+
 ok_done() {
     kill_prep_hb 2>/dev/null || true
     echo "done" >/tmp/gtos-store-phase
@@ -72,6 +77,7 @@ ok_done() {
     echo done >"$DONE_FILE"
     echo done >/tmp/gtos-apk-done
     echo "GTOS_STORE_INSTALL ok" >>"$LOG"
+    trap - EXIT
     exit 0
 }
 
@@ -152,15 +158,84 @@ ensure_wine() {
         return 0
     fi
     echo "installing wine…" >>"$LOG"
+    kill_prep_hb 2>/dev/null || true
+    set_phase apk
+    echo "Установка Wine…" >/tmp/gtos-store-label
     printf '%s\n' \
         "https://dl-cdn.alpinelinux.org/alpine/${BRANCH}/main" \
         "https://dl-cdn.alpinelinux.org/alpine/${BRANCH}/community" \
         >/etc/apk/repositories
-    apk update --cache-dir /var/lib/gtos/apk-cache >>"$LOG" 2>&1 || true
-    apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine >>"$LOG" 2>&1 \
-        || apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine-staging >>"$LOG" 2>&1 \
-        || return 1
+    # длинный update: в QEMU user-NAT 60с часто мало
+    if command -v timeout >/dev/null 2>&1; then
+        timeout 180 apk update --no-progress --cache-dir /var/lib/gtos/apk-cache >>"$LOG" 2>&1 || true
+        timeout 600 apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine >>"$LOG" 2>&1 \
+            || timeout 600 apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine-staging >>"$LOG" 2>&1 \
+            || return 1
+    else
+        apk update --no-progress --cache-dir /var/lib/gtos/apk-cache >>"$LOG" 2>&1 || true
+        apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine >>"$LOG" 2>&1 \
+            || apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine-staging >>"$LOG" 2>&1 \
+            || return 1
+    fi
     command -v wine >/dev/null 2>&1
+}
+
+# Имя бинарника в пакете часто ≠ имени apk (7zip → 7zz/7z)
+resolve_alpine_bin() {
+    pkg="$1"
+    pref="${2:-}"
+    if [ -n "$pref" ] && command -v "$pref" >/dev/null 2>&1; then
+        command -v "$pref"
+        return 0
+    fi
+    case "$pkg" in
+        7zip)
+            for c in 7zz 7z 7za 7zip; do
+                command -v "$c" >/dev/null 2>&1 && { command -v "$c"; return 0; }
+            done
+            ;;
+    esac
+    if command -v "$pkg" >/dev/null 2>&1; then
+        command -v "$pkg"
+        return 0
+    fi
+    # после ручной распаковки .apk в $ROOT/root
+    if [ -d "$ROOT/root" ]; then
+        if [ -n "$pref" ]; then
+            hit=$(find "$ROOT/root" -type f -name "$pref" 2>/dev/null | head -n 1 || true)
+            [ -n "$hit" ] && { echo "$hit"; return 0; }
+        fi
+        case "$pkg" in
+            7zip)
+                hit=$(find "$ROOT/root" -type f \( -name 7zz -o -name 7z \) 2>/dev/null | head -n 1 || true)
+                [ -n "$hit" ] && { echo "$hit"; return 0; }
+                ;;
+        esac
+        hit=$(find "$ROOT/root/usr/bin" "$ROOT/root/bin" -type f 2>/dev/null | head -n 1 || true)
+        [ -n "$hit" ] && { echo "$hit"; return 0; }
+    fi
+    return 1
+}
+
+# Alpine .apk = tar.gz: ставим в /var/lib/gtos/apps без записи в корневой overlay
+install_apk_extracted() {
+    pkg="$1"
+    apk_file="$2"
+    echo "extract apk payload $apk_file -> $ROOT/root" >>"$LOG"
+    set_phase extract
+    rm -rf "$ROOT/root"
+    mkdir -p "$ROOT/root"
+    if ! tar -xzf "$apk_file" -C "$ROOT/root" >>"$LOG" 2>&1; then
+        rm -rf "$ROOT/root"
+        mkdir -p "$ROOT/root"
+        tar -xf "$apk_file" -C "$ROOT/root" >>"$LOG" 2>&1 || return 1
+    fi
+    # убрать метаданные apk из корня приложения
+    rm -f "$ROOT/root/.PKGINFO" "$ROOT/root/.SIGN"* "$ROOT/root/.pre"* "$ROOT/root/.post"* 2>/dev/null || true
+    bin_path=$(resolve_alpine_bin "$pkg" "${BIN:-}") || return 1
+    chmod a+x "$bin_path" 2>/dev/null || true
+    write_launcher "export DISPLAY=\${DISPLAY:-:0}; export PATH=\"$ROOT/root/usr/bin:$ROOT/root/bin:\$PATH\"; exec \"$bin_path\" \"\$@\""
+    return 0
 }
 
 probe_expect_size() {
@@ -418,6 +493,23 @@ EOF
     write_launcher "$body"
 }
 
+finish_apk_hb() {
+    kill "${APK_HB_PID:-}" 2>/dev/null || true
+    wait "${APK_HB_PID:-}" 2>/dev/null || true
+    APK_HB_PID=""
+}
+
+alpine_finish_ok() {
+    pkg="$1"
+    finish_apk_hb
+    bin_path=$(resolve_alpine_bin "$pkg" "${BIN:-}") || bin_path=""
+    if [ -z "$bin_path" ]; then
+        bin_path="${BIN:-$pkg}"
+    fi
+    write_launcher "export DISPLAY=\${DISPLAY:-:0}; export PATH=\"$ROOT/root/usr/bin:$ROOT/root/bin:\$PATH\"; exec \"$bin_path\" \"\$@\""
+    ok_done
+}
+
 install_alpine() {
     pkg=$(printf '%s' "$APK" | tr -cd 'A-Za-z0-9._+-')
     [ -n "$pkg" ] || fail 3 "нет имени apk"
@@ -432,7 +524,6 @@ install_alpine() {
     (
         n=0
         while [ "$n" -lt 900 ]; do
-            # ~1 МБ/тик — формула UI 8 + bytes/(256KiB) растёт заметно
             echo "$((n * 256 * 1024))" >/tmp/gtos-store-bytes
             echo apk >/tmp/gtos-store-phase
             echo "Установка «$pkg»… ${n}с" >/tmp/gtos-store-label
@@ -440,23 +531,21 @@ install_alpine() {
             sleep 1
         done
     ) &
-    hb_pid=$!
-    finish_hb() { kill "$hb_pid" 2>/dev/null || true; wait "$hb_pid" 2>/dev/null || true; }
+    APK_HB_PID=$!
 
-    # уже стоит
-    if command -v "${BIN:-$pkg}" >/dev/null 2>&1 || apk info -e "$pkg" >/dev/null 2>&1; then
+    # уже стоит в системе или распаковано ранее
+    if resolve_alpine_bin "$pkg" "${BIN:-}" >/dev/null 2>&1 || apk info -e "$pkg" >/dev/null 2>&1; then
         echo "package already present: $pkg" >>"$LOG"
-        finish_hb
-        bin="${BIN:-$pkg}"
-        write_launcher "export DISPLAY=\${DISPLAY:-:0}; exec $(command -v "$bin" 2>/dev/null || echo "$bin") \"\$@\""
-        ok_done
+        alpine_finish_ok "$pkg"
     fi
 
     try=1
     while [ "$try" -le 3 ]; do
         echo "apk update try $try" >>"$LOG"
-        if timeout 60 apk update --no-progress --cache-dir /var/lib/gtos/apk-cache >>"$LOG" 2>&1; then
-            break
+        if command -v timeout >/dev/null 2>&1; then
+            timeout 180 apk update --no-progress --cache-dir /var/lib/gtos/apk-cache >>"$LOG" 2>&1 && break
+        else
+            apk update --no-progress --cache-dir /var/lib/gtos/apk-cache >>"$LOG" 2>&1 && break
         fi
         try=$((try + 1))
         sleep 2
@@ -465,39 +554,53 @@ install_alpine() {
     try=1
     while [ "$try" -le 3 ]; do
         echo "apk add $pkg try $try" >>"$LOG"
-        if timeout 300 apk add --no-progress --cache-dir /var/lib/gtos/apk-cache "$pkg" >>"$LOG" 2>&1; then
-            finish_hb
-            bin="${BIN:-$pkg}"
-            write_launcher "export DISPLAY=\${DISPLAY:-:0}; exec $(command -v "$bin" 2>/dev/null || echo "$bin") \"\$@\""
-            ok_done
+        if command -v timeout >/dev/null 2>&1; then
+            if timeout 300 apk add --no-progress --cache-dir /var/lib/gtos/apk-cache "$pkg" >>"$LOG" 2>&1; then
+                alpine_finish_ok "$pkg"
+            fi
+        else
+            if apk add --no-progress --cache-dir /var/lib/gtos/apk-cache "$pkg" >>"$LOG" 2>&1; then
+                alpine_finish_ok "$pkg"
+            fi
         fi
         try=$((try + 1))
         sleep 2
     done
 
-    # запас: .apk по URL + зависимости из индекса
+    # запас: скачать .apk и либо apk add, либо просто распаковать в apps/
     case "$URL" in
         *.apk*)
             echo "fallback: download apk from URL" >>"$LOG"
             apk_file="$ROOT/dl/pkg.apk"
             mkdir -p "$ROOT/dl"
             if download "$apk_file" 50000; then
-                if timeout 300 apk add --no-progress --allow-untrusted --cache-dir /var/lib/gtos/apk-cache "$apk_file" >>"$LOG" 2>&1 \
-                    || timeout 300 apk add --no-progress --allow-untrusted --cache-dir /var/lib/gtos/apk-cache --force-non-repository "$apk_file" >>"$LOG" 2>&1; then
-                    finish_hb
-                    bin="${BIN:-$pkg}"
-                    write_launcher "export DISPLAY=\${DISPLAY:-:0}; exec $(command -v "$bin" 2>/dev/null || echo "$bin") \"\$@\""
+                added=0
+                if command -v timeout >/dev/null 2>&1; then
+                    if timeout 300 apk add --no-progress --allow-untrusted --cache-dir /var/lib/gtos/apk-cache "$apk_file" >>"$LOG" 2>&1 \
+                        || timeout 300 apk add --no-progress --allow-untrusted --cache-dir /var/lib/gtos/apk-cache --force-non-repository "$apk_file" >>"$LOG" 2>&1; then
+                        added=1
+                    fi
+                else
+                    if apk add --no-progress --allow-untrusted --cache-dir /var/lib/gtos/apk-cache "$apk_file" >>"$LOG" 2>&1 \
+                        || apk add --no-progress --allow-untrusted --cache-dir /var/lib/gtos/apk-cache --force-non-repository "$apk_file" >>"$LOG" 2>&1; then
+                        added=1
+                    fi
+                fi
+                if [ "$added" = 1 ]; then
+                    alpine_finish_ok "$pkg"
+                fi
+                echo "fallback: extract apk into app root" >>"$LOG"
+                if install_apk_extracted "$pkg" "$apk_file"; then
+                    finish_apk_hb
                     ok_done
                 fi
             fi
             ;;
     esac
 
-    finish_hb
-    if command -v "${BIN:-$pkg}" >/dev/null 2>&1 || apk info -e "$pkg" >/dev/null 2>&1; then
-        bin="${BIN:-$pkg}"
-        write_launcher "export DISPLAY=\${DISPLAY:-:0}; exec $(command -v "$bin" 2>/dev/null || echo "$bin") \"\$@\""
-        ok_done
+    finish_apk_hb
+    if resolve_alpine_bin "$pkg" "${BIN:-}" >/dev/null 2>&1 || apk info -e "$pkg" >/dev/null 2>&1; then
+        alpine_finish_ok "$pkg"
     fi
     if ! apk search -q "$pkg" 2>/dev/null | head -n 1 | grep -q .; then
         fail 1 "пакета «$pkg» нет в репозитории $BRANCH — проверьте сеть"
@@ -571,19 +674,25 @@ install_windows() {
     export WINEPREFIX="$ROOT/wine"
     export WINEDEBUG="-all"
     mkdir -p "$WINEPREFIX"
+    echo "Инициализация Wine…" >/tmp/gtos-store-label
     wineboot -i >>"$LOG" 2>&1 || true
 
     case "$FORMAT" in
         zip)
             z="$ROOT/dl/app.zip"
-            download "$z" || fail 1 "не удалось скачать zip"
-            command -v unzip >/dev/null 2>&1 || apk add --no-progress unzip >>"$LOG" 2>&1 || true
+            download "$z" 50000 || fail 1 "не удалось скачать zip"
+            command -v unzip >/dev/null 2>&1 \
+                || apk add --no-progress --cache-dir /var/lib/gtos/apk-cache unzip >>"$LOG" 2>&1 \
+                || true
+            command -v unzip >/dev/null 2>&1 || fail 1 "нет unzip для распаковки Windows-архива"
             rm -rf "$ROOT/win"
             mkdir -p "$ROOT/win"
             unzip -o "$z" -d "$ROOT/win" >>"$LOG" 2>&1 || fail 1 "unzip не удался"
             exe_path=""
             if [ -n "$EXE" ]; then
-                exe_path=$(find "$ROOT/win" -type f -iname "$EXE" 2>/dev/null | head -n 1 || true)
+                # -iname с ++ у busybox бывает капризным — сначала точное имя
+                exe_path=$(find "$ROOT/win" -type f -name "$EXE" 2>/dev/null | head -n 1 || true)
+                [ -n "$exe_path" ] || exe_path=$(find "$ROOT/win" -type f -iname "$EXE" 2>/dev/null | head -n 1 || true)
             fi
             [ -n "$exe_path" ] || exe_path=$(find "$ROOT/win" -type f -iname '*.exe' 2>/dev/null | head -n 1 || true)
             [ -n "$exe_path" ] || fail 1 "в архиве нет .exe"
@@ -592,14 +701,14 @@ install_windows() {
             ;;
         msi)
             m="$ROOT/dl/setup.msi"
-            download "$m" || fail 1 "не удалось скачать msi"
+            download "$m" 50000 || fail 1 "не удалось скачать msi"
             wine msiexec /i "$m" /qn >>"$LOG" 2>&1 || wine msiexec /i "$m" >>"$LOG" 2>&1 || fail 1 "msiexec не удался"
             write_launcher "export WINEPREFIX=\"$ROOT/wine\"; export WINEDEBUG=-all; export DISPLAY=\${DISPLAY:-:0}; exec wine explorer \"\$@\""
             ok_done
             ;;
         exe|*)
             e="$ROOT/dl/setup.exe"
-            download "$e" || fail 1 "не удалось скачать exe"
+            download "$e" 20000 || fail 1 "не удалось скачать exe"
             # portable: просто запускаем; installer — тихая попытка
             if [ "${PORTABLE:-0}" = "1" ] || [ "$FORMAT" = "portable" ]; then
                 cp -f "$e" "$ROOT/app.exe"

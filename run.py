@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Boot GT/OS as a daily desktop: disk persistence + user networking."""
 
 from __future__ import annotations
@@ -179,7 +179,7 @@ def main() -> int:
         "-device",
         "usb-tablet",
         "-name",
-        "GT/OS 1.6.1" + (" Safe" if safe else ""),
+        "GT/OS 1.6.2" + (" Safe" if safe else ""),
         "-serial",
         f"file:{serial_log}",
         "-netdev",
@@ -198,7 +198,7 @@ def main() -> int:
     print(f"QEMU: {qemu}", flush=True)
     mode = "Safe Mode · " if safe else ""
     print(
-        f"GT/OS 1.6.1 — {mode}1920×1080 · 14 ГБ ОЗУ · диск 16 ГБ · {accel_label} · {gpu_label}",
+        f"GT/OS 1.6.2 — {mode}1920×1080 · 14 ГБ ОЗУ · диск 16 ГБ · {accel_label} · {gpu_label}",
         flush=True,
     )
     if virgl:

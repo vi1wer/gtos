@@ -291,6 +291,7 @@ Window {
     property var ctxMenuItems: []
     property bool locked: true
     property bool booting: true
+    property bool bootHandoff: false   // сплэш гаснет поверх уже готового экрана блокировки
     property real bootProgress: 0
     property string bootStatus: ""
     property real bootLogoOpacity: 0
@@ -379,7 +380,7 @@ Window {
     property int browserTab: 0
 
     // GT/OS 1.6
-    property string osVersion: "1.6.1"
+    property string osVersion: "1.6.2"
     property bool safeMode: false
     property bool secureDeskOpen: false
     property string secureDeskMode: ""   // "" | "pwd" | "power"
@@ -432,7 +433,9 @@ Window {
     property int wsRenameIndex: -1
     property string wsRenameDraft: ""
     property var updateLog: [
-        { ver: "1.6", date: "7 ноя 2026", title: "UEFI, HiDPI, онбординг, обновления", note: "Текущий выпуск" },
+        { ver: "1.6.2", date: "17 ноя 2026", title: "Новый Центр обновлений и страница приложения", note: "Текущий выпуск" },
+        { ver: "1.6.1", date: "17 ноя 2026", title: "Панель задач, магазин, раскладка, эмодзи", note: "Архив" },
+        { ver: "1.6", date: "7 ноя 2026", title: "UEFI, HiDPI, онбординг, обновления", note: "Архив" },
         { ver: "1.5.6", date: "3 ноя 2026", title: "Безопасный стол, операции, бэкапы", note: "Архив" },
         { ver: "1.5.4", date: "1 ноя 2026", title: "Галерея, корзина, магазин Linux/Windows", note: "Архив" },
         { ver: "1.5.3", date: "31 окт 2026", title: "Медиа, Bluetooth, бэкапы", note: "Архив" },
@@ -440,7 +443,16 @@ Window {
         { ver: "1.5.1", date: "30 окт 2026", title: "Control Center, Security, Recovery", note: "Архив" }
     ]
     property bool updateChecking: false
-    property string updateStatus: "Актуальная версия 1.6"
+    property string updateStatus: "Установлена последняя версия GT/OS"
+    property bool updateShellAvail: false
+    property var whatsNewItems: [
+        "Центр обновлений с анимацией появления и понятным статусом",
+        "Страница приложения: живые скриншоты, баннер и боковая карточка",
+        "В Магазине только десктопные программы — без веб-заглушек",
+        "Discord, FreeTube, Figma, ONLYOFFICE, GitHub Desktop и ZapZap",
+        "Иконки приложений подтягиваются из сети",
+        "Стиль панели задач «Линия» и быстрая смена раскладки"
+    ]
     property string updateLastCheck: "ещё не проверяли"
     property bool updateAutoCheck: true
     property string updateDepsStatus: "Зависимости не проверялись"
@@ -2368,17 +2380,18 @@ Window {
         if (app.platform)
             return String(app.platform)
         var s = String(app.source || "")
-        if (s === "linux" || s === "windows" || s === "web" || s === "alpine")
+        if (s === "linux" || s === "windows" || s === "alpine")
             return s
         if (app.apk)
             return "alpine"
-        return "web"
+        if (app.url)
+            return "linux"
+        return "alpine"
     }
 
     function storePlatformLabel(p) {
         if (p === "linux") return "Linux"
         if (p === "windows") return "Windows"
-        if (p === "web") return "Веб"
         if (p === "alpine") return "Alpine"
         return "Все"
     }
@@ -2406,7 +2419,14 @@ Window {
             "qbittorrent": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/qbittorrent.png",
             "filezilla": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/filezilla.png",
             "obsidian": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/obsidian.png",
+            "obsidian-linux": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/obsidian.png",
             "onlyoffice": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/onlyoffice.png",
+            "onlyoffice-linux": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/onlyoffice.png",
+            "bitwarden-linux": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/bitwarden.png",
+            "github-desktop": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/github.png",
+            "figma-linux": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/figma.png",
+            "freetube": "https://www.google.com/s2/favicons?domain=freetubeapp.io&sz=128",
+            "discord": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/discord.png",
             "vlc": "https://www.google.com/s2/favicons?domain=videolan.org&sz=128",
             "mpv": "https://www.google.com/s2/favicons?domain=mpv.io&sz=128",
             "obs": "https://www.google.com/s2/favicons?domain=obsproject.com&sz=128",
@@ -2458,6 +2478,121 @@ Window {
     }
 
     property bool appIconFetchPending: false
+    property string storeShotViewer: ""
+
+    property var storeShotExtra: ({})
+
+    function debianShotPkg(app) {
+        if (!app)
+            return ""
+        var id = String(app.id || "")
+        var apk = String(app.apk || "").replace(/[^a-zA-Z0-9._+-]/g, "")
+        var map = {
+            "firefox": "firefox", "chromium": "chromium", "thunderbird": "thunderbird",
+            "telegram": "telegram-desktop", "vlc": "vlc", "gimp": "gimp", "inkscape": "inkscape",
+            "blender": "blender", "krita": "krita", "libreoffice": "libreoffice-writer",
+            "audacity": "audacity", "obs": "obs-studio", "filezilla": "filezilla",
+            "qbittorrent": "qbittorrent", "keepassxc": "keepassxc", "discord": "discord",
+            "element": "element-desktop", "mpv": "mpv", "transmission": "transmission-gtk",
+            "evince": "evince", "okular": "okular", "darktable": "darktable", "shotcut": "shotcut",
+            "audacious": "audacious", "rhythmbox": "rhythmbox", "flameshot": "flameshot",
+            "gparted": "gparted", "vscode": "code", "code-oss": "code"
+        }
+        if (map[id])
+            return map[id]
+        if (map[apk])
+            return map[apk]
+        return apk
+    }
+
+    function appScreenshots(app) {
+        if (!app)
+            return []
+        var id = String(app.id || "")
+        if (storeShotExtra[id] && storeShotExtra[id].length)
+            return storeShotExtra[id]
+        if (app.screenshots && app.screenshots.length)
+            return app.screenshots
+        var deb = debianShotPkg(app)
+        if (deb.length)
+            return ["https://screenshots.debian.net/screenshot/" + deb]
+        return []
+    }
+
+    function expandDebianScreenshots(app) {
+        if (!app || !app.id)
+            return
+        var id = String(app.id)
+        if (storeShotExtra[id] && storeShotExtra[id].length > 1)
+            return
+        if (app.screenshots && app.screenshots.length > 1)
+            return
+        var pkgs = []
+        var deb = debianShotPkg(app)
+        if (id === "libreoffice" || app.apk === "libreoffice")
+            pkgs = ["libreoffice-writer", "libreoffice-calc", "libreoffice-impress"]
+        else if (deb.length)
+            pkgs = [deb]
+        if (!pkgs.length)
+            return
+        var urls = []
+        for (var p = 0; p < pkgs.length && urls.length < 6; ++p) {
+            var raw = (typeof sys.runTimeout === "function"
+                       ? sys.runTimeout("curl -fsSL --max-time 8 -A 'Mozilla/5.0 GTOS-Store' "
+                                        + shQuote("https://screenshots.debian.net/json/package/" + pkgs[p]), 9000)
+                       : sys.run("curl -fsSL --max-time 8 -A 'Mozilla/5.0 GTOS-Store' "
+                                 + shQuote("https://screenshots.debian.net/json/package/" + pkgs[p]))).trim()
+            if (!raw.length || raw.charAt(0) !== "{")
+                continue
+            try {
+                var data = JSON.parse(raw)
+                var list = data.screenshots || []
+                for (var i = 0; i < list.length && urls.length < 6; ++i) {
+                    var u = list[i].screenshot_image_url || list[i].small_image_url || ""
+                    if (u.length && urls.indexOf(u) < 0)
+                        urls.push(u)
+                }
+            } catch (e) { }
+        }
+        if (!urls.length)
+            return
+        var map = {}
+        for (var k in storeShotExtra)
+            map[k] = storeShotExtra[k]
+        map[id] = urls
+        storeShotExtra = map
+    }
+
+    function shotSource(url, appId, index) {
+        var id = String(appId || "").replace(/[^a-zA-Z0-9._+-]/g, "")
+        var ix = (typeof index === "number") ? index : 0
+        var key = "shot:" + id + ":" + ix
+        if (appIconPaths[key])
+            return "file://" + appIconPaths[key]
+        return String(url || "")
+    }
+
+    function fetchAppScreenshots(app) {
+        if (!app || !app.id)
+            return
+        expandDebianScreenshots(app)
+        var shots = appScreenshots(app)
+        if (!shots.length)
+            return
+        var id = String(app.id).replace(/[^a-zA-Z0-9._+-]/g, "")
+        var cmds = ["mkdir -p /usr/share/gtos/app-shots"]
+        for (var i = 0; i < Math.min(6, shots.length); ++i) {
+            var dest = "/usr/share/gtos/app-shots/" + id + "-" + i + ".png"
+            cmds.push("if [ ! -s " + shQuote(dest) + " ]; then "
+                      + "curl -fsSL --max-time 25 -A 'Mozilla/5.0 GTOS-Store' -o " + shQuote(dest + ".tmp") + " " + shQuote(shots[i])
+                      + " && mv " + shQuote(dest + ".tmp") + " " + shQuote(dest)
+                      + " || rm -f " + shQuote(dest + ".tmp") + "; fi")
+        }
+        cmds.push("echo done >/tmp/gtos-shots-done")
+        sys.run("rm -f /tmp/gtos-shots-done; (" + cmds.join("; ") + ") </dev/null >/tmp/gtos-shots.log 2>&1 &")
+        storeShotFetchTimer.ticks = 0
+        storeShotFetchTimer.restart()
+    }
 
     function refreshAppIconCache() {
         var c = storeCatalog()
@@ -4577,6 +4712,8 @@ Window {
             var a = storeRemoteApps[j]
             if (!a || !a.id || seen[a.id])
                 continue
+            if (a.source === "web")
+                continue
             seen[a.id] = true
             out.push(a)
         }
@@ -4818,13 +4955,14 @@ Window {
         storeStallTicks = 0
         storeDlBase = -1
         var plat = storePlatformOf(app)
-        var src = String(app.source || (app.apk ? "alpine" : "web"))
+        var src = String(app.source || (app.apk ? "alpine" : "linux"))
         upsertPendingOp("store-" + app.id, "Загрузка «" + app.name + "»", storePlatformLabel(plat), 2, "download")
         notify("Магазин GT", "Установка «" + app.name + "»…", "ok")
-        // web-only
-        if (src === "web" || (!app.apk && !app.url && app.homeUrl)) {
-            storeInstallPct = 100
-            finishStoreInstall(true)
+        if (!app.apk && !app.url) {
+            storeInstallingId = ""
+            storePendingApp = null
+            finishPendingOp("store-" + app.id)
+            notify("Магазин GT", "«" + (app.name || app.id) + "» больше недоступно как веб — только десктоп", "info")
             return
         }
         var pkg = String(app.apk || app.id).replace(/[^a-zA-Z0-9._+-]/g, "")
@@ -4903,6 +5041,8 @@ Window {
             } else {
                 var errLine = sys.run("grep -E '^ERROR:' /tmp/gtos-apk-log 2>/dev/null | tail -n 1 | sed 's/^ERROR: *//'").trim()
                 if (!errLine.length)
+                    errLine = sys.readFile("/tmp/gtos-store-label").trim()
+                if (!errLine.length || errLine === "Готово")
                     errLine = "не удалось установить"
                 storeAutoOpenApp = null
                 finishPendingOp(opId)
@@ -4915,7 +5055,9 @@ Window {
         if (!okForced && app.engineBins && app.engineBins.length && mediaEnginePresent(app))
             ok = true
         if (!okForced && !ok) {
-            var hasBin = sys.run("command -v " + String(app.apk || app.id) + " 2>/dev/null").trim()
+            var hasBin = sys.run("command -v " + String(app.bin || app.apk || app.id) + " 2>/dev/null").trim()
+            if (!hasBin.length && app.apk === "7zip")
+                hasBin = sys.run("command -v 7zz 2>/dev/null || command -v 7z 2>/dev/null").trim()
             var hasL = sys.run("test -x /var/lib/gtos/apps/" + app.id + "/bin/launch && echo yes").trim()
             if (hasBin.length || hasL === "yes")
                 ok = true
@@ -4925,7 +5067,12 @@ Window {
             finishPendingOp(opId)
             if (defaultDownloadIds && defaultDownloadIds.indexOf(app.id) >= 0)
                 defaultDownloadBusy = false
-            notify("Установка не удалась", "«" + app.name + "» не установилось. Проверьте сеть и лог.", "info")
+            var why = sys.run("grep -E '^ERROR:' /tmp/gtos-apk-log 2>/dev/null | tail -n 1 | sed 's/^ERROR: *//'").trim()
+            if (!why.length)
+                why = sys.readFile("/tmp/gtos-store-label").trim()
+            if (!why.length)
+                why = "проверьте сеть и лог в Загрузках"
+            notify("Установка не удалась", "«" + app.name + "»: " + why, "info")
             return
         }
         var safeName = String(app.name || app.id).replace(/[^\w\u0400-\u04FF.-]+/g, "_")
@@ -10063,6 +10210,13 @@ Window {
         bootAnim.stop()
         bootSweepAnim.stop()
         bootStatus = ""
+        // Готовим экран блокировки ПОД сплэшем, чтобы при затухании не мелькал рабочий стол
+        if (!setupOpen) {
+            locked = true
+            lockReveal = false
+            lockScreen.appear = 1
+            bootHandoff = true
+        }
         bootFadeOut.start()
     }
 
@@ -10089,17 +10243,20 @@ Window {
     }
 
     function revealAfterBoot() {
-        booting = false
         bootLogoOpacity = 0
         bootBarOpacity = 0
         loadNotifyHistory()
         if (setupOpen) {
             locked = false
+            bootHandoff = false
+            booting = false
         } else {
+            // lock уже подготовлен в tryFinishBootSplash — не обнуляем appear
             locked = true
             lockReveal = false
-            lockScreen.appear = 0
-            lockEnter.start()
+            lockScreen.appear = 1
+            booting = false
+            bootHandoff = false
         }
         if (!safeMode) {
             x11ClipTimer.start()
@@ -10482,6 +10639,7 @@ Window {
         lockReveal = false
         lockPickUser = currentUser
         booting = true
+        bootHandoff = false
         bootHeavyDone = false
         bootAnimDone = false
         bootSweepReady = false
@@ -10717,8 +10875,10 @@ Window {
             root.storeInstallStalled = root.storeStallTicks >= 10
 
             // apk может идти минутами без curl — не убивать рано
-            var alive = sys.run("ps w 2>/dev/null | grep -E '[g]tos-store-install|[c]url|[u]nsquashfs|[a]pk |[t]imeout |[d]d if=' | head -n 1").trim()
-            var stallLimit = (phase === "apk") ? 360 : ((phase === "prepare" || phase === "init") ? 90 : 48)
+            var alive = sys.run("ps 2>/dev/null | grep -E '[g]tos-store-install|[c]url|[u]nsquashfs|[a]pk|[t]imeout|[w]ine|[w]ineboot|[u]nzip|[d]d' | head -n 1").trim()
+            if (!alive.length)
+                alive = sys.run("ps w 2>/dev/null | grep -E '[g]tos-store-install|[c]url|[a]pk|[w]ine' | head -n 1").trim()
+            var stallLimit = (phase === "apk") ? 720 : ((phase === "prepare" || phase === "init") ? 180 : 64)
             if (!alive.length && root.storeStallTicks >= stallLimit) {
                 sys.run("echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; echo error >/tmp/gtos-store-phase; echo 'Установщик не отвечает' >/tmp/gtos-store-label")
                 root.storeInstallPct = 100
@@ -13809,132 +13969,210 @@ Rectangle {
                     Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                     property bool previewOn: root.dockPreviewOpen && root.dockPreviewApp === modelData && root.dockDragApp.length === 0 && root.windowsForApp(modelData).length > 0
 
-                    // Предпросмотр окон над значком
-                    Rectangle {
+                    // Предпросмотр окон над значком (Fluent peek)
+                    Item {
                         id: dockPreviewFly
-                        visible: dockSlot.previewOn
+                        visible: opacity > 0.02
                         anchors.bottom: parent.top
-                        anchors.bottomMargin: 14
+                        anchors.bottomMargin: 12
                         anchors.horizontalCenter: parent.horizontalCenter
                         z: 200
-                        width: Math.max(168, previewCol.implicitWidth + 16)
-                        height: previewCol.implicitHeight + 16
-                        radius: 14
-                        color: "#0e1816"
-                        border.width: 1
-                        border.color: "#2a4a3c"
-                        Column {
-                            id: previewCol
-                            anchors.centerIn: parent
-                            spacing: 8
-                            Repeater {
-                                model: dockSlot.previewOn ? root.windowsForApp(dockSlot.slotApp) : []
-                                delegate: Rectangle {
-                                    width: 160
-                                    height: 108
-                                    radius: 10
-                                    color: prevHover.containsMouse ? "#1a2a24" : "#141c1a"
-                                    border.width: 1
-                                    border.color: prevHover.containsMouse ? root.accentColor : "#2a3a34"
-                                    Behavior on color { ColorAnimation { duration: 120 } }
-                                    // мини-окно
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        anchors.margins: 8
-                                        anchors.bottomMargin: 28
-                                        radius: 6
-                                        color: "#0a1210"
-                                        border.width: 1
-                                        border.color: "#24332e"
+                        width: peekShell.width
+                        height: peekShell.height
+                        opacity: dockSlot.previewOn ? 1 : 0
+                        scale: dockSlot.previewOn ? 1 : 0.94
+                        transformOrigin: Item.Bottom
+                        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+
+                        Rectangle {
+                            id: peekShell
+                            width: Math.max(220, peekCol.implicitWidth + 20)
+                            height: peekCol.implicitHeight + 20
+                            radius: 16
+                            color: "#e6121816"
+                            border.width: 1
+                            border.color: "#3a5a4a"
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.margins: 1
+                                radius: 15
+                                color: "transparent"
+                                border.width: 1
+                                border.color: "#18ffffff"
+                            }
+                            Column {
+                                id: peekCol
+                                anchors.centerIn: parent
+                                spacing: 10
+                                Repeater {
+                                    model: dockSlot.previewOn ? root.windowsForApp(dockSlot.slotApp) : []
+                                    delegate: Item {
+                                        width: 200
+                                        height: 148
+                                        property string peekKind: root.winIconKind(dockSlot.slotApp)
+                                        property color peekAccent: root.appIconColor(peekKind)
+
                                         Rectangle {
-                                            anchors.left: parent.left
-                                            anchors.right: parent.right
-                                            anchors.top: parent.top
-                                            height: 14
-                                            radius: 4
-                                            color: "#15201c"
-                                            DeskIconArt {
+                                            anchors.fill: parent
+                                            radius: 12
+                                            color: prevHover.containsMouse ? "#1c2824" : "#161e1c"
+                                            border.width: 1
+                                            border.color: prevHover.containsMouse ? root.accentColor : "#2a3a34"
+                                            Behavior on color { ColorAnimation { duration: 120 } }
+                                            Behavior on border.color { ColorAnimation { duration: 120 } }
+                                            clip: true
+
+                                            // « thrumbnail » — стилизованный мини-интерфейс приложения
+                                            Item {
+                                                id: peekThumb
                                                 anchors.left: parent.left
-                                                anchors.leftMargin: 4
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                width: 10
-                                                height: 10
-                                                kind: root.winIconKind(dockSlot.slotApp)
-                                                appId: dockSlot.slotApp
+                                                anchors.right: parent.right
+                                                anchors.top: parent.top
+                                                anchors.bottom: peekFoot.top
+                                                anchors.margins: 8
+                                                anchors.bottomMargin: 6
+
+                                                Rectangle {
+                                                    anchors.fill: parent
+                                                    radius: 8
+                                                    clip: true
+                                                    gradient: Gradient {
+                                                        GradientStop { position: 0; color: Qt.darker(peekAccent, 2.8) }
+                                                        GradientStop { position: 1; color: "#0c1210" }
+                                                    }
+                                                    // заголовок мини-окна
+                                                    Rectangle {
+                                                        anchors.left: parent.left
+                                                        anchors.right: parent.right
+                                                        anchors.top: parent.top
+                                                        height: 22
+                                                        color: "#99000000"
+                                                        Row {
+                                                            anchors.left: parent.left
+                                                            anchors.leftMargin: 8
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            spacing: 6
+                                                            DeskIconArt {
+                                                                width: 12; height: 12
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                kind: peekKind
+                                                                appId: dockSlot.slotApp
+                                                            }
+                                                            Text {
+                                                                anchors.verticalCenter: parent.verticalCenter
+                                                                text: modelData.title
+                                                                color: "#d0d8de"
+                                                                font.pixelSize: 10
+                                                                font.family: root.uiFont
+                                                                width: 120
+                                                                elide: Text.ElideRight
+                                                            }
+                                                        }
+                                                        Row {
+                                                            anchors.right: parent.right
+                                                            anchors.rightMargin: 8
+                                                            anchors.verticalCenter: parent.verticalCenter
+                                                            spacing: 4
+                                                            Repeater {
+                                                                model: ["#5a6560", "#5a6560", "#5a6560"]
+                                                                Rectangle { width: 7; height: 7; radius: 2; color: modelData }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // контент по типу приложения
+                                                    Loader {
+                                                        anchors.fill: parent
+                                                        anchors.topMargin: 22
+                                                        sourceComponent: {
+                                                            var k = peekKind
+                                                            if (k === "store") return peekStoreUi
+                                                            if (k === "browser" || k === "globe") return peekBrowserUi
+                                                            if (k === "files") return peekFilesUi
+                                                            if (k === "term") return peekTermUi
+                                                            if (k === "settings") return peekSettingsUi
+                                                            return peekGenericUi
+                                                        }
+                                                        property color accent: peekAccent
+                                                        property string kind: peekKind
+                                                        property string appId: dockSlot.slotApp
+                                                        property string title: modelData.title
+                                                    }
+                                                }
+                                            }
+
+                                            Item {
+                                                id: peekFoot
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.bottom: parent.bottom
+                                                height: 32
+                                                Text {
+                                                    anchors.left: parent.left
+                                                    anchors.leftMargin: 12
+                                                    anchors.right: prevClose.left
+                                                    anchors.rightMargin: 6
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: modelData.title
+                                                    color: "#f0f4f6"
+                                                    font.pixelSize: 12
+                                                    font.family: root.uiFont
+                                                    elide: Text.ElideRight
+                                                }
+                                                Rectangle {
+                                                    id: prevClose
+                                                    anchors.right: parent.right
+                                                    anchors.rightMargin: 8
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    width: 24; height: 24; radius: 7
+                                                    color: prevCloseMa.containsMouse ? "#c42b1c" : "#1a2420"
+                                                    Behavior on color { ColorAnimation { duration: 100 } }
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "×"
+                                                        color: "#ffffff"
+                                                        font.pixelSize: 14
+                                                    }
+                                                    MouseArea {
+                                                        id: prevCloseMa
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: root.closeWindowAt(modelData.index)
+                                                    }
+                                                }
+                                            }
+
+                                            MouseArea {
+                                                id: prevHover
+                                                anchors.fill: parent
+                                                anchors.bottomMargin: 0
+                                                anchors.rightMargin: 36
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onEntered: {
+                                                    root.dockPreviewApp = dockSlot.slotApp
+                                                    root.dockPreviewOpen = true
+                                                    previewHideTimer.stop()
+                                                }
+                                                onClicked: root.focusWindowAt(modelData.index)
                                             }
                                         }
-                                        DeskIconArt {
-                                            anchors.centerIn: parent
-                                            anchors.verticalCenterOffset: 6
-                                            width: 28
-                                            height: 28
-                                            kind: root.winIconKind(dockSlot.slotApp)
-                                            appId: dockSlot.slotApp
-                                            opacity: 0.9
-                                        }
-                                    }
-                                    Text {
-                                        anchors.left: parent.left
-                                        anchors.right: prevClose.left
-                                        anchors.bottom: parent.bottom
-                                        anchors.leftMargin: 10
-                                        anchors.bottomMargin: 8
-                                        anchors.rightMargin: 4
-                                        text: modelData.title
-                                        color: "#e8eef2"
-                                        font.pixelSize: 11
-                                        font.family: root.uiFont
-                                        elide: Text.ElideRight
-                                    }
-                                    Rectangle {
-                                        id: prevClose
-                                        anchors.right: parent.right
-                                        anchors.bottom: parent.bottom
-                                        anchors.margins: 6
-                                        width: 22
-                                        height: 22
-                                        radius: 6
-                                        color: prevCloseMa.containsMouse ? "#c42b1c" : "#1a2420"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "×"
-                                            color: "#fff"
-                                            font.pixelSize: 14
-                                        }
-                                        MouseArea {
-                                            id: prevCloseMa
-                                            anchors.fill: parent
-                                            hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.closeWindowAt(modelData.index)
-                                        }
-                                    }
-                                    MouseArea {
-                                        id: prevHover
-                                        anchors.fill: parent
-                                        anchors.bottomMargin: 28
-                                        hoverEnabled: true
-                                        cursorShape: Qt.PointingHandCursor
-                                        onEntered: {
-                                            root.dockPreviewApp = dockSlot.slotApp
-                                            root.dockPreviewOpen = true
-                                            previewHideTimer.stop()
-                                        }
-                                        onClicked: root.focusWindowAt(modelData.index)
                                     }
                                 }
                             }
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            z: -1
-                            hoverEnabled: true
-                            onEntered: {
-                                root.dockPreviewApp = dockSlot.slotApp
-                                root.dockPreviewOpen = true
-                                previewHideTimer.stop()
+                            MouseArea {
+                                anchors.fill: parent
+                                z: -1
+                                hoverEnabled: true
+                                onEntered: {
+                                    root.dockPreviewApp = dockSlot.slotApp
+                                    root.dockPreviewOpen = true
+                                    previewHideTimer.stop()
+                                }
+                                onExited: previewHideTimer.restart()
                             }
-                            onExited: previewHideTimer.restart()
                         }
                     }
 
@@ -15686,6 +15924,640 @@ Rectangle {
     }
 
     // Клевер GT — логотип акцентным цветом
+    // Центр обновлений — общий вид для Параметров и отдельного окна
+    component UpdateCenterView: Column {
+        id: ucv
+        spacing: 16
+        property bool showTitle: true
+        property bool pkgsExpanded: false
+        property real appear: 0
+        opacity: appear
+        transform: Translate { y: (1 - ucv.appear) * 22 }
+        Component.onCompleted: ucAppear.start()
+        NumberAnimation {
+            id: ucAppear
+            target: ucv
+            property: "appear"
+            from: 0; to: 1
+            duration: 460
+            easing.type: Easing.OutCubic
+        }
+        readonly property int pending: root.updatePendingPkgs.length
+        readonly property bool hasUpdates: pending > 0 || root.updateShellAvail
+        readonly property string state: root.updateApplying ? "apply"
+                                        : (root.updateChecking ? "check"
+                                        : (root.updateRollingBack ? "rollback"
+                                        : (hasUpdates ? "avail" : "ok")))
+        readonly property color stateColor: state === "avail" ? "#60a5fa"
+                                            : (state === "rollback" ? "#f59e0b" : root.accentColor)
+
+        Column {
+            visible: ucv.showTitle
+            width: parent.width
+            spacing: 4
+            opacity: Math.min(1, ucv.appear * 1.4)
+            Text {
+                text: "Центр обновлений"
+                color: "#ffffff"
+                font.pixelSize: 26
+                font.family: root.uiFontBold
+            }
+            Text {
+                width: parent.width
+                text: "Система, пакеты и оболочка GT/OS. Перед каждой установкой — снимок для отката."
+                color: "#8b98a3"
+                font.pixelSize: 13
+                font.family: root.uiFont
+                wrapMode: Text.WordWrap
+            }
+        }
+
+        // ── статус ──────────────────────────────────────────────
+        Rectangle {
+            width: parent.width
+            height: 176
+            radius: 20
+            clip: true
+            opacity: Math.min(1, Math.max(0, (ucv.appear - 0.05) * 1.35))
+            scale: 0.97 + 0.03 * Math.min(1, Math.max(0, (ucv.appear - 0.05) * 1.35))
+            transformOrigin: Item.Top
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: Qt.darker(ucv.stateColor, 3.6) }
+                GradientStop { position: 0.65; color: "#141a19" }
+                GradientStop { position: 1; color: "#121514" }
+            }
+            border.width: 1
+            border.color: Qt.darker(ucv.stateColor, 2.2)
+            Behavior on border.color { ColorAnimation { duration: 240 } }
+
+            Rectangle {
+                width: 360; height: 360; radius: 180
+                x: -120; y: -150
+                color: ucv.stateColor
+                opacity: 0.08
+            }
+
+            Item {
+                id: ucRing
+                x: 26
+                anchors.verticalCenter: parent.verticalCenter
+                width: 104; height: 104
+                property real spin: 0
+                NumberAnimation on spin {
+                    running: ucv.state === "check" || ucv.state === "apply" || ucv.state === "rollback"
+                    from: 0; to: 360; duration: 1100; loops: Animation.Infinite
+                }
+                onSpinChanged: ucRingCanvas.requestPaint()
+                Canvas {
+                    id: ucRingCanvas
+                    anchors.fill: parent
+                    property string st: ucv.state
+                    onStChanged: requestPaint()
+                    onPaint: {
+                        var c = getContext("2d")
+                        c.reset()
+                        var cx = width / 2, cy = height / 2, r = width / 2 - 6
+                        c.lineWidth = 6
+                        c.strokeStyle = "rgba(255,255,255,0.08)"
+                        c.beginPath(); c.arc(cx, cy, r, 0, Math.PI * 2); c.stroke()
+                        c.strokeStyle = String(ucv.stateColor)
+                        c.lineCap = "round"
+                        c.beginPath()
+                        if (st === "check" || st === "apply" || st === "rollback") {
+                            var a0 = (ucRing.spin - 90) * Math.PI / 180
+                            c.arc(cx, cy, r, a0, a0 + Math.PI * 0.6)
+                        } else {
+                            c.arc(cx, cy, r, -Math.PI / 2, Math.PI * 1.5)
+                        }
+                        c.stroke()
+                        c.lineWidth = 4
+                        c.beginPath()
+                        if (st === "ok") {
+                            c.moveTo(cx - 16, cy + 1); c.lineTo(cx - 4, cy + 13); c.lineTo(cx + 18, cy - 12)
+                        } else if (st === "avail") {
+                            c.moveTo(cx, cy - 18); c.lineTo(cx, cy + 12)
+                            c.moveTo(cx - 12, cy + 1); c.lineTo(cx, cy + 13); c.lineTo(cx + 12, cy + 1)
+                            c.moveTo(cx - 16, cy + 20); c.lineTo(cx + 16, cy + 20)
+                        } else if (st === "rollback") {
+                            c.arc(cx, cy, 14, Math.PI * 0.2, Math.PI * 1.7)
+                        }
+                        c.stroke()
+                    }
+                }
+                Text {
+                    visible: ucv.state === "check" || ucv.state === "apply"
+                    anchors.centerIn: parent
+                    text: ucv.state === "apply" ? "⇣" : "…"
+                    color: "#ffffff"
+                    font.pixelSize: 22
+                    font.family: root.uiFontBold
+                }
+            }
+
+            Column {
+                anchors.left: ucRing.right
+                anchors.leftMargin: 24
+                anchors.right: ucActions.left
+                anchors.rightMargin: 18
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 6
+                Text {
+                    width: parent.width
+                    text: ucv.state === "check" ? "Ищем обновления…"
+                          : ucv.state === "apply" ? "Устанавливаем обновления"
+                          : ucv.state === "rollback" ? "Возвращаем предыдущее состояние"
+                          : ucv.state === "avail" ? ("Доступны обновления" + (ucv.pending ? " · " + ucv.pending : ""))
+                          : "У вас всё актуально"
+                    color: "#ffffff"
+                    font.pixelSize: 22
+                    font.family: root.uiFontBold
+                    elide: Text.ElideRight
+                }
+                Text {
+                    width: parent.width
+                    text: root.updateStatus
+                    color: "#b8c4cc"
+                    font.pixelSize: 13
+                    font.family: root.uiFont
+                    wrapMode: Text.WordWrap
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                }
+                Row {
+                    spacing: 8
+                    Rectangle {
+                        height: 24; radius: 12
+                        width: ucVer.implicitWidth + 18
+                        color: "#33000000"
+                        border.width: 1; border.color: "#30ffffff"
+                        Text {
+                            id: ucVer
+                            anchors.centerIn: parent
+                            text: "GT/OS " + root.osVersion
+                            color: "#e8eef2"
+                            font.pixelSize: 11
+                            font.family: root.uiFontBold
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Проверка: " + root.updateLastCheck
+                        color: "#7e8b96"
+                        font.pixelSize: 11
+                        font.family: root.uiFont
+                    }
+                }
+            }
+
+            Column {
+                id: ucActions
+                anchors.right: parent.right
+                anchors.rightMargin: 22
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 8
+                width: 184
+                Rectangle {
+                    width: parent.width
+                    height: 44
+                    radius: 12
+                    readonly property bool busy: root.updateChecking || root.updateApplying || root.updateRollingBack
+                    color: busy ? "#2a2f2e" : (ucMainH.containsMouse ? Qt.lighter(ucv.stateColor, 1.15) : ucv.stateColor)
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.updateApplying ? "Установка…"
+                              : (root.updateChecking ? "Проверка…"
+                              : (ucv.hasUpdates ? "Установить сейчас" : "Проверить"))
+                        color: parent.busy ? "#9aa7b2" : "#06140c"
+                        font.pixelSize: 13
+                        font.family: root.uiFontBold
+                    }
+                    MouseArea {
+                        id: ucMainH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: !parent.busy
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: ucv.hasUpdates ? root.applySystemUpdates(false) : root.checkUpdates()
+                    }
+                }
+                Rectangle {
+                    width: parent.width
+                    height: 36
+                    radius: 11
+                    visible: ucv.hasUpdates && !root.updateChecking
+                    color: ucRebH.containsMouse ? "#26ffffff" : "transparent"
+                    border.width: 1
+                    border.color: "#40ffffff"
+                    Text {
+                        anchors.centerIn: parent
+                        text: "Установить и перезагрузить"
+                        color: "#e8eef2"
+                        font.pixelSize: 12
+                        font.family: root.uiFont
+                    }
+                    MouseArea {
+                        id: ucRebH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: ucv.hasUpdates && !root.updateApplying && !root.updateChecking
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.applySystemUpdatesAndReboot()
+                    }
+                }
+                Text {
+                    visible: !ucv.hasUpdates && !root.updateChecking
+                    width: parent.width
+                    horizontalAlignment: Text.AlignHCenter
+                    text: "Проверить ещё раз"
+                    color: ucAgainH.containsMouse ? "#ffffff" : "#8b98a3"
+                    font.pixelSize: 12
+                    font.family: root.uiFont
+                    font.underline: ucAgainH.containsMouse
+                    MouseArea {
+                        id: ucAgainH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: !root.updateApplying
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.checkUpdates()
+                    }
+                }
+            }
+
+            Rectangle {
+                visible: root.updateApplying || root.updateChecking || root.updateRollingBack
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                height: 3
+                color: "#1a2220"
+                clip: true
+                Rectangle {
+                    id: ucBar
+                    width: parent.width * 0.3
+                    height: parent.height
+                    radius: 2
+                    color: ucv.stateColor
+                    SequentialAnimation on x {
+                        running: root.updateApplying || root.updateChecking || root.updateRollingBack
+                        loops: Animation.Infinite
+                        NumberAnimation { from: -ucBar.width; to: ucBar.parent.width; duration: 1400; easing.type: Easing.InOutQuad }
+                    }
+                }
+            }
+        }
+
+        // ── ожидают установки ───────────────────────────────────
+        Rectangle {
+            visible: ucv.hasUpdates
+            width: parent.width
+            height: ucPend.implicitHeight + 32
+            radius: 16
+            color: "#161b1a"
+            border.width: 1
+            border.color: "#232a28"
+            Column {
+                id: ucPend
+                x: 18; y: 16
+                width: parent.width - 36
+                spacing: 8
+                Row {
+                    width: parent.width
+                    Text {
+                        width: parent.width - ucMore.implicitWidth
+                        text: "Ожидают установки"
+                        color: "#ffffff"
+                        font.pixelSize: 15
+                        font.family: root.uiFontBold
+                    }
+                    Text {
+                        id: ucMore
+                        visible: ucv.pending > 5
+                        text: ucv.pkgsExpanded ? "Свернуть" : ("Все " + ucv.pending)
+                        color: root.accentColor
+                        font.pixelSize: 12
+                        font.family: root.uiFont
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: ucv.pkgsExpanded = !ucv.pkgsExpanded
+                        }
+                    }
+                }
+                Rectangle {
+                    visible: root.updateShellAvail
+                    width: parent.width
+                    height: 44
+                    radius: 10
+                    color: "#13221d"
+                    Row {
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 10
+                        CloverMark { width: 20; height: 20; anchors.verticalCenter: parent.verticalCenter }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Оболочка GT/OS — новая сборка с носителя"
+                            color: "#e8eef2"
+                            font.pixelSize: 13
+                            font.family: root.uiFont
+                        }
+                    }
+                }
+                Repeater {
+                    model: ucv.pkgsExpanded ? root.updatePendingPkgs : root.updatePendingPkgs.slice(0, 5)
+                    delegate: Item {
+                        width: ucPend.width
+                        height: 34
+                        Rectangle {
+                            visible: index > 0
+                            width: parent.width; height: 1
+                            color: "#202826"
+                        }
+                        Rectangle {
+                            width: 8; height: 8; radius: 4
+                            anchors.verticalCenter: parent.verticalCenter
+                            color: "#60a5fa"
+                        }
+                        Text {
+                            x: 20
+                            width: parent.width - 20
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: String(modelData).replace(/^\(\d+\/\d+\)\s*/, "")
+                            color: "#c5d0d8"
+                            font.pixelSize: 12
+                            font.family: root.monoFont || root.uiFont
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+                Text {
+                    width: parent.width
+                    text: root.updateDepsStatus
+                    color: "#7e8b96"
+                    font.pixelSize: 11
+                    font.family: root.uiFont
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+
+        // ── что нового ──────────────────────────────────────────
+        Rectangle {
+            width: parent.width
+            height: ucNew.implicitHeight + 36
+            radius: 16
+            color: "#121c18"
+            border.width: 1
+            border.color: "#1f3a30"
+            Column {
+                id: ucNew
+                x: 20; y: 18
+                width: parent.width - 40
+                spacing: 10
+                Row {
+                    spacing: 10
+                    Rectangle {
+                        height: 22; radius: 11
+                        width: ucNewTag.implicitWidth + 16
+                        color: root.accentColor
+                        Text {
+                            id: ucNewTag
+                            anchors.centerIn: parent
+                            text: "НОВОЕ"
+                            color: "#06210f"
+                            font.pixelSize: 10
+                            font.family: root.uiFontBold
+                        }
+                    }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Что нового в GT/OS " + root.osVersion
+                        color: "#ffffff"
+                        font.pixelSize: 15
+                        font.family: root.uiFontBold
+                    }
+                }
+                Grid {
+                    width: parent.width
+                    columns: parent.width > 560 ? 2 : 1
+                    columnSpacing: 16
+                    rowSpacing: 8
+                    Repeater {
+                        model: root.whatsNewItems
+                        delegate: Row {
+                            width: parent.columns === 2 ? (parent.width - 16) / 2 : parent.width
+                            spacing: 10
+                            Text {
+                                text: "✓"
+                                color: root.accentColor
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+                            Text {
+                                width: parent.width - 24
+                                text: modelData
+                                color: "#c5d0d8"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── параметры ───────────────────────────────────────────
+        Grid {
+            width: parent.width
+            columns: parent.width > 620 ? 2 : 1
+            columnSpacing: 12
+            rowSpacing: 12
+
+            Rectangle {
+                width: parent.columns === 2 ? (parent.width - 12) / 2 : parent.width
+                height: 86
+                radius: 16
+                color: "#161b1a"
+                border.width: 1
+                border.color: "#232a28"
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 18
+                    anchors.right: ucAutoT.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Text { text: "Автопроверка"; color: "#ffffff"; font.pixelSize: 14; font.family: root.uiFontBold }
+                    Text {
+                        width: parent.width
+                        text: "Тихо проверять через минуту после входа"
+                        color: "#7e8b96"; font.pixelSize: 11; font.family: root.uiFont
+                        wrapMode: Text.WordWrap
+                    }
+                }
+                Rectangle {
+                    id: ucAutoT
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 44; height: 22; radius: 11
+                    color: root.updateAutoCheck ? root.accentColor : "#544f4f"
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Rectangle {
+                        width: 14; height: 14; radius: 7
+                        anchors.verticalCenter: parent.verticalCenter
+                        x: root.updateAutoCheck ? parent.width - 18 : 4
+                        color: root.updateAutoCheck ? "#06210f" : "#ffffff"
+                        Behavior on x { NumberAnimation { duration: 120 } }
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.updateAutoCheck = !root.updateAutoCheck
+                    }
+                }
+            }
+
+            Rectangle {
+                width: parent.columns === 2 ? (parent.width - 12) / 2 : parent.width
+                height: 86
+                radius: 16
+                color: "#161b1a"
+                border.width: 1
+                border.color: "#232a28"
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 18
+                    anchors.right: ucRbBtn.left
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Text { text: "Откат по снимку"; color: "#ffffff"; font.pixelSize: 14; font.family: root.uiFontBold }
+                    Text {
+                        width: parent.width
+                        text: root.updateRollbackStatus.length ? root.updateRollbackStatus : "Вернуть пакеты к состоянию до последней установки"
+                        color: "#7e8b96"; font.pixelSize: 11; font.family: root.uiFont
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                    }
+                }
+                Rectangle {
+                    id: ucRbBtn
+                    anchors.right: parent.right
+                    anchors.rightMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 104; height: 34; radius: 10
+                    color: root.updateRollingBack ? "#2a2a2a" : (ucRbH.containsMouse ? "#4a1c1c" : "#2e1616")
+                    border.width: 1
+                    border.color: "#5a2a2a"
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.updateRollingBack ? "…" : "Откатить"
+                        color: "#fecaca"
+                        font.pixelSize: 12
+                        font.family: root.uiFontBold
+                    }
+                    MouseArea {
+                        id: ucRbH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        enabled: !root.updateRollingBack && !root.updateApplying
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.rollbackLastUpdate()
+                    }
+                }
+            }
+        }
+
+        // ── история ─────────────────────────────────────────────
+        Text {
+            text: "История выпусков"
+            color: "#ffffff"
+            font.pixelSize: 15
+            font.family: root.uiFontBold
+            topPadding: 4
+        }
+        Column {
+            width: parent.width
+            spacing: 0
+            Repeater {
+                model: root.updateLog
+                delegate: Item {
+                    width: parent.width
+                    height: 62
+                    Rectangle {
+                        x: 9
+                        y: index === 0 ? 31 : 0
+                        width: 2
+                        height: index === 0 ? 31 : (index === root.updateLog.length - 1 ? 31 : 62)
+                        color: "#24302c"
+                    }
+                    Rectangle {
+                        x: index === 0 ? 2 : 5
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: index === 0 ? 16 : 10
+                        height: width
+                        radius: width / 2
+                        color: index === 0 ? root.accentColor : "#2e3a36"
+                        border.width: index === 0 ? 4 : 0
+                        border.color: "#1b3a2d"
+                    }
+                    Rectangle {
+                        x: 32
+                        width: parent.width - 32
+                        height: 52
+                        anchors.verticalCenter: parent.verticalCenter
+                        radius: 12
+                        color: index === 0 ? "#152420" : (ucHistH.containsMouse ? "#1a1f1e" : "transparent")
+                        border.width: index === 0 ? 1 : 0
+                        border.color: "#24453a"
+                        Row {
+                            anchors.left: parent.left
+                            anchors.leftMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 14
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 52
+                                text: modelData.ver
+                                color: index === 0 ? root.accentColor : "#c5d0d8"
+                                font.pixelSize: 14
+                                font.family: root.uiFontBold
+                            }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Text {
+                                    text: modelData.title
+                                    color: "#e8eef2"
+                                    font.pixelSize: 13
+                                    font.family: root.uiFont
+                                }
+                                Text {
+                                    text: modelData.date + (modelData.note ? " · " + modelData.note : "")
+                                    color: "#6b7785"
+                                    font.pixelSize: 11
+                                    font.family: root.uiFont
+                                }
+                            }
+                        }
+                        MouseArea {
+                            id: ucHistH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     component CloverMark: Item {
         id: clover
         property color ink: root.accentColor
@@ -15733,6 +16605,212 @@ Rectangle {
                 function onInkChanged() { cloverCanvas.requestPaint() }
             }
             Component.onCompleted: requestPaint()
+        }
+    }
+
+    // Мини-интерфейсы для превью окна на панели задач
+    Component {
+        id: peekGenericUi
+        Item {
+            property string kind: parent && parent.kind ? parent.kind : "files"
+            property string appId: parent && parent.appId ? parent.appId : ""
+            DeskIconArt {
+                anchors.centerIn: parent
+                width: 36; height: 36
+                kind: parent.kind
+                appId: parent.appId
+                opacity: 0.55
+            }
+            Rectangle {
+                width: 70; height: 6; radius: 3
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 14
+                color: "#33ffffff"
+            }
+        }
+    }
+    Component {
+        id: peekStoreUi
+        Item {
+            Column {
+                anchors.fill: parent
+                anchors.margins: 10
+                spacing: 6
+                Rectangle {
+                    width: parent.width; height: 28; radius: 6
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: "#1a4a3a" }
+                        GradientStop { position: 1; color: "#123028" }
+                    }
+                    Row {
+                        anchors.left: parent.left; anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 6
+                        CloverMark { width: 12; height: 12 }
+                        Text { text: "Магазин GT"; color: "#e8eef2"; font.pixelSize: 9; font.family: root.uiFontBold; anchors.verticalCenter: parent.verticalCenter }
+                    }
+                }
+                Row {
+                    spacing: 6
+                    width: parent.width
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            width: (parent.width - 12) / 3; height: 36; radius: 5
+                            color: "#1a2420"
+                            border.width: 1; border.color: "#243830"
+                            Rectangle {
+                                width: 14; height: 14; radius: 4
+                                anchors.left: parent.left; anchors.leftMargin: 5
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: index === 0 ? root.accentColor : "#2a3a34"
+                            }
+                            Column {
+                                anchors.left: parent.left; anchors.leftMargin: 24
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Rectangle { width: 22; height: 3; radius: 1; color: "#55ffffff" }
+                                Rectangle { width: 16; height: 2; radius: 1; color: "#30ffffff" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Component {
+        id: peekBrowserUi
+        Item {
+            Column {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 6
+                Rectangle {
+                    width: parent.width; height: 16; radius: 4
+                    color: "#1a2220"
+                    Row {
+                        anchors.left: parent.left; anchors.leftMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 3
+                        Repeater {
+                            model: ["#ff5f57", "#febc2e", "#28c840"]
+                            Rectangle { width: 5; height: 5; radius: 3; color: modelData }
+                        }
+                        Rectangle {
+                            width: parent.parent.width - 40; height: 8; radius: 4
+                            color: "#24302c"
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                    }
+                }
+                Rectangle {
+                    width: parent.width; height: parent.height - 22; radius: 5
+                    color: "#101816"
+                    Column {
+                        anchors.left: parent.left; anchors.leftMargin: 10
+                        anchors.top: parent.top; anchors.topMargin: 10
+                        spacing: 5
+                        Rectangle { width: 70; height: 4; radius: 2; color: "#40ffffff" }
+                        Rectangle { width: 90; height: 3; radius: 2; color: "#28ffffff" }
+                        Rectangle { width: 60; height: 3; radius: 2; color: "#28ffffff" }
+                    }
+                }
+            }
+        }
+    }
+    Component {
+        id: peekFilesUi
+        Item {
+            Grid {
+                anchors.centerIn: parent
+                columns: 3
+                rowSpacing: 8
+                columnSpacing: 10
+                Repeater {
+                    model: 6
+                    Column {
+                        spacing: 3
+                        Rectangle {
+                            width: 22; height: 18; radius: 3
+                            color: index % 2 === 0 ? "#3d6b4a" : "#2a4a3c"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                        Rectangle {
+                            width: 18; height: 2; radius: 1
+                            color: "#40ffffff"
+                            anchors.horizontalCenter: parent.horizontalCenter
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Component {
+        id: peekTermUi
+        Item {
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 8
+                radius: 5
+                color: "#0a100e"
+                Column {
+                    anchors.left: parent.left; anchors.leftMargin: 8
+                    anchors.top: parent.top; anchors.topMargin: 8
+                    spacing: 4
+                    Text { text: "misha@gtos:~$"; color: root.accentColor; font.pixelSize: 8; font.family: root.monoFont }
+                    Text { text: "ls  Documents  Downloads"; color: "#9aa7b2"; font.pixelSize: 8; font.family: root.monoFont }
+                    Text { text: "█"; color: root.accentColor; font.pixelSize: 8; font.family: root.monoFont }
+                }
+            }
+        }
+    }
+    Component {
+        id: peekSettingsUi
+        Item {
+            Row {
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 6
+                Rectangle {
+                    width: 36; height: parent.height; radius: 5
+                    color: "#15201c"
+                    Column {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: parent.top; anchors.topMargin: 8
+                        spacing: 5
+                        Repeater {
+                            model: 4
+                            Rectangle {
+                                width: 14; height: 14; radius: 4
+                                color: index === 0 ? root.accentColor : "#2a3a34"
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                opacity: index === 0 ? 1 : 0.55
+                            }
+                        }
+                    }
+                }
+                Column {
+                    width: parent.width - 42
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    Repeater {
+                        model: 3
+                        Rectangle {
+                            width: parent.width; height: 14; radius: 4
+                            color: "#1a2420"
+                            Rectangle {
+                                width: parent.width * (0.4 + index * 0.15)
+                                height: 3; radius: 1
+                                anchors.left: parent.left; anchors.leftMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: "#40ffffff"
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -18641,213 +19719,538 @@ Rectangle {
                             }
                         }
 
-                        // редактирование
+                        // редактирование профиля
                         Column {
+                            id: profileEditCol
                             width: parent.width
-                            spacing: 12
+                            spacing: 14
                             visible: accountsFocus.length > 0
+                            opacity: visible ? 1 : 0
+                            transform: Translate { y: visible ? 0 : 12 }
+                            Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+
+                            readonly property bool isMe: accountsFocus === root.currentUser
+                            readonly property string displayName: {
+                                if (isMe)
+                                    return root.userFullName.length ? root.userFullName : root.currentUser
+                                var a = accountById(accountsFocus)
+                                return a ? (a.name || accountsFocus) : accountsFocus
+                            }
+                            readonly property color avatarColor: isMe
+                                ? (root.userAvatar.length ? root.userAvatar : "#3be182")
+                                : "#4a5560"
 
                             Row {
                                 spacing: 12
                                 Rectangle {
                                     width: 36; height: 36; radius: 18
-                                    color: backAccH.containsMouse ? "#3a3a3a" : "#2c2c2c"
+                                    color: backAccH.containsMouse ? "#323232" : "#242424"
+                                    border.width: 1; border.color: "#333"
+                                    Behavior on color { ColorAnimation { duration: 120 } }
                                     Text { anchors.centerIn: parent; text: "←"; color: "#fff"; font.pixelSize: 16 }
                                     MouseArea {
                                         id: backAccH; anchors.fill: parent; hoverEnabled: true
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: accountsFocus = ""
+                                        onClicked: {
+                                            accountsFocus = ""
+                                            root.pwdDraft = ""
+                                            root.pwdDraft2 = ""
+                                        }
                                     }
                                 }
                                 Column {
                                     anchors.verticalCenter: parent.verticalCenter
                                     spacing: 2
                                     Text {
-                                        text: {
-                                            var a = accountById(accountsFocus)
-                                            return a ? a.name : accountsFocus
-                                        }
-                                        color: "#fff"; font.pixelSize: 18; font.bold: true; font.family: root.uiFont
+                                        text: "Ваш профиль"
+                                        color: "#fff"; font.pixelSize: 20; font.family: root.uiFontBold
                                     }
                                     Text {
-                                        text: "Редактирование учётной записи"
-                                        color: "#9aa7b2"; font.pixelSize: 12; font.family: root.uiFont
+                                        text: profileEditCol.isMe ? "Имя, аватар и пароль входа" : "Просмотр учётной записи"
+                                        color: "#8b98a3"; font.pixelSize: 12; font.family: root.uiFont
                                     }
                                 }
                             }
 
+                            // hero
                             Rectangle {
                                 width: parent.width
-                                height: 96
-                                radius: 12
-                                color: "#2c2c2c"
+                                height: 148
+                                radius: 18
+                                clip: true
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0; color: Qt.darker(profileEditCol.avatarColor, 2.4) }
+                                    GradientStop { position: 0.7; color: "#1a1f1e" }
+                                    GradientStop { position: 1; color: "#141816" }
+                                }
+                                border.width: 1
+                                border.color: "#2a3a34"
+                                Rectangle {
+                                    width: 220; height: 220; radius: 110
+                                    x: parent.width - 140; y: -80
+                                    color: profileEditCol.avatarColor
+                                    opacity: 0.18
+                                }
                                 Row {
-                                    anchors.fill: parent
-                                    anchors.margins: 16
-                                    spacing: 16
-                                    Rectangle {
-                                        width: 64; height: 64; radius: 32
-                                        color: accountsFocus === root.currentUser ? root.userAvatar : "#4a5560"
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        Text {
+                                    anchors.left: parent.left
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.leftMargin: 22
+                                    spacing: 18
+                                    Item {
+                                        width: 88; height: 88
+                                        Rectangle {
                                             anchors.centerIn: parent
-                                            text: (accountsFocus.length ? accountsFocus : "?").charAt(0).toUpperCase()
-                                            color: "#fff"; font.pixelSize: 24; font.bold: true; font.family: root.uiFont
+                                            width: 88; height: 88; radius: 44
+                                            color: "transparent"
+                                            border.width: 3
+                                            border.color: "#40ffffff"
+                                        }
+                                        Rectangle {
+                                            anchors.centerIn: parent
+                                            width: 78; height: 78; radius: 39
+                                            color: profileEditCol.avatarColor
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: (profileEditCol.displayName.length ? profileEditCol.displayName : "?").charAt(0).toUpperCase()
+                                                color: "#06210f"
+                                                font.pixelSize: 32
+                                                font.family: root.uiFontBold
+                                            }
                                         }
                                     }
                                     Column {
                                         anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 4
+                                        spacing: 6
                                         Text {
-                                            text: accountsFocus === root.currentUser
-                                                  ? (root.userFullName.length ? root.userFullName : root.currentUser)
-                                                  : accountsFocus
-                                            color: "#fff"; font.pixelSize: 18; font.family: root.uiFont
+                                            text: profileEditCol.displayName
+                                            color: "#ffffff"
+                                            font.pixelSize: 24
+                                            font.family: root.uiFontBold
                                         }
                                         Text {
-                                            text: "@" + accountsFocus + " · /home/" + accountsFocus
-                                            color: "#9aa7b2"; font.pixelSize: 12; font.family: root.uiFont
+                                            text: "@" + accountsFocus + "  ·  /home/" + accountsFocus
+                                            color: "#c5d0d8"
+                                            font.pixelSize: 13
+                                            font.family: root.uiFont
+                                        }
+                                        Rectangle {
+                                            height: 24; radius: 12
+                                            width: roleLab.implicitWidth + 16
+                                            color: "#33000000"
+                                            border.width: 1; border.color: "#40ffffff"
+                                            Text {
+                                                id: roleLab
+                                                anchors.centerIn: parent
+                                                text: profileEditCol.isMe ? "Вы вошли · администратор" : "Локальная учётная запись"
+                                                color: "#e8eef2"
+                                                font.pixelSize: 11
+                                                font.family: root.uiFont
+                                            }
                                         }
                                     }
                                 }
                             }
 
-                            // только текущий пользователь редактируется полностью
+                            // имя
                             Column {
                                 width: parent.width
                                 spacing: 10
-                                visible: accountsFocus === root.currentUser
-
-                                SettingCard {
-                                    title: "Отображаемое имя"
-                                    subtitle: root.userFullName.length ? root.userFullName : "Не задано"
+                                visible: profileEditCol.isMe
+                                Text {
+                                    text: "Отображаемое имя"
+                                    color: "#ffffff"
+                                    font.pixelSize: 15
+                                    font.family: root.uiFontBold
                                 }
-                                Rectangle {
-                                    width: parent.width; height: 40; radius: 8
-                                    color: "#1a1a1a"; border.color: nameEd.activeFocus ? root.accentColor : "#3c3c3c"; border.width: 1
-                                    TextInput {
-                                        id: nameEd
-                                        anchors.fill: parent; anchors.margins: 10
-                                        color: "#fff"; font.pixelSize: 13; font.family: root.uiFont
-                                        text: root.userFullName
-                                        onTextChanged: root.userFullName = text
-                                        onEditingFinished: root.saveDesktop()
-                                    }
-                                }
-
-                                SettingCard {
-                                    title: "Аватар"
-                                    subtitle: "Цвет значка профиля"
+                                Text {
+                                    width: parent.width
+                                    text: "Так вас видят на экране блокировки, в Параметрах и в уведомлениях"
+                                    color: "#8b98a3"
+                                    font.pixelSize: 12
+                                    font.family: root.uiFont
+                                    wrapMode: Text.WordWrap
                                 }
                                 Row {
+                                    width: parent.width
+                                    spacing: 10
+                                    Rectangle {
+                                        width: parent.width - 118
+                                        height: 44
+                                        radius: 12
+                                        color: "#1a1a1a"
+                                        border.width: 1
+                                        border.color: nameEd.activeFocus ? root.accentColor : "#333"
+                                        TextInput {
+                                            id: nameEd
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 14
+                                            anchors.rightMargin: 14
+                                            verticalAlignment: Text.AlignVCenter
+                                            color: "#fff"
+                                            font.pixelSize: 14
+                                            font.family: root.uiFont
+                                            selectByMouse: true
+                                            text: root.userFullName
+                                            onTextChanged: root.userFullName = text
+                                            Keys.onReturnPressed: {
+                                                root.saveDesktop()
+                                                root.notify("Профиль", "Имя сохранено", "ok")
+                                            }
+                                            Text {
+                                                anchors.fill: parent
+                                                verticalAlignment: Text.AlignVCenter
+                                                visible: !nameEd.text.length && !nameEd.activeFocus
+                                                text: "Ваше имя"
+                                                color: "#666"
+                                                font.pixelSize: 14
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: 108; height: 44; radius: 12
+                                        color: saveNameH.containsMouse ? "#4af098" : root.accentColor
+                                        Behavior on color { ColorAnimation { duration: 120 } }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "Сохранить"
+                                            color: "#06210f"
+                                            font.pixelSize: 13
+                                            font.family: root.uiFontBold
+                                        }
+                                        MouseArea {
+                                            id: saveNameH
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: {
+                                                root.saveDesktop()
+                                                sys.writeFile("/var/lib/gtos/fullname", root.userFullName + "\n")
+                                                root.notify("Профиль", "Имя сохранено", "ok")
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // аватар
+                            Column {
+                                width: parent.width
+                                spacing: 10
+                                visible: profileEditCol.isMe
+                                Text {
+                                    text: "Аватар"
+                                    color: "#ffffff"
+                                    font.pixelSize: 15
+                                    font.family: root.uiFontBold
+                                }
+                                Text {
+                                    text: "Цвет кружка с вашей буквой"
+                                    color: "#8b98a3"
+                                    font.pixelSize: 12
+                                    font.family: root.uiFont
+                                }
+                                Flow {
+                                    width: parent.width
                                     spacing: 10
                                     Repeater {
-                                        model: ["#3be182", "#8764b8", "#0f7b0f", "#c239b3", "#d13438", "#ca5010", "#038387", "#5b5fc7"]
+                                        model: ["#3be182", "#8764b8", "#0f7b0f", "#c239b3", "#d13438", "#ca5010", "#038387", "#5b5fc7", "#2563eb", "#f59e0b", "#14b8a6", "#ec4899"]
                                         delegate: Rectangle {
-                                            width: 36; height: 36; radius: 18
+                                            width: 44; height: 44; radius: 22
                                             color: modelData
-                                            border.width: root.userAvatar === modelData ? 2 : 0
+                                            border.width: root.userAvatar === modelData ? 3 : 0
                                             border.color: "#ffffff"
+                                            scale: avH.containsMouse ? 1.08 : 1
+                                            Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                                             Text {
                                                 anchors.centerIn: parent
                                                 visible: root.userAvatar === modelData
-                                                text: root.currentUser.length ? root.currentUser.charAt(0).toUpperCase() : "?"
-                                                color: "#06210f"; font.bold: true; font.pixelSize: 14
+                                                text: (profileEditCol.displayName.length ? profileEditCol.displayName : "?").charAt(0).toUpperCase()
+                                                color: "#06210f"
+                                                font.bold: true
+                                                font.pixelSize: 16
                                             }
                                             MouseArea {
+                                                id: avH
                                                 anchors.fill: parent
+                                                hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
-                                                onClicked: { root.userAvatar = modelData; root.saveDesktop() }
+                                                onClicked: {
+                                                    root.userAvatar = modelData
+                                                    root.saveDesktop()
+                                                    root.notify("Профиль", "Аватар обновлён", "ok")
+                                                }
                                             }
                                         }
                                     }
-                                }
-
-                                SettingCard {
-                                    title: "Пароль блокировки"
-                                    subtitle: root.hasSessionPassword() ? "Пароль установлен (хэш)" : "Вход без пароля"
-                                }
-                                Rectangle {
-                                    width: parent.width; height: 40; radius: 8
-                                    color: "#1a1a1a"; border.color: pwd1.activeFocus ? root.accentColor : "#3c3c3c"; border.width: 1
-                                    TextInput {
-                                        id: pwd1
-                                        anchors.fill: parent; anchors.margins: 10
-                                        color: "#fff"; font.pixelSize: 13; echoMode: TextInput.Password
-                                        text: root.pwdDraft; onTextChanged: root.pwdDraft = text
-                                        Text {
-                                            anchors.fill: parent; verticalAlignment: Text.AlignVCenter
-                                            visible: !root.pwdDraft.length && !parent.activeFocus
-                                            text: "Новый пароль"; color: "#787878"; font.pixelSize: 13
-                                        }
-                                    }
-                                }
-                                Rectangle {
-                                    width: parent.width; height: 40; radius: 8
-                                    color: "#1a1a1a"; border.color: pwd2.activeFocus ? root.accentColor : "#3c3c3c"; border.width: 1
-                                    TextInput {
-                                        id: pwd2
-                                        anchors.fill: parent; anchors.margins: 10
-                                        color: "#fff"; font.pixelSize: 13; echoMode: TextInput.Password
-                                        text: root.pwdDraft2; onTextChanged: root.pwdDraft2 = text
-                                        Text {
-                                            anchors.fill: parent; verticalAlignment: Text.AlignVCenter
-                                            visible: !root.pwdDraft2.length && !parent.activeFocus
-                                            text: "Повторите пароль"; color: "#787878"; font.pixelSize: 13
-                                        }
-                                    }
-                                }
-                                Row {
-                                    spacing: 10
-                                    Rectangle {
-                                        width: 168; height: 40; radius: 8
-                                        color: savePwdH.containsMouse ? "#4af098" : root.accentColor
-                                        Text {
-                                            anchors.centerIn: parent; text: "Сохранить пароль"
-                                            color: "#06210f"; font.pixelSize: 13; font.bold: true; font.family: root.uiFont
-                                        }
-                                        MouseArea {
-                                            id: savePwdH; anchors.fill: parent; hoverEnabled: true
-                                            cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.saveUserPassword()
-                                        }
-                                    }
-                                    Rectangle {
-                                        width: 120; height: 40; radius: 8; color: "#3a3a3a"
-                                        Text { anchors.centerIn: parent; text: "Сбросить"; color: "#fff"; font.pixelSize: 13; font.family: root.uiFont }
-                                        MouseArea {
-                                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                            onClicked: {
-                                                root.pwdDraft = ""; root.pwdDraft2 = ""
-                                                root.userPassword = ""; root.passwordHash = ""
-                                                root.saveDesktop(); root.notify("Учётная запись", "Пароль снят", "ok")
-                                            }
-                                        }
-                                    }
-                                }
-
-                                SettingCard {
-                                    title: "Ваши данные"
-                                    subtitle: "Документы и файлы в /home/" + root.currentUser
                                 }
                             }
 
-                            SettingCard {
-                                visible: accountsFocus !== root.currentUser
-                                title: "Только просмотр"
-                                subtitle: "Полное редактирование доступно для текущей учётной записи"
+                            // пароль
+                            Rectangle {
+                                width: parent.width
+                                height: pwdCol.implicitHeight + 36
+                                radius: 16
+                                color: "#171b1a"
+                                border.width: 1
+                                border.color: "#232a28"
+                                visible: profileEditCol.isMe
+                                Column {
+                                    id: pwdCol
+                                    x: 18; y: 18
+                                    width: parent.width - 36
+                                    spacing: 10
+                                    Row {
+                                        width: parent.width
+                                        spacing: 10
+                                        Column {
+                                            width: parent.width - 110
+                                            spacing: 3
+                                            Text {
+                                                text: "Пароль блокировки"
+                                                color: "#ffffff"
+                                                font.pixelSize: 15
+                                                font.family: root.uiFontBold
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                text: root.hasSessionPassword()
+                                                      ? "Пароль установлен — нужен при входе и после сна"
+                                                      : "Сейчас вход без пароля"
+                                                color: "#8b98a3"
+                                                font.pixelSize: 12
+                                                font.family: root.uiFont
+                                                wrapMode: Text.WordWrap
+                                            }
+                                        }
+                                        Rectangle {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            height: 24; radius: 12
+                                            width: pwdBadge.implicitWidth + 14
+                                            color: root.hasSessionPassword() ? "#1b3a2d" : "#2a2a2a"
+                                            border.width: 1
+                                            border.color: root.hasSessionPassword() ? root.accentColor : "#3a3a3a"
+                                            Text {
+                                                id: pwdBadge
+                                                anchors.centerIn: parent
+                                                text: root.hasSessionPassword() ? "Защищён" : "Открыт"
+                                                color: root.hasSessionPassword() ? root.accentColor : "#9aa7b2"
+                                                font.pixelSize: 11
+                                                font.family: root.uiFontBold
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: parent.width; height: 42; radius: 11
+                                        color: "#121615"
+                                        border.width: 1
+                                        border.color: pwd1.activeFocus ? root.accentColor : "#2a3230"
+                                        TextInput {
+                                            id: pwd1
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 14
+                                            anchors.rightMargin: 14
+                                            verticalAlignment: Text.AlignVCenter
+                                            color: "#fff"
+                                            font.pixelSize: 13
+                                            echoMode: TextInput.Password
+                                            text: root.pwdDraft
+                                            onTextChanged: root.pwdDraft = text
+                                            Text {
+                                                anchors.fill: parent
+                                                verticalAlignment: Text.AlignVCenter
+                                                visible: !root.pwdDraft.length && !parent.activeFocus
+                                                text: "Новый пароль"
+                                                color: "#666"
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: parent.width; height: 42; radius: 11
+                                        color: "#121615"
+                                        border.width: 1
+                                        border.color: pwd2.activeFocus ? root.accentColor : "#2a3230"
+                                        TextInput {
+                                            id: pwd2
+                                            anchors.fill: parent
+                                            anchors.leftMargin: 14
+                                            anchors.rightMargin: 14
+                                            verticalAlignment: Text.AlignVCenter
+                                            color: "#fff"
+                                            font.pixelSize: 13
+                                            echoMode: TextInput.Password
+                                            text: root.pwdDraft2
+                                            onTextChanged: root.pwdDraft2 = text
+                                            Keys.onReturnPressed: root.saveUserPassword()
+                                            Text {
+                                                anchors.fill: parent
+                                                verticalAlignment: Text.AlignVCenter
+                                                visible: !root.pwdDraft2.length && !parent.activeFocus
+                                                text: "Повторите пароль"
+                                                color: "#666"
+                                                font.pixelSize: 13
+                                            }
+                                        }
+                                    }
+                                    Row {
+                                        spacing: 10
+                                        Rectangle {
+                                            width: 168; height: 40; radius: 11
+                                            color: savePwdH.containsMouse ? "#4af098" : root.accentColor
+                                            Behavior on color { ColorAnimation { duration: 120 } }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "Сохранить пароль"
+                                                color: "#06210f"
+                                                font.pixelSize: 13
+                                                font.family: root.uiFontBold
+                                            }
+                                            MouseArea {
+                                                id: savePwdH
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.saveUserPassword()
+                                            }
+                                        }
+                                        Rectangle {
+                                            width: 120; height: 40; radius: 11
+                                            color: clrPwdH.containsMouse ? "#3a1818" : "#242424"
+                                            border.width: 1
+                                            border.color: "#3a3a3a"
+                                            Behavior on color { ColorAnimation { duration: 120 } }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "Сбросить"
+                                                color: "#fecaca"
+                                                font.pixelSize: 13
+                                                font.family: root.uiFont
+                                            }
+                                            MouseArea {
+                                                id: clrPwdH
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    root.pwdDraft = ""
+                                                    root.pwdDraft2 = ""
+                                                    root.userPassword = ""
+                                                    root.passwordHash = ""
+                                                    root.saveDesktop()
+                                                    root.notify("Профиль", "Пароль снят", "ok")
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // сведения
+                            Rectangle {
+                                width: parent.width
+                                height: infoGrid.implicitHeight + 32
+                                radius: 16
+                                color: "#171b1a"
+                                border.width: 1
+                                border.color: "#232a28"
+                                visible: profileEditCol.isMe
+                                Column {
+                                    id: infoGrid
+                                    x: 18; y: 16
+                                    width: parent.width - 36
+                                    spacing: 0
+                                    Text {
+                                        text: "Сведения"
+                                        color: "#ffffff"
+                                        font.pixelSize: 15
+                                        font.family: root.uiFontBold
+                                        bottomPadding: 8
+                                    }
+                                    Repeater {
+                                        model: [
+                                            { k: "Логин", v: root.currentUser },
+                                            { k: "Домашняя папка", v: "/home/" + root.currentUser },
+                                            { k: "Роль", v: "Администратор" },
+                                            { k: "Версия GT/OS", v: root.osVersion }
+                                        ]
+                                        delegate: Item {
+                                            width: infoGrid.width
+                                            height: 36
+                                            Rectangle {
+                                                visible: index > 0
+                                                width: parent.width; height: 1
+                                                color: "#222927"
+                                            }
+                                            Text {
+                                                anchors.left: parent.left
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: modelData.k
+                                                color: "#8b98a3"
+                                                font.pixelSize: 12
+                                                font.family: root.uiFont
+                                            }
+                                            Text {
+                                                anchors.right: parent.right
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                text: modelData.v
+                                                color: "#e8eef2"
+                                                font.pixelSize: 12
+                                                font.family: root.uiFont
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                visible: !profileEditCol.isMe
+                                width: parent.width
+                                height: 86
+                                radius: 16
+                                color: "#171b1a"
+                                border.width: 1
+                                border.color: "#232a28"
+                                Column {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 18
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 4
+                                    Text {
+                                        text: "Только просмотр"
+                                        color: "#ffffff"
+                                        font.pixelSize: 14
+                                        font.family: root.uiFontBold
+                                    }
+                                    Text {
+                                        text: "Имя и пароль меняются из сеанса этого пользователя"
+                                        color: "#8b98a3"
+                                        font.pixelSize: 12
+                                        font.family: root.uiFont
+                                    }
+                                }
                             }
                             Rectangle {
-                                visible: accountsFocus !== root.currentUser
-                                width: parent.width; height: 36; radius: 8
-                                color: "#1e3a32"
+                                visible: !profileEditCol.isMe
+                                width: parent.width
+                                height: 44
+                                radius: 12
+                                color: swAccH.containsMouse ? "#1e3a32" : "#16352e"
+                                border.width: 1
+                                border.color: root.accentColor
+                                Behavior on color { ColorAnimation { duration: 120 } }
                                 Text {
                                     anchors.centerIn: parent
-                                    text: "Переключить сеанс на этого пользователя"
-                                    color: root.accentColor; font.pixelSize: 13
+                                    text: "Переключить сеанс"
+                                    color: root.accentColor
+                                    font.pixelSize: 13
+                                    font.family: root.uiFontBold
                                 }
                                 MouseArea {
+                                    id: swAccH
                                     anchors.fill: parent
+                                    hoverEnabled: true
+                                    cursorShape: Qt.PointingHandCursor
                                     onClicked: root.switchOsUser(accountsFocus)
                                 }
                             }
@@ -19354,241 +20757,9 @@ Rectangle {
 
             Component {
                 id: settingsSec_updates
-                // лёгкая вкладка: без Image/CloverMark и без тяжёлых sys.run при открытии
-                Column {
+                UpdateCenterView {
                     width: parent.width
-                    spacing: 14
-
-                    Text {
-                        text: "Центр обновлений"
-                        color: "#fff"
-                        font.pixelSize: 24
-                        font.family: root.uiFontBold
-                    }
-                    Text {
-                        width: parent.width
-                        text: "Проверка пакетов и оболочки · снимок перед установкой · откат"
-                        color: "#8b98a3"
-                        font.pixelSize: 13
-                        font.family: root.uiFont
-                        wrapMode: Text.WordWrap
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: 132
-                        radius: 16
-                        color: "#1a2220"
-                        Column {
-                            anchors.fill: parent
-                            anchors.margins: 20
-                            spacing: 8
-                            Text {
-                                text: "GT/OS " + root.osVersion
-                                color: "#fff"
-                                font.pixelSize: 20
-                                font.family: root.uiFontBold
-                            }
-                            Text {
-                                width: parent.width
-                                text: root.updateStatus
-                                color: "#a8b4bc"
-                                font.pixelSize: 13
-                                font.family: root.uiFont
-                                wrapMode: Text.WordWrap
-                                maximumLineCount: 2
-                                elide: Text.ElideRight
-                            }
-                            Text {
-                                text: "Последняя проверка: " + root.updateLastCheck
-                                color: "#6b7785"
-                                font.pixelSize: 11
-                                font.family: root.uiFont
-                            }
-                        }
-                    }
-
-                    Row {
-                        spacing: 10
-                        width: parent.width
-                        Rectangle {
-                            width: (parent.width - 20) / 3
-                            height: 44
-                            radius: 12
-                            color: root.updateChecking ? "#2a2a2a" : root.accentColor
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.updateChecking ? "Проверка…" : "Проверить"
-                                color: root.updateChecking ? "#9aa7b2" : "#06210f"
-                                font.pixelSize: 13
-                                font.family: root.uiFontBold
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !root.updateChecking && !root.updateApplying
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.checkUpdates()
-                            }
-                        }
-                        Rectangle {
-                            width: (parent.width - 20) / 3
-                            height: 44
-                            radius: 12
-                            color: root.updateApplying ? "#2a2a2a" : "#243028"
-                            border.width: 1
-                            border.color: root.accentColor
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.updateApplying ? "Установка…" : "Установить"
-                                color: root.accentColor
-                                font.pixelSize: 13
-                                font.family: root.uiFontBold
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !root.updateApplying && !root.updateChecking
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.applySystemUpdates(false)
-                            }
-                        }
-                        Rectangle {
-                            width: (parent.width - 20) / 3
-                            height: 44
-                            radius: 12
-                            color: root.updateApplying ? "#2a2a2a" : "#1e1e1e"
-                            border.width: 1
-                            border.color: "#3a3a3a"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "И перезагрузить"
-                                color: "#e8eef2"
-                                font.pixelSize: 12
-                                font.family: root.uiFontBold
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !root.updateApplying && !root.updateChecking
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.applySystemUpdatesAndReboot()
-                            }
-                        }
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: 64
-                        radius: 12
-                        color: "#1e1e1e"
-                        Column {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-                            width: parent.width - 80
-                            Text { text: "Автопроверка"; color: "#fff"; font.pixelSize: 14; font.family: root.uiFontBold }
-                            Text { text: "Тихая проверка через минуту после входа"; color: "#7e8b96"; font.pixelSize: 11 }
-                        }
-                        ToggleSwitch {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            on: root.updateAutoCheck
-                            onToggled: root.updateAutoCheck = !root.updateAutoCheck
-                        }
-                    }
-
-                    Rectangle {
-                        width: parent.width
-                        height: 72
-                        radius: 12
-                        color: "#1e1e1e"
-                        Column {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-                            width: parent.width - 160
-                            Text { text: "Откат"; color: "#fff"; font.pixelSize: 14; font.family: root.uiFontBold }
-                            Text {
-                                width: parent.width
-                                text: root.updateRollbackStatus.length ? root.updateRollbackStatus : "Вернуть пакеты по снимку"
-                                color: "#7e8b96"
-                                font.pixelSize: 11
-                                elide: Text.ElideRight
-                            }
-                        }
-                        Rectangle {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 14
-                            anchors.verticalCenter: parent.verticalCenter
-                            width: 120
-                            height: 36
-                            radius: 10
-                            color: root.updateRollingBack ? "#2a2a2a" : "#3a1818"
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.updateRollingBack ? "…" : "Откатить"
-                                color: "#fecaca"
-                                font.pixelSize: 12
-                                font.family: root.uiFontBold
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !root.updateRollingBack
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.rollbackLastUpdate()
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: "История"
-                        color: "#9aa7b2"
-                        font.pixelSize: 12
-                        font.family: root.uiFontBold
-                        topPadding: 4
-                    }
-                    Repeater {
-                        model: root.updateLog
-                        delegate: Rectangle {
-                            width: parent.width
-                            height: 56
-                            radius: 12
-                            color: index === 0 ? "#1a2220" : "#1a1a1a"
-                            border.width: index === 0 ? 1 : 0
-                            border.color: root.accentColor
-                            Row {
-                                anchors.fill: parent
-                                anchors.margins: 14
-                                spacing: 12
-                                Text {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    text: modelData.ver
-                                    color: root.accentColor
-                                    font.pixelSize: 13
-                                    font.family: root.uiFontBold
-                                    width: 48
-                                }
-                                Column {
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - 60
-                                    spacing: 2
-                                    Text {
-                                        width: parent.width
-                                        text: modelData.title
-                                        color: "#e8eef2"
-                                        font.pixelSize: 13
-                                        elide: Text.ElideRight
-                                    }
-                                    Text {
-                                        text: modelData.date
-                                        color: "#6b7785"
-                                        font.pixelSize: 11
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    showTitle: false
                 }
             }
 
@@ -20080,7 +21251,10 @@ Rectangle {
                         MouseArea {
                             id: accHover; anchors.fill: parent; hoverEnabled: true
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: root.settingsSection = "accounts"
+                            onClicked: {
+                                root.settingsSection = "accounts"
+                                accountsFocus = root.currentUser
+                            }
                         }
                     }
 
@@ -20771,8 +21945,7 @@ Rectangle {
                 { id: "all", t: "Все платформы" },
                 { id: "alpine", t: "Alpine" },
                 { id: "linux", t: "Linux" },
-                { id: "windows", t: "Windows" },
-                { id: "web", t: "Веб" }
+                { id: "windows", t: "Windows" }
             ]
             property int gridCols: width > 1100 ? 4 : (width > 780 ? 3 : 2)
 
@@ -20867,40 +22040,137 @@ Rectangle {
             Item {
                 anchors.fill: parent
 
-                Column {
+                Flickable {
+                    id: detFlick
                     anchors.fill: parent
-                    anchors.margins: 24
-                    spacing: 16
                     visible: root.storeDetailId.length > 0
+                    contentWidth: width
+                    contentHeight: detRoot.height + 32
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    opacity: detAppear
+                    transform: Translate { y: (1 - detFlick.detAppear) * 18 }
+                    property real detAppear: 0
+                    NumberAnimation {
+                        id: detAppearAnim
+                        target: detFlick
+                        property: "detAppear"
+                        from: 0; to: 1
+                        duration: 480
+                        easing.type: Easing.OutCubic
+                    }
+                    function playAppear() {
+                        contentY = 0
+                        descExpanded = false
+                        detAppear = 0
+                        detAppearAnim.restart()
+                        root.fetchAppScreenshots(app)
+                        root.storeShotViewer = ""
+                    }
+                    onVisibleChanged: if (visible) playAppear()
+                    property var app: detailApp()
+                    onAppChanged: if (visible) playAppear()
+                    readonly property color tint: root.appIconColor(app.iconKind || "store")
+                    readonly property bool owned: isOwned(app)
+                    readonly property bool busy: root.storeInstallingId === app.id
+                    readonly property bool realApp: (app.launchId || "") === "pkg" || app.source === "alpine"
+                                                    || app.source === "linux" || app.source === "windows"
+                    readonly property bool pinned: root.pinnedApps.indexOf("pkg-" + app.id) >= 0
+                    readonly property bool wide: width > 880
+                    property bool descExpanded: false
+                    readonly property var shots: {
+                        var _dep = root.storeShotExtra
+                        var _cache = root.appIconPaths
+                        return root.appScreenshots(app)
+                    }
 
-                    Flickable {
+                    function sourceLabel() {
+                        if (app.source === "windows") return "Windows · Wine"
+                        if (app.source === "linux") return app.format === "tar.gz" ? "Linux · архив" : "Linux · AppImage"
+                        if (app.source === "alpine") return "Alpine " + (root.storeAlpineBranch || "")
+                        return "GT/OS"
+                    }
+                    function longDesc() {
+                        var base = app.desc || "Описание скоро появится."
+                        var extra
+                        if (app.source === "windows")
+                            extra = "Программа для Windows запускается через совместимый слой Wine. Файлы, сохранённые в ней, лежат в вашей домашней папке."
+                        else if (app.source === "linux")
+                            extra = "Linux-сборка запускается через glibc-слой GT/OS, поэтому работает даже там, где пакета под Alpine нет."
+                        else if (realApp)
+                            extra = "Это настоящая программа из официального репозитория: отдельный процесс, своё окно, свои настройки. Магазин ставит её вместе с зависимостями и показывает прогресс по мегабайтам."
+                        else
+                            extra = "Встроенное приложение оболочки: открывается мгновенно и не занимает место на диске."
+                        return base + "\n\n" + extra
+                    }
+                    function features() {
+                        var f = []
+                        f.push(realApp ? "Отдельный процесс и окно" : "Мгновенный запуск в оболочке")
+                        f.push("Ставится вместе с зависимостями")
+                        f.push("Значок в Пуске и на панели задач")
+                        f.push("Без рекламы и подписок")
+                        if (Number(app.size) > 1000)
+                            f.push("Загрузка " + root.formatStoreBytes(app.size))
+                        f.push(owned ? "Удаление в один клик" : "Можно удалить в любой момент")
+                        return f
+                    }
+
+                    Column {
+                        id: detRoot
                         width: parent.width
-                        height: parent.height
-                        contentWidth: width
-                        contentHeight: storeDetailCol.height + 8
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
+                        spacing: 0
 
-                        Column {
-                            id: storeDetailCol
+                        // ── баннер ─────────────────────────────────────────
+                        Item {
                             width: parent.width
-                            spacing: 16
+                            height: 308
+                            clip: true
+                            Rectangle {
+                                anchors.fill: parent
+                                gradient: Gradient {
+                                    GradientStop { position: 0; color: Qt.darker(detFlick.tint, 1.9) }
+                                    GradientStop { position: 0.7; color: Qt.darker(detFlick.tint, 4.2) }
+                                    GradientStop { position: 1; color: "#141414" }
+                                }
+                            }
+                            Rectangle {
+                                width: 520; height: 520; radius: 260
+                                x: parent.width - 360; y: -260
+                                color: detFlick.tint
+                                opacity: 0.16
+                            }
+                            Rectangle {
+                                width: 260; height: 260; radius: 130
+                                x: parent.width * 0.42; y: 150
+                                color: detFlick.tint
+                                opacity: 0.07
+                            }
+                            DeskIconArt {
+                                width: 300; height: 300
+                                x: parent.width - 330
+                                y: 10
+                                rotation: -12
+                                kind: detFlick.app.iconKind || "store"
+                                appId: detFlick.app.id || ""
+                                opacity: 0.1
+                            }
 
                             Row {
+                                x: 24; y: 22
                                 spacing: 12
                                 Rectangle {
                                     width: detBackTxt.implicitWidth + 28
                                     height: 34
                                     radius: 17
-                                    color: detBackH.containsMouse ? "#1e2a28" : "#181d1c"
+                                    color: detBackH.containsMouse ? "#40000000" : "#26000000"
                                     border.width: 1
-                                    border.color: detBackH.containsMouse ? root.accentColor : "#2a3a34"
+                                    border.color: detBackH.containsMouse ? "#80ffffff" : "#30ffffff"
                                     Behavior on color { ColorAnimation { duration: 120 } }
                                     Text {
                                         id: detBackTxt
                                         anchors.centerIn: parent
                                         text: "←  Каталог"
-                                        color: "#e8eef2"
+                                        color: "#ffffff"
                                         font.pixelSize: 13
                                         font.family: root.uiFont
                                     }
@@ -20914,460 +22184,784 @@ Rectangle {
                                 }
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "Магазин GT  ›  " + (detailApp().cat || "Приложения") + "  ›  " + (detailApp().name || "")
-                                    color: "#6b7785"
+                                    text: "Магазин GT  ›  " + (detFlick.app.cat || "Приложения")
+                                    color: "#b0ffffff"
                                     font.pixelSize: 12
                                     font.family: root.uiFont
                                 }
                             }
 
-                            // hero
-                            Rectangle {
-                                width: parent.width
-                                height: Math.max(212, detailHeroCol.height + 48)
-                                radius: 20
-                                clip: true
-                                gradient: Gradient {
-                                    orientation: Gradient.Horizontal
-                                    GradientStop { position: 0; color: "#123a2e" }
-                                    GradientStop { position: 0.6; color: "#0f2420" }
-                                    GradientStop { position: 1; color: "#131716" }
-                                }
-                                border.width: 1
-                                border.color: "#24453a"
+                            Row {
+                                x: 28
+                                anchors.bottom: parent.bottom
+                                anchors.bottomMargin: 30
+                                spacing: 24
                                 Rectangle {
-                                    width: 300; height: 300; radius: 150
-                                    x: parent.width - 200; y: -130
-                                    color: root.accentColor
-                                    opacity: 0.07
-                                }
-                                DeskIconArt {
-                                    width: 170; height: 170
-                                    anchors.right: parent.right
-                                    anchors.rightMargin: 230
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    kind: detailApp().iconKind || "store"
-                                    appId: detailApp().id || ""
-                                    opacity: 0.08
-                                }
-                                Row {
-                                    id: detailHeroCol
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.margins: 24
-                                    spacing: 22
+                                    width: 132; height: 132; radius: 32
+                                    color: "#d0101614"
+                                    border.width: 1
+                                    border.color: Qt.lighter(detFlick.tint, 1.3)
                                     Rectangle {
-                                        width: 112; height: 112; radius: 28
-                                        color: "#0e1816"
-                                        border.width: 1
-                                        border.color: "#2a4a3c"
-                                        DeskIconArt {
-                                            anchors.centerIn: parent
-                                            width: 72; height: 72
-                                            kind: detailApp().iconKind || "store"
-                                            appId: detailApp().id || ""
-                                        }
+                                        anchors.fill: parent
+                                        anchors.margins: -6
+                                        radius: 38
+                                        color: "transparent"
+                                        border.width: 6
+                                        border.color: detFlick.tint
+                                        opacity: 0.18
                                     }
-                                    Column {
-                                        width: Math.max(160, parent.width - 112 - 200 - 44)
-                                        anchors.verticalCenter: parent.verticalCenter
+                                    DeskIconArt {
+                                        anchors.centerIn: parent
+                                        width: 84; height: 84
+                                        kind: detFlick.app.iconKind || "store"
+                                        appId: detFlick.app.id || ""
+                                    }
+                                }
+                                Column {
+                                    anchors.bottom: parent.bottom
+                                    anchors.bottomMargin: 6
+                                    spacing: 8
+                                    width: Math.min(560, detFlick.width - 132 - 24 - 56)
+                                    Text {
+                                        width: parent.width
+                                        text: detFlick.app.name || ""
+                                        color: "#ffffff"
+                                        font.pixelSize: 36
+                                        font.family: root.uiFontBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: detFlick.app.pub || "Независимый разработчик"
+                                        color: Qt.lighter(detFlick.tint, 1.7)
+                                        font.pixelSize: 15
+                                        font.family: root.uiFont
+                                        elide: Text.ElideRight
+                                    }
+                                    Flow {
+                                        width: parent.width
                                         spacing: 8
-                                        Text {
-                                            width: parent.width
-                                            text: detailApp().name || ""
-                                            color: "#fff"
-                                            font.pixelSize: 30
-                                            font.family: root.uiFontBold
-                                            wrapMode: Text.WordWrap
-                                        }
-                                        Text {
-                                            width: parent.width
-                                            text: {
-                                                var bits = []
-                                                if (detailApp().pub) bits.push(detailApp().pub)
-                                                if (detailApp().cat) bits.push(detailApp().cat)
-                                                bits.push(root.storePlatformLabel(root.storePlatformOf(detailApp())))
-                                                return bits.join(" · ")
+                                        Repeater {
+                                            model: {
+                                                var c = [{ t: detFlick.app.price || "Бесплатно", hi: true }]
+                                                if (detFlick.realApp) c.push({ t: "Настоящее приложение", hi: false })
+                                                c.push({ t: detFlick.sourceLabel(), hi: false })
+                                                if (detFlick.owned) c.push({ t: "✓ Установлено", hi: false })
+                                                return c
                                             }
-                                            color: "#9aa7b2"
-                                            font.pixelSize: 14
-                                            font.family: root.uiFont
-                                            wrapMode: Text.WordWrap
-                                        }
-                                        Row {
-                                            spacing: 8
-                                            Rectangle {
+                                            delegate: Rectangle {
                                                 height: 26; radius: 13
-                                                width: detPrice.implicitWidth + 18
-                                                color: "#1e2a28"
-                                                border.width: 1; border.color: "#2a4a3c"
+                                                width: chipT.implicitWidth + 20
+                                                color: modelData.hi ? root.accentColor : "#33000000"
+                                                border.width: modelData.hi ? 0 : 1
+                                                border.color: "#40ffffff"
                                                 Text {
-                                                    id: detPrice
+                                                    id: chipT
                                                     anchors.centerIn: parent
-                                                    text: detailApp().price || "Бесплатно"
-                                                    color: root.accentColor
+                                                    text: modelData.t
+                                                    color: modelData.hi ? "#06210f" : "#e8eef2"
                                                     font.pixelSize: 12
+                                                    font.family: modelData.hi ? root.uiFontBold : root.uiFont
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // ── полоса фактов ──────────────────────────────────
+                        Item {
+                            width: parent.width
+                            height: 96
+                            Rectangle {
+                                anchors.fill: parent
+                                anchors.leftMargin: 24
+                                anchors.rightMargin: 24
+                                anchors.topMargin: 4
+                                anchors.bottomMargin: 16
+                                radius: 16
+                                color: "#171b1a"
+                                border.width: 1
+                                border.color: "#232a28"
+                                Row {
+                                    anchors.fill: parent
+                                    Repeater {
+                                        model: [
+                                            { v: detFlick.app.cat || "—", k: "Категория" },
+                                            { v: Number(detFlick.app.size) > 1000 ? root.formatStoreBytes(detFlick.app.size) : "—", k: "Размер" },
+                                            { v: detFlick.app.version || "—", k: "Версия" },
+                                            { v: detFlick.realApp ? "Процесс" : "Окно GT", k: "Запуск" }
+                                        ]
+                                        delegate: Item {
+                                            width: parent.width / 4
+                                            height: parent.height
+                                            Rectangle {
+                                                visible: index > 0
+                                                width: 1; height: parent.height - 28
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                color: "#2a3230"
+                                            }
+                                            Column {
+                                                anchors.centerIn: parent
+                                                width: parent.width - 24
+                                                spacing: 4
+                                                Text {
+                                                    width: parent.width
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    text: modelData.v
+                                                    color: "#ffffff"
+                                                    font.pixelSize: 16
                                                     font.family: root.uiFontBold
+                                                    elide: Text.ElideRight
                                                 }
-                                            }
-                                            Rectangle {
-                                                visible: (detailApp().launchId || "") === "pkg" || detailApp().source === "alpine"
-                                                height: 26; radius: 13
-                                                width: detReal.implicitWidth + 18
-                                                color: "#16352e"
-                                                border.width: 1; border.color: root.accentColor
                                                 Text {
-                                                    id: detReal
-                                                    anchors.centerIn: parent
-                                                    text: "Настоящее приложение"
-                                                    color: root.accentColor
-                                                    font.pixelSize: 12
-                                                    font.family: root.uiFont
-                                                }
-                                            }
-                                            Rectangle {
-                                                visible: isOwned(detailApp())
-                                                height: 26; radius: 13
-                                                width: detOwned.implicitWidth + 18
-                                                color: "#1a2420"
-                                                border.width: 1; border.color: "#3a5a4e"
-                                                Text {
-                                                    id: detOwned
-                                                    anchors.centerIn: parent
-                                                    text: "✓ Установлено"
-                                                    color: "#c5e8d6"
-                                                    font.pixelSize: 12
+                                                    width: parent.width
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    text: modelData.k
+                                                    color: "#7e8b96"
+                                                    font.pixelSize: 11
                                                     font.family: root.uiFont
                                                 }
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        // ── две колонки ────────────────────────────────────
+                        Item {
+                            id: detCols
+                            width: parent.width
+                            height: detFlick.wide
+                                    ? Math.max(detLeft.height, detRight.height)
+                                    : detLeft.height + 20 + detRight.height
+                            readonly property real sideW: detFlick.wide ? 330 : width - 48
+
+                            Column {
+                                id: detRight
+                                x: detFlick.wide ? parent.width - 24 - width : 24
+                                y: 0
+                                width: detCols.sideW
+                                spacing: 14
+
+                                Rectangle {
+                                    width: parent.width
+                                    height: detAct.implicitHeight + 36
+                                    radius: 18
+                                    color: "#171b1a"
+                                    border.width: 1
+                                    border.color: detFlick.busy ? root.accentColor : "#232a28"
                                     Column {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        spacing: 10
+                                        id: detAct
+                                        x: 18; y: 18
+                                        width: parent.width - 36
+                                        spacing: 12
                                         Rectangle {
-                                            width: 168; height: 48; radius: 12
-                                            color: root.storeInstallingId === detailApp().id
-                                                   ? "#252525"
-                                                   : (isOwned(detailApp()) ? "#252525" : root.accentColor)
+                                            width: parent.width
+                                            height: 52
+                                            radius: 14
                                             clip: true
+                                            color: detFlick.busy || detFlick.owned
+                                                   ? (detMainH.containsMouse ? "#2a3230" : "#222a28")
+                                                   : (detMainH.containsMouse ? "#4af098" : root.accentColor)
+                                            Behavior on color { ColorAnimation { duration: 120 } }
                                             Rectangle {
-                                                visible: root.storeInstallingId === detailApp().id
+                                                visible: detFlick.busy
                                                 anchors.left: parent.left
                                                 anchors.top: parent.top
                                                 anchors.bottom: parent.bottom
                                                 width: parent.width * (root.storeInstallPct / 100.0)
                                                 color: root.accentColor
-                                                opacity: 0.35
+                                                opacity: 0.4
+                                                Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
                                             }
                                             Text {
                                                 anchors.centerIn: parent
-                                                text: btnLabel(detailApp())
-                                                color: isOwned(detailApp()) || root.storeInstallingId === detailApp().id ? "#e8eef2" : "#06210f"
-                                                font.family: root.uiFontBold; font.pixelSize: 14
+                                                text: detFlick.busy ? ("Установка · " + root.storeInstallPct + "%") : btnLabel(detFlick.app)
+                                                color: detFlick.busy || detFlick.owned ? "#ffffff" : "#06210f"
+                                                font.family: root.uiFontBold
+                                                font.pixelSize: 15
                                             }
                                             MouseArea {
+                                                id: detMainH
                                                 anchors.fill: parent
-                                                enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === detailApp().id
+                                                hoverEnabled: true
+                                                enabled: root.storeInstallingId.length === 0 || detFlick.busy
                                                 cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.installStoreApp(detailApp())
+                                                onClicked: root.installStoreApp(detFlick.app)
                                             }
                                         }
-                                        Rectangle {
-                                            visible: isOwned(detailApp()) && root.storeInstallingId !== detailApp().id
-                                            width: 168; height: 40; radius: 12
-                                            color: detUninH.containsMouse ? "#3f1515" : "transparent"
-                                            border.width: 1
-                                            border.color: detUninH.containsMouse ? "#c42b1c" : "#4a3a3a"
-                                            Behavior on color { ColorAnimation { duration: 120 } }
+
+                                        Column {
+                                            visible: detFlick.busy
+                                            width: parent.width
+                                            spacing: 6
                                             Text {
-                                                anchors.centerIn: parent
-                                                text: "Удалить"
-                                                color: detUninH.containsMouse ? "#fecaca" : "#d8b4b4"
-                                                font.pixelSize: 13
+                                                width: parent.width
+                                                text: root.storeProgressCaption()
+                                                color: root.storeInstallStalled ? "#ff8a80" : "#c5d0d8"
+                                                font.pixelSize: 12
                                                 font.family: root.uiFont
+                                                wrapMode: Text.Wrap
                                             }
+                                            Rectangle {
+                                                width: parent.width
+                                                height: 6
+                                                radius: 3
+                                                color: "#0e1412"
+                                                Rectangle {
+                                                    width: Math.max(4, parent.width * (root.storeInstallPct / 100.0))
+                                                    height: parent.height
+                                                    radius: 3
+                                                    color: root.storeInstallStalled ? "#c42b1c" : root.accentColor
+                                                    Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                                                }
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                text: root.storeInstallStalled
+                                                      ? "Похоже, загрузка зависла — проверьте сеть."
+                                                      : (root.storeExpectBytes > 1000
+                                                         ? ("Осталось ≈ " + root.formatStoreBytes(Math.max(0, root.storeExpectBytes - root.storeInstallBytes)))
+                                                         : "Считаем объём и скорость…")
+                                                color: "#7e8b96"
+                                                font.pixelSize: 11
+                                                font.family: root.uiFont
+                                                wrapMode: Text.Wrap
+                                            }
+                                        }
+
+                                        Row {
+                                            width: parent.width
+                                            spacing: 10
+                                            visible: !detFlick.busy
+                                            Repeater {
+                                                model: {
+                                                    var b = []
+                                                    if (detFlick.owned)
+                                                        b.push({ id: "pin", t: detFlick.pinned ? "Открепить" : "На панель" })
+                                                    if (detFlick.app.homeUrl && String(detFlick.app.homeUrl).length)
+                                                        b.push({ id: "site", t: "Сайт" })
+                                                    return b
+                                                }
+                                                delegate: Rectangle {
+                                                    width: (detAct.width - 10) / 2
+                                                    height: 38
+                                                    radius: 11
+                                                    color: secH.containsMouse ? "#222a28" : "transparent"
+                                                    border.width: 1
+                                                    border.color: secH.containsMouse ? root.accentColor : "#2e3836"
+                                                    Behavior on color { ColorAnimation { duration: 120 } }
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: modelData.t
+                                                        color: "#e8eef2"
+                                                        font.pixelSize: 13
+                                                        font.family: root.uiFont
+                                                    }
+                                                    MouseArea {
+                                                        id: secH
+                                                        anchors.fill: parent
+                                                        hoverEnabled: true
+                                                        cursorShape: Qt.PointingHandCursor
+                                                        onClicked: {
+                                                            if (modelData.id === "pin") {
+                                                                if (detFlick.pinned)
+                                                                    root.unpinApp("pkg-" + detFlick.app.id)
+                                                                else
+                                                                    root.pinAppAt("pkg-" + detFlick.app.id)
+                                                                root.saveDesktop()
+                                                            } else {
+                                                                root.launch("browser", "Браузер")
+                                                                root.browserUrl = detFlick.app.homeUrl
+                                                                root.browseGo(true)
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Text {
+                                            visible: detFlick.owned && !detFlick.busy
+                                            text: "Удалить приложение"
+                                            color: detUnH.containsMouse ? "#ff8a80" : "#c99a9a"
+                                            font.pixelSize: 12
+                                            font.family: root.uiFont
+                                            font.underline: detUnH.containsMouse
                                             MouseArea {
-                                                id: detUninH
+                                                id: detUnH
                                                 anchors.fill: parent
                                                 hoverEnabled: true
                                                 cursorShape: Qt.PointingHandCursor
-                                                onClicked: root.uninstallStoreApp(detailApp())
+                                                onClicked: root.uninstallStoreApp(detFlick.app)
                                             }
                                         }
-                                        Rectangle {
-                                            visible: !!(detailApp().homeUrl && String(detailApp().homeUrl).length)
-                                            width: 168; height: 40; radius: 12
-                                            color: "transparent"
-                                            border.width: 1
-                                            border.color: "#3a4a44"
-                                            Text {
-                                                anchors.centerIn: parent
-                                                text: "Сайт разработчика"
-                                                color: "#c5d0d8"
-                                                font.pixelSize: 13
-                                                font.family: root.uiFont
-                                            }
-                                            MouseArea {
-                                                anchors.fill: parent
-                                                cursorShape: Qt.PointingHandCursor
-                                                onClicked: {
-                                                    root.launch("browser", "Браузер")
-                                                    root.browserUrl = detailApp().homeUrl
-                                                    root.browseGo(true)
+                                    }
+                                }
+
+                                Rectangle {
+                                    width: parent.width
+                                    height: detInfo.implicitHeight + 32
+                                    radius: 18
+                                    color: "#171b1a"
+                                    border.width: 1
+                                    border.color: "#232a28"
+                                    Column {
+                                        id: detInfo
+                                        x: 18; y: 16
+                                        width: parent.width - 36
+                                        spacing: 0
+                                        Text {
+                                            text: "Сведения"
+                                            color: "#ffffff"
+                                            font.pixelSize: 15
+                                            font.family: root.uiFontBold
+                                            bottomPadding: 8
+                                        }
+                                        Repeater {
+                                            model: [
+                                                { k: "Издатель", v: detFlick.app.pub || "—" },
+                                                { k: "Категория", v: detFlick.app.cat || "—" },
+                                                { k: "Платформа", v: root.storePlatformLabel(root.storePlatformOf(detFlick.app)) },
+                                                { k: "Источник", v: detFlick.sourceLabel() },
+                                                { k: "Пакет", v: detFlick.app.apk || detFlick.app.id || "—" },
+                                                { k: "Версия", v: detFlick.app.version || "—" },
+                                                { k: "Размер", v: Number(detFlick.app.size) > 1000 ? root.formatStoreBytes(detFlick.app.size) : "—" }
+                                            ]
+                                            delegate: Item {
+                                                width: detInfo.width
+                                                height: 38
+                                                Rectangle {
+                                                    visible: index > 0
+                                                    width: parent.width; height: 1
+                                                    color: "#222927"
+                                                }
+                                                Text {
+                                                    anchors.left: parent.left
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: modelData.k
+                                                    color: "#7e8b96"
+                                                    font.pixelSize: 12
+                                                    font.family: root.uiFont
+                                                }
+                                                Text {
+                                                    anchors.right: parent.right
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    width: parent.width * 0.62
+                                                    horizontalAlignment: Text.AlignRight
+                                                    text: modelData.v
+                                                    color: "#e8eef2"
+                                                    font.pixelSize: 12
+                                                    font.family: root.uiFont
+                                                    elide: Text.ElideRight
                                                 }
                                             }
                                         }
                                     }
                                 }
-                            }
 
-                            Rectangle {
-                                visible: root.storeInstallingId === detailApp().id
-                                width: parent.width
-                                height: storeProgCol.implicitHeight + 20
-                                radius: 12
-                                color: "#1a1a1a"
-                                border.width: 1
-                                border.color: root.storeInstallStalled ? "#c42b1c" : "#2a3a34"
-                                Column {
-                                    id: storeProgCol
-                                    anchors.left: parent.left
-                                    anchors.right: parent.right
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    anchors.margins: 12
-                                    spacing: 8
-                                    Text {
-                                        width: parent.width
-                                        text: root.storeProgressCaption()
-                                        color: root.storeInstallStalled ? "#ff8a80" : "#e8eef2"
-                                        font.pixelSize: 13
-                                        font.family: root.uiFont
-                                        wrapMode: Text.Wrap
-                                    }
-                                    Rectangle {
-                                        width: parent.width
-                                        height: 10
-                                        radius: 5
-                                        color: "#0e1412"
-                                        Rectangle {
-                                            width: Math.max(4, parent.width * (root.storeInstallPct / 100.0))
-                                            height: parent.height
-                                            radius: 5
-                                            color: root.storeInstallStalled ? "#c42b1c" : root.accentColor
-                                            Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                                Rectangle {
+                                    width: parent.width
+                                    height: detSafe.implicitHeight + 28
+                                    radius: 18
+                                    color: "#12201b"
+                                    border.width: 1
+                                    border.color: "#1f3a30"
+                                    Row {
+                                        id: detSafe
+                                        x: 16; y: 14
+                                        width: parent.width - 32
+                                        spacing: 12
+                                        Canvas {
+                                            width: 26; height: 30
+                                            onPaint: {
+                                                var c = getContext("2d")
+                                                c.reset()
+                                                c.strokeStyle = root.accentColor
+                                                c.lineWidth = 2
+                                                c.beginPath()
+                                                c.moveTo(13, 2); c.lineTo(24, 6); c.lineTo(24, 15)
+                                                c.quadraticCurveTo(24, 24, 13, 28)
+                                                c.quadraticCurveTo(2, 24, 2, 15)
+                                                c.lineTo(2, 6); c.closePath(); c.stroke()
+                                                c.beginPath()
+                                                c.moveTo(8, 15); c.lineTo(12, 19); c.lineTo(19, 11); c.stroke()
+                                            }
                                         }
-                                    }
-                                    Text {
-                                        width: parent.width
-                                        text: root.storeInstallStalled
-                                              ? "Похоже, загрузка зависла — проверьте сеть. Можно подождать или закрыть Магазин и повторить."
-                                              : (root.storeExpectBytes > 1000
-                                                 ? ("Осталось ≈ " + root.formatStoreBytes(Math.max(0, root.storeExpectBytes - root.storeInstallBytes)))
-                                                 : "Считаем объём и скорость…")
-                                        color: "#8b98a3"
-                                        font.pixelSize: 12
-                                        font.family: root.uiFont
-                                        wrapMode: Text.Wrap
-                                    }
-                                }
-                            }
-
-                            Text {
-                                text: "О приложении"
-                                color: "#fff"
-                                font.pixelSize: 18
-                                font.family: root.uiFontBold
-                            }
-                            Text {
-                                width: parent.width
-                                text: detailApp().desc || "Описание скоро появится."
-                                color: "#c5d0d8"
-                                font.pixelSize: 15
-                                font.family: root.uiFont
-                                wrapMode: Text.Wrap
-                                lineHeight: 1.35
-                            }
-
-                            Row {
-                                width: parent.width
-                                spacing: 12
-                                Repeater {
-                                    model: {
-                                        var a = detailApp()
-                                        var real = (a.launchId || "") === "pkg" || a.source === "alpine" || a.source === "linux" || a.source === "windows"
-                                        return [
-                                            { t: real ? "Настоящая программа" : "Окно GT/OS",
-                                              s: real ? "Запускается отдельным процессом, как в обычном Linux" : "Работает внутри оболочки, без установки пакетов" },
-                                            { t: a.source === "windows" ? "Через Wine" : (a.source === "linux" ? "AppImage / пакет" : (a.source === "web" ? "Веб-приложение" : "Пакет Alpine")),
-                                              s: a.source === "windows" ? "Windows-программа в совместимом слое" : "Ставится из официального репозитория" },
-                                            { t: (a.price || "Бесплатно"),
-                                              s: "Без рекламы и подписок в Магазине GT" }
-                                        ]
-                                    }
-                                    delegate: Rectangle {
-                                        width: (storeDetailCol.width - 24) / 3
-                                        height: 86
-                                        radius: 14
-                                        color: "#161b1a"
-                                        border.width: 1
-                                        border.color: "#24302c"
                                         Column {
-                                            anchors.fill: parent
-                                            anchors.margins: 14
-                                            spacing: 6
-                                            Rectangle { width: 22; height: 3; radius: 2; color: root.accentColor }
+                                            width: parent.width - 38
+                                            spacing: 3
                                             Text {
-                                                width: parent.width
-                                                text: modelData.t
-                                                color: "#ffffff"
-                                                font.pixelSize: 14
+                                                text: "Проверено GT/OS"
+                                                color: "#c5f0d8"
+                                                font.pixelSize: 13
                                                 font.family: root.uiFontBold
-                                                elide: Text.ElideRight
                                             }
                                             Text {
                                                 width: parent.width
-                                                text: modelData.s
-                                                color: "#8b98a3"
+                                                text: "Скачивается из официального источника, без сторонних сборок и рекламы."
+                                                color: "#8fb3a2"
                                                 font.pixelSize: 11
                                                 font.family: root.uiFont
-                                                wrapMode: Text.WordWrap
-                                                maximumLineCount: 2
-                                                elide: Text.ElideRight
+                                                wrapMode: Text.Wrap
                                             }
                                         }
                                     }
                                 }
                             }
 
-                            Text {
-                                text: "Сведения"
-                                color: "#fff"
-                                font.pixelSize: 18
-                                font.family: root.uiFontBold
-                            }
-                            Grid {
-                                width: parent.width
-                                columns: 2
-                                columnSpacing: 12
-                                rowSpacing: 10
-                                Repeater {
-                                    model: [
-                                        { k: "Издатель", v: detailApp().pub || "—" },
-                                        { k: "Категория", v: detailApp().cat || "—" },
-                                        { k: "Платформа", v: root.storePlatformLabel(root.storePlatformOf(detailApp())) },
-                                        { k: "Версия", v: detailApp().version || "—" },
-                                        { k: "Размер", v: (Number(detailApp().size) > 1000 ? root.formatStoreBytes(detailApp().size) : "—") },
-                                        { k: "Запуск", v: ((detailApp().launchId || "") === "pkg" || detailApp().source === "alpine")
-                                                           ? "Настоящий бинарник"
-                                                           : "Встроенное окно GT/OS" }
-                                    ]
-                                    delegate: Rectangle {
-                                        width: (parent.width - 12) / 2
-                                        height: 64
-                                        radius: 12
-                                        color: "#1a1a1a"
-                                        border.width: 1
-                                        border.color: "#2a2a2a"
-                                        Column {
-                                            anchors.fill: parent
-                                            anchors.margins: 12
-                                            spacing: 4
-                                            Text {
-                                                text: modelData.k
-                                                color: "#8b98a3"
-                                                font.pixelSize: 12
-                                                font.family: root.uiFont
-                                            }
-                                            Text {
-                                                width: parent.width
-                                                text: modelData.v
-                                                color: "#e8eef2"
-                                                font.pixelSize: 14
-                                                font.family: root.uiFont
-                                                elide: Text.ElideRight
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            Column {
+                                id: detLeft
+                                x: 24
+                                y: detFlick.wide ? 0 : detRight.height + 20
+                                width: detFlick.wide ? parent.width - 48 - detCols.sideW - 24 : parent.width - 48
+                                spacing: 14
 
-                            Text {
-                                visible: detSimilarRep.count > 0
-                                text: "Похожие приложения"
-                                color: "#ffffff"
-                                font.pixelSize: 18
-                                font.family: root.uiFontBold
-                            }
-                            Flow {
-                                width: parent.width
-                                spacing: 12
-                                Repeater {
-                                    id: detSimilarRep
-                                    model: {
-                                        var a = detailApp()
-                                        var out = []
-                                        if (!a.id)
-                                            return out
-                                        var all = catalog || []
-                                        for (var i = 0; i < all.length && out.length < 6; i++) {
-                                            var b = all[i]
-                                            if (b && b.id !== a.id && b.cat === a.cat)
-                                                out.push(b)
-                                        }
-                                        return out
-                                    }
-                                    delegate: Rectangle {
-                                        width: (storeDetailCol.width - 24) / 3
-                                        height: 72
-                                        radius: 14
-                                        color: detSimH.containsMouse ? "#1c2422" : "#161b1a"
-                                        border.width: 1
-                                        border.color: detSimH.containsMouse ? root.accentColor : "#24302c"
-                                        Behavior on color { ColorAnimation { duration: 120 } }
-                                        Row {
+                                Text {
+                                    text: "Скриншоты"
+                                    color: "#ffffff"
+                                    font.pixelSize: 18
+                                    font.family: root.uiFontBold
+                                    opacity: Math.min(1, Math.max(0, (detFlick.detAppear - 0.2) * 1.6))
+                                }
+                                ListView {
+                                    id: detShotsView
+                                    width: parent.width
+                                    height: 196
+                                    orientation: ListView.Horizontal
+                                    spacing: 12
+                                    clip: true
+                                    boundsBehavior: Flickable.StopAtBounds
+                                    opacity: Math.min(1, Math.max(0, (detFlick.detAppear - 0.28) * 1.5))
+                                    visible: detFlick.shots.length > 0
+                                    model: detFlick.shots
+                                    delegate: Item {
+                                        width: 312
+                                        height: 196
+                                        scale: shotH.containsMouse ? 1.02 : 1
+                                        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                                        Rectangle {
                                             anchors.fill: parent
-                                            anchors.margins: 12
-                                            spacing: 12
-                                            DeskIconArt {
-                                                width: 44; height: 44
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                kind: modelData.iconKind || "store"
-                                                appId: modelData.id || ""
+                                            radius: 14
+                                            color: "#0f1412"
+                                            border.width: 1
+                                            border.color: shotH.containsMouse ? root.accentColor : "#26302d"
+                                            clip: true
+                                            Image {
+                                                id: shotImg
+                                                anchors.fill: parent
+                                                anchors.margins: 1
+                                                source: root.shotSource(modelData, detFlick.app.id, index)
+                                                fillMode: Image.PreserveAspectCrop
+                                                asynchronous: true
+                                                cache: true
+                                                opacity: status === Image.Ready ? 1 : 0
+                                                Behavior on opacity { NumberAnimation { duration: 220 } }
                                             }
-                                            Column {
-                                                anchors.verticalCenter: parent.verticalCenter
-                                                width: parent.width - 56
-                                                spacing: 3
-                                                Text {
-                                                    width: parent.width
-                                                    text: modelData.name || modelData.id
-                                                    color: "#ffffff"
-                                                    font.pixelSize: 14
-                                                    font.family: root.uiFont
-                                                    elide: Text.ElideRight
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                visible: shotImg.status !== Image.Ready
+                                                gradient: Gradient {
+                                                    GradientStop { position: 0; color: Qt.darker(detFlick.tint, 2.4) }
+                                                    GradientStop { position: 1; color: "#121615" }
                                                 }
+                                                Column {
+                                                    anchors.centerIn: parent
+                                                    spacing: 10
+                                                    DeskIconArt {
+                                                        anchors.horizontalCenter: parent.horizontalCenter
+                                                        width: 48; height: 48
+                                                        kind: detFlick.app.iconKind || "store"
+                                                        appId: detFlick.app.id || ""
+                                                    }
+                                                    Text {
+                                                        anchors.horizontalCenter: parent.horizontalCenter
+                                                        text: shotImg.status === Image.Loading ? "Загрузка снимка…" : "Снимок скоро появится"
+                                                        color: "#9aa7b2"
+                                                        font.pixelSize: 12
+                                                        font.family: root.uiFont
+                                                    }
+                                                }
+                                            }
+                                            Rectangle {
+                                                anchors.left: parent.left
+                                                anchors.bottom: parent.bottom
+                                                anchors.margins: 10
+                                                height: 24; radius: 8
+                                                width: shotCap.implicitWidth + 14
+                                                color: "#b0000000"
                                                 Text {
-                                                    width: parent.width
-                                                    text: isOwned(modelData) ? "Установлено" : (modelData.price || "Бесплатно")
-                                                    color: isOwned(modelData) ? root.accentColor : "#8b98a3"
+                                                    id: shotCap
+                                                    anchors.centerIn: parent
+                                                    text: "Снимок " + (index + 1)
+                                                    color: "#e8eef2"
                                                     font.pixelSize: 11
                                                     font.family: root.uiFont
-                                                    elide: Text.ElideRight
                                                 }
                                             }
                                         }
                                         MouseArea {
-                                            id: detSimH
+                                            id: shotH
                                             anchors.fill: parent
                                             hoverEnabled: true
                                             cursorShape: Qt.PointingHandCursor
-                                            onClicked: root.storeDetailId = modelData.id
+                                            onClicked: root.storeShotViewer = shotImg.source.toString()
+                                        }
+                                    }
+                                }
+                                Rectangle {
+                                    visible: detFlick.shots.length === 0
+                                    width: parent.width
+                                    height: 120
+                                    radius: 14
+                                    color: "#171b1a"
+                                    border.width: 1
+                                    border.color: "#222927"
+                                    opacity: Math.min(1, Math.max(0, (detFlick.detAppear - 0.28) * 1.5))
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: "Скриншоты для этого приложения ещё не добавлены"
+                                        color: "#7e8b96"
+                                        font.pixelSize: 13
+                                        font.family: root.uiFont
+                                    }
+                                }
+
+                                Text {
+                                    text: "Описание"
+                                    color: "#ffffff"
+                                    font.pixelSize: 18
+                                    font.family: root.uiFontBold
+                                    topPadding: 6
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: detFlick.longDesc()
+                                    color: "#c5d0d8"
+                                    font.pixelSize: 14
+                                    font.family: root.uiFont
+                                    wrapMode: Text.Wrap
+                                    lineHeight: 1.4
+                                    maximumLineCount: detFlick.descExpanded ? 40 : 3
+                                    elide: Text.ElideRight
+                                }
+                                Text {
+                                    text: detFlick.descExpanded ? "Свернуть" : "Читать полностью"
+                                    color: root.accentColor
+                                    font.pixelSize: 13
+                                    font.family: root.uiFont
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: detFlick.descExpanded = !detFlick.descExpanded
+                                    }
+                                }
+
+                                Text {
+                                    text: "Возможности"
+                                    color: "#ffffff"
+                                    font.pixelSize: 18
+                                    font.family: root.uiFontBold
+                                    topPadding: 6
+                                }
+                                Grid {
+                                    width: parent.width
+                                    columns: parent.width > 520 ? 2 : 1
+                                    columnSpacing: 12
+                                    rowSpacing: 10
+                                    Repeater {
+                                        model: detFlick.features()
+                                        delegate: Rectangle {
+                                            width: parent.columns === 2 ? (parent.width - 12) / 2 : parent.width
+                                            height: 46
+                                            radius: 12
+                                            color: "#171b1a"
+                                            border.width: 1
+                                            border.color: "#222927"
+                                            Row {
+                                                anchors.left: parent.left
+                                                anchors.leftMargin: 14
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                spacing: 12
+                                                Rectangle {
+                                                    width: 22; height: 22; radius: 11
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    color: "#1b3a2d"
+                                                    Text {
+                                                        anchors.centerIn: parent
+                                                        text: "✓"
+                                                        color: root.accentColor
+                                                        font.pixelSize: 12
+                                                        font.bold: true
+                                                    }
+                                                }
+                                                Text {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    text: modelData
+                                                    color: "#e8eef2"
+                                                    font.pixelSize: 13
+                                                    font.family: root.uiFont
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    text: "Что нового"
+                                    color: "#ffffff"
+                                    font.pixelSize: 18
+                                    font.family: root.uiFontBold
+                                    topPadding: 6
+                                }
+                                Rectangle {
+                                    width: parent.width
+                                    height: detNew.implicitHeight + 28
+                                    radius: 14
+                                    color: "#171b1a"
+                                    border.width: 1
+                                    border.color: "#222927"
+                                    Column {
+                                        id: detNew
+                                        x: 16; y: 14
+                                        width: parent.width - 32
+                                        spacing: 4
+                                        Text {
+                                            text: "Версия " + (detFlick.app.version || "актуальная")
+                                            color: root.accentColor
+                                            font.pixelSize: 13
+                                            font.family: root.uiFontBold
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: "Магазин берёт свежую сборку из репозитория. Обновить её можно в Центре обновлений вместе с системой."
+                                            color: "#9aa7b2"
+                                            font.pixelSize: 12
+                                            font.family: root.uiFont
+                                            wrapMode: Text.Wrap
+                                        }
+                                    }
+                                }
+
+                                Text {
+                                    visible: detSimilarRep.count > 0
+                                    text: "Похожие приложения"
+                                    color: "#ffffff"
+                                    font.pixelSize: 18
+                                    font.family: root.uiFontBold
+                                    topPadding: 6
+                                }
+                                Grid {
+                                    width: parent.width
+                                    columns: parent.width > 560 ? 3 : 2
+                                    columnSpacing: 12
+                                    rowSpacing: 12
+                                    Repeater {
+                                        id: detSimilarRep
+                                        model: {
+                                            var a = detFlick.app
+                                            var out = []
+                                            if (!a.id)
+                                                return out
+                                            var all = catalog || []
+                                            for (var i = 0; i < all.length && out.length < 6; i++) {
+                                                var b = all[i]
+                                                if (b && b.id !== a.id && b.cat === a.cat)
+                                                    out.push(b)
+                                            }
+                                            return out
+                                        }
+                                        delegate: Rectangle {
+                                            width: (parent.width - (parent.columns - 1) * 12) / parent.columns
+                                            height: 76
+                                            radius: 14
+                                            color: detSimH.containsMouse ? "#1c2422" : "#171b1a"
+                                            border.width: 1
+                                            border.color: detSimH.containsMouse ? root.accentColor : "#222927"
+                                            Behavior on color { ColorAnimation { duration: 120 } }
+                                            Row {
+                                                anchors.fill: parent
+                                                anchors.margins: 14
+                                                spacing: 12
+                                                DeskIconArt {
+                                                    width: 44; height: 44
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    kind: modelData.iconKind || "store"
+                                                    appId: modelData.id || ""
+                                                }
+                                                Column {
+                                                    anchors.verticalCenter: parent.verticalCenter
+                                                    width: parent.width - 56
+                                                    spacing: 3
+                                                    Text {
+                                                        width: parent.width
+                                                        text: modelData.name || modelData.id
+                                                        color: "#ffffff"
+                                                        font.pixelSize: 14
+                                                        font.family: root.uiFont
+                                                        elide: Text.ElideRight
+                                                    }
+                                                    Text {
+                                                        width: parent.width
+                                                        text: isOwned(modelData) ? "Установлено" : (modelData.price || "Бесплатно")
+                                                        color: isOwned(modelData) ? root.accentColor : "#8b98a3"
+                                                        font.pixelSize: 11
+                                                        font.family: root.uiFont
+                                                        elide: Text.ElideRight
+                                                    }
+                                                }
+                                            }
+                                            MouseArea {
+                                                id: detSimH
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.storeDetailId = modelData.id
+                                            }
                                         }
                                     }
                                 }
                             }
+                        }
+                    }
+
+                    // просмотр скриншота
+                    Rectangle {
+                        anchors.fill: parent
+                        z: 40
+                        visible: root.storeShotViewer.length > 0 && root.storeDetailId.length > 0
+                        color: "#e0000000"
+                        opacity: visible ? 1 : 0
+                        Behavior on opacity { NumberAnimation { duration: 180 } }
+                        Image {
+                            anchors.centerIn: parent
+                            width: Math.min(parent.width - 80, 1100)
+                            height: Math.min(parent.height - 80, 700)
+                            source: root.storeShotViewer
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            cache: true
+                            scale: shotOvH.containsMouse ? 1.01 : 1
+                            Behavior on scale { NumberAnimation { duration: 140 } }
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: 22
+                            text: "Щёлкните, чтобы закрыть"
+                            color: "#b0ffffff"
+                            font.pixelSize: 13
+                            font.family: root.uiFont
+                        }
+                        MouseArea {
+                            id: shotOvH
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.storeShotViewer = ""
                         }
                     }
                 }
@@ -27356,115 +28950,18 @@ Rectangle {
         id: updatesPage
         Item {
             property string appTitle: ""
-            // отдельное окно — тот же лёгкий UI, без авто-apk
-            Rectangle {
-                anchors.fill: parent
-                color: "#141414"
-            }
+            Rectangle { anchors.fill: parent; color: "#121514" }
             Flickable {
                 anchors.fill: parent
                 contentWidth: width
-                contentHeight: updCol.height + 48
+                contentHeight: updView.height + 56
                 clip: true
                 boundsBehavior: Flickable.StopAtBounds
-                Column {
-                    id: updCol
+                UpdateCenterView {
+                    id: updView
                     x: 28
+                    y: 28
                     width: parent.width - 56
-                    topPadding: 28
-                    spacing: 16
-                    Text { text: "Центр обновлений"; color: "#fff"; font.pixelSize: 26; font.family: root.uiFontBold }
-                    Text {
-                        width: parent.width
-                        wrapMode: Text.WordWrap
-                        text: "Проверка → установка → при необходимости перезагрузка. Перед установкой создаётся снимок."
-                        color: "#8b98a3"; font.pixelSize: 14
-                    }
-                    Rectangle {
-                        width: parent.width
-                        height: 120
-                        radius: 16
-                        color: "#1a2220"
-                        Column {
-                            anchors.fill: parent
-                            anchors.margins: 22
-                            spacing: 8
-                            Text { text: "GT/OS " + root.osVersion; color: "#fff"; font.pixelSize: 20; font.family: root.uiFontBold }
-                            Text {
-                                width: parent.width
-                                text: root.updateStatus
-                                color: "#a8b4bc"; font.pixelSize: 13; wrapMode: Text.WordWrap
-                            }
-                            Text { text: "Проверка: " + root.updateLastCheck; color: "#6b7785"; font.pixelSize: 11 }
-                        }
-                    }
-                    Row {
-                        spacing: 10
-                        width: parent.width
-                        Rectangle {
-                            width: (parent.width - 20) / 3; height: 46; radius: 12
-                            color: root.updateChecking || root.updateApplying ? "#2a2a2a" : root.accentColor
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.updateChecking ? "Проверка…" : "Проверить"
-                                color: root.updateChecking || root.updateApplying ? "#9aa7b2" : "#06210f"
-                                font.bold: true; font.pixelSize: 13
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !root.updateChecking && !root.updateApplying
-                                onClicked: root.checkUpdates()
-                            }
-                        }
-                        Rectangle {
-                            width: (parent.width - 20) / 3; height: 46; radius: 12
-                            color: root.updateApplying ? "#2a2a2a" : "#243028"
-                            border.width: 1; border.color: root.accentColor
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.updateApplying ? "Установка…" : "Установить"
-                                color: root.accentColor; font.bold: true; font.pixelSize: 13
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !root.updateApplying && !root.updateChecking
-                                onClicked: root.applySystemUpdates(false)
-                            }
-                        }
-                        Rectangle {
-                            width: (parent.width - 20) / 3; height: 46; radius: 12
-                            color: root.updateApplying ? "#2a2a2a" : "#1e1e1e"
-                            border.width: 1; border.color: "#333"
-                            Text {
-                                anchors.centerIn: parent
-                                text: "И перезагрузить"
-                                color: "#e8eef2"; font.bold: true; font.pixelSize: 12
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: !root.updateApplying && !root.updateChecking
-                                onClicked: root.applySystemUpdatesAndReboot()
-                            }
-                        }
-                    }
-                    Text { text: "История выпусков"; color: "#9aa7b2"; font.pixelSize: 13; font.family: root.uiFontBold }
-                    Repeater {
-                        model: root.updateLog
-                        delegate: Rectangle {
-                            width: parent.width; height: 58; radius: 12; color: index === 0 ? "#1a2220" : "#1a1a1a"
-                            border.width: index === 0 ? 1 : 0; border.color: root.accentColor
-                            Column {
-                                anchors.fill: parent; anchors.margins: 12; spacing: 4
-                                Row {
-                                    spacing: 10
-                                    Text { text: modelData.ver; color: root.accentColor; font.bold: true; font.pixelSize: 13 }
-                                    Text { text: modelData.date; color: "#6b7785"; font.pixelSize: 12 }
-                                }
-                                Text { text: modelData.title; color: "#e8eef2"; font.pixelSize: 13 }
-                                Text { text: modelData.note; color: "#9aa7b2"; font.pixelSize: 11 }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -28454,6 +29951,39 @@ Rectangle {
         running: true
         repeat: true
         onTriggered: root.refreshNetwork(false)
+    }
+
+    Timer {
+        id: storeShotFetchTimer
+        interval: 1800
+        repeat: true
+        property int ticks: 0
+        onTriggered: {
+            ticks++
+            var id = String(root.storeDetailId || "").replace(/[^a-zA-Z0-9._+-]/g, "")
+            if (id.length) {
+                var map = {}
+                for (var key in root.appIconPaths)
+                    map[key] = root.appIconPaths[key]
+                var changed = false
+                for (var i = 0; i < 6; ++i) {
+                    var p = "/usr/share/gtos/app-shots/" + id + "-" + i + ".png"
+                    var ok = sys.run("test -s " + root.shQuote(p) + " && echo yes").trim() === "yes"
+                    if (ok && map["shot:" + id + ":" + i] !== p) {
+                        map["shot:" + id + ":" + i] = p
+                        changed = true
+                    }
+                }
+                if (changed)
+                    root.appIconPaths = map
+            }
+            var done = sys.run("test -f /tmp/gtos-shots-done && echo yes").trim() === "yes"
+            if (done || ticks >= 20) {
+                stop()
+                ticks = 0
+                sys.run("rm -f /tmp/gtos-shots-done >/dev/null 2>&1")
+            }
+        }
     }
 
     Timer {
@@ -30117,9 +31647,10 @@ Rectangle {
                 return l.indexOf("Upgrading") >= 0 || l.indexOf("Installing") >= 0
             }) : []
             var shellAvail = sys.readFile("/tmp/gtos-shell-upd-check.log").indexOf("GTOS_SHELL_UPDATE_AVAILABLE") >= 0
+            root.updateShellAvail = shellAvail
             if (lines.length || shellAvail) {
-                root.updateStatus = (lines.length ? ("Пакетов: " + lines.length) : "Пакеты ок")
-                                 + (shellAvail ? " · доступно обновление оболочки с носителя" : "")
+                root.updateStatus = (lines.length ? ("Пакетов к обновлению: " + lines.length) : "Пакеты актуальны")
+                                 + (shellAvail ? " · есть новая оболочка на носителе" : "")
                 root.notify("GT Update Engine", root.updateStatus, "ok")
             } else {
                 root.updateStatus = "GT/OS " + root.osVersion + " · пакеты и оболочка актуальны"
@@ -30148,6 +31679,8 @@ Rectangle {
                 return
             }
             root.updateApplying = false
+            root.updateShellAvail = false
+            root.updatePendingPkgs = []
             root.finishPendingOp("update")
             var rc = sys.readFile("/tmp/gtos-upd-apply-rc").trim()
             if (rc === "0" || rc === "") {
@@ -32603,7 +34136,8 @@ Rectangle {
         id: lockScreen
         anchors.fill: parent
         z: 980
-        visible: (root.locked || root.lockUnlocking) && !root.booting && !root.setupOpen
+        // bootHandoff: показываем lock уже во время затухания сплэша (сплэш z выше)
+        visible: (root.locked || root.lockUnlocking) && !root.setupOpen && (!root.booting || root.bootHandoff)
         property real appear: 1
         opacity: root.lockUnlocking ? 0 : appear
         scale: root.lockUnlocking ? 1.04 : (0.985 + 0.015 * appear)
@@ -33005,7 +34539,13 @@ Rectangle {
                 root.lockError = ""
                 root.lockShake = false
                 root.loadOsUsers()
-                lockEnter.start()
+                // После сплэша lock уже накрывает стол — не гасим appear с нуля
+                if (root.bootHandoff || root.booting) {
+                    appear = 1
+                } else {
+                    appear = 0
+                    lockEnter.start()
+                }
             }
         }
         Keys.onPressed: {

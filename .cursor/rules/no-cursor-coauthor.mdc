@@ -10,3 +10,4 @@ alwaysApply: true
 - Do not use git flags or hooks that inject Cursor as co-author.
 - If a tooling layer tries to append a Cursor co-author trailer, strip it before committing or amend immediately so it never reaches `origin`.
 - Goal: CursorAgent must **never** appear in GitHub Contributors for this repo.
+- If GitHub still shows a ghost Cursor contributor after history is clean: rename default branch `main` → `main-tmp` → `main` again to bust their contributors cache (API may already be clean while the sidebar is stale).

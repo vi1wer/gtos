@@ -6,21 +6,39 @@
     "all",
     "alpine",
     "linux",
-    "windows",
-    "web"
+    "windows"
   ],
-  "count": 62,
+  "count": 59,
   "categories": [
     "all",
+    "Утилиты",
     "Творчество",
     "Разработка",
     "Интернет",
-    "Утилиты",
-    "Офис",
     "Медиа",
+    "Офис",
     "Система"
   ],
   "apps": [
+    {
+      "id": "bitwarden-linux",
+      "apk": "",
+      "name": "Bitwarden",
+      "pub": "Bitwarden Inc.",
+      "cat": "Утилиты",
+      "desc": "Менеджер паролей — Linux AppImage",
+      "iconKind": "settings",
+      "source": "linux",
+      "platform": "linux",
+      "format": "appimage",
+      "launchId": "pkg",
+      "featured": true,
+      "url": "https://github.com/bitwarden/clients/releases/download/desktop-v2025.1.3/Bitwarden-2025.1.3-x86_64.AppImage",
+      "version": "2025.1.3",
+      "size": 123238262,
+      "available": true,
+      "price": "Бесплатно"
+    },
     {
       "id": "blender",
       "apk": "blender",
@@ -38,7 +56,15 @@
       "size": 41145177,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/blender-5.1.2-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/blender/26894",
+        "https://screenshots.debian.net/screenshot/blender/18881",
+        "https://screenshots.debian.net/screenshot/blender/16656",
+        "https://screenshots.debian.net/screenshot/blender/15972",
+        "https://screenshots.debian.net/screenshot/blender/15791",
+        "https://screenshots.debian.net/screenshot/blender/15694"
+      ]
     },
     {
       "id": "cursor-linux",
@@ -62,6 +88,46 @@
       "price": "Бесплатно"
     },
     {
+      "id": "discord",
+      "apk": "",
+      "name": "Discord",
+      "pub": "Discord Inc.",
+      "cat": "Интернет",
+      "desc": "Голос, чаты и сообщества — официальный Linux-клиент",
+      "iconKind": "browser",
+      "homeUrl": "https://discord.com/",
+      "source": "linux",
+      "platform": "linux",
+      "format": "tar.gz",
+      "featured": true,
+      "launchId": "pkg",
+      "url": "https://discord.com/api/download?platform=linux&format=tar.gz",
+      "bin": "Discord",
+      "version": "stable",
+      "available": true,
+      "price": "Бесплатно"
+    },
+    {
+      "id": "figma-linux",
+      "apk": "",
+      "name": "Figma",
+      "pub": "Figma-Linux",
+      "cat": "Творчество",
+      "desc": "Неофициальный Linux-клиент Figma — AppImage",
+      "iconKind": "draw",
+      "source": "linux",
+      "platform": "linux",
+      "format": "appimage",
+      "launchId": "pkg",
+      "featured": true,
+      "url": "https://github.com/Figma-Linux/figma-linux/releases/download/v0.11.5/figma-linux_0.11.5_linux_x86_64.AppImage",
+      "bin": "figma-linux",
+      "version": "0.11.5",
+      "size": 109019273,
+      "available": true,
+      "price": "Бесплатно"
+    },
+    {
       "id": "firefox",
       "apk": "firefox",
       "name": "Firefox",
@@ -79,7 +145,31 @@
       "size": 98322025,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/firefox-151.0.3-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/firefox/18580",
+        "https://screenshots.debian.net/screenshot/firefox/14721"
+      ]
+    },
+    {
+      "id": "freetube",
+      "apk": "",
+      "name": "FreeTube",
+      "pub": "FreeTubeApp",
+      "cat": "Медиа",
+      "desc": "YouTube без рекламы — Linux AppImage",
+      "iconKind": "video",
+      "source": "linux",
+      "platform": "linux",
+      "format": "appimage",
+      "launchId": "pkg",
+      "featured": true,
+      "url": "https://github.com/FreeTubeApp/FreeTube/releases/download/v0.26.0-beta/freetube-0.26.0-beta-amd64.AppImage",
+      "bin": "freetube",
+      "version": "0.26.0",
+      "size": 118979002,
+      "available": true,
+      "price": "Бесплатно"
     },
     {
       "id": "gimp",
@@ -98,7 +188,35 @@
       "size": 19594822,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/gimp-3.2.4-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/gimp/27743",
+        "https://screenshots.debian.net/screenshot/gimp/27742",
+        "https://screenshots.debian.net/screenshot/gimp/27741",
+        "https://screenshots.debian.net/screenshot/gimp/27740",
+        "https://screenshots.debian.net/screenshot/gimp/27739",
+        "https://screenshots.debian.net/screenshot/gimp/27738"
+      ]
+    },
+    {
+      "id": "github-desktop",
+      "apk": "",
+      "name": "GitHub Desktop",
+      "pub": "GitHub / shiftkey",
+      "cat": "Разработка",
+      "desc": "Клиент GitHub для Linux — AppImage",
+      "iconKind": "term",
+      "source": "linux",
+      "platform": "linux",
+      "format": "appimage",
+      "featured": true,
+      "launchId": "pkg",
+      "url": "https://github.com/shiftkey/desktop/releases/download/release-3.4.12-linux1/GitHubDesktop-linux-x86_64-3.4.12-linux1.AppImage",
+      "bin": "github-desktop",
+      "version": "3.4.12",
+      "size": 176716833,
+      "available": true,
+      "price": "Бесплатно"
     },
     {
       "id": "chromium",
@@ -118,7 +236,15 @@
       "size": 151084164,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/chromium-155.0.8059.84-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/chromium/21664",
+        "https://screenshots.debian.net/screenshot/chromium/21223",
+        "https://screenshots.debian.net/screenshot/chromium/21222",
+        "https://screenshots.debian.net/screenshot/chromium/17197",
+        "https://screenshots.debian.net/screenshot/chromium/17196",
+        "https://screenshots.debian.net/screenshot/chromium/17195"
+      ]
     },
     {
       "id": "htop",
@@ -137,7 +263,15 @@
       "size": 143008,
       "repo": "main",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/htop-3.5.3-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/htop/27975",
+        "https://screenshots.debian.net/screenshot/htop/24615",
+        "https://screenshots.debian.net/screenshot/htop/20856",
+        "https://screenshots.debian.net/screenshot/htop/20855",
+        "https://screenshots.debian.net/screenshot/htop/18833",
+        "https://screenshots.debian.net/screenshot/htop/14778"
+      ]
     },
     {
       "id": "inkscape",
@@ -156,7 +290,15 @@
       "size": 7924041,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/inkscape-1.4.2-r8.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/inkscape/26170",
+        "https://screenshots.debian.net/screenshot/inkscape/26139",
+        "https://screenshots.debian.net/screenshot/inkscape/23355",
+        "https://screenshots.debian.net/screenshot/inkscape/22813",
+        "https://screenshots.debian.net/screenshot/inkscape/22812",
+        "https://screenshots.debian.net/screenshot/inkscape/19869"
+      ]
     },
     {
       "id": "libreoffice",
@@ -175,7 +317,15 @@
       "size": 1351,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/libreoffice-25.8.7.3-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/libreoffice-writer/23360",
+        "https://screenshots.debian.net/screenshot/libreoffice-writer/21850",
+        "https://screenshots.debian.net/screenshot/libreoffice-calc/23363",
+        "https://screenshots.debian.net/screenshot/libreoffice-calc/21680",
+        "https://screenshots.debian.net/screenshot/libreoffice-impress/23361",
+        "https://screenshots.debian.net/screenshot/libreoffice-impress/22211"
+      ]
     },
     {
       "id": "notepadpp-win",
@@ -190,10 +340,10 @@
       "format": "zip",
       "featured": true,
       "launchId": "pkg",
-      "url": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.7.5/npp.8.7.5.portable.x64.zip",
+      "url": "https://github.com/notepad-plus-plus/notepad-plus-plus/releases/download/v8.9.9.1/npp.8.9.9.1.portable.x64.zip",
       "exe": "notepad++.exe",
-      "version": "8.7.5",
-      "size": 0,
+      "version": "8.9.9.1",
+      "size": 8369720,
       "available": true,
       "price": "Бесплатно"
     },
@@ -203,7 +353,7 @@
       "name": "Obsidian",
       "pub": "Obsidian.md",
       "cat": "Офис",
-      "desc": "База знаний Markdown — Linux AppImage (не Alpine)",
+      "desc": "База знаний Markdown — Linux AppImage",
       "iconKind": "notes",
       "source": "linux",
       "platform": "linux",
@@ -212,7 +362,27 @@
       "launchId": "pkg",
       "url": "https://github.com/obsidianmd/obsidian-releases/releases/download/v1.8.4/Obsidian-1.8.4.AppImage",
       "version": "1.8.4",
-      "size": 0,
+      "size": 116560024,
+      "available": true,
+      "price": "Бесплатно"
+    },
+    {
+      "id": "onlyoffice-linux",
+      "apk": "",
+      "name": "ONLYOFFICE Desktop",
+      "pub": "Ascensio System",
+      "cat": "Офис",
+      "desc": "Редактор документов, таблиц и презентаций — Linux AppImage",
+      "iconKind": "notes",
+      "source": "linux",
+      "platform": "linux",
+      "format": "appimage",
+      "featured": true,
+      "launchId": "pkg",
+      "url": "https://github.com/ONLYOFFICE/DesktopEditors/releases/download/v10.0.0/DesktopEditors-x86_64.AppImage",
+      "bin": "DesktopEditors",
+      "version": "10.0.0",
+      "size": 425810424,
       "available": true,
       "price": "Бесплатно"
     },
@@ -234,7 +404,15 @@
       "size": 50402734,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/telegram-desktop-6.8.5-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/telegram-desktop/19363",
+        "https://screenshots.debian.net/screenshot/telegram-desktop/19362",
+        "https://screenshots.debian.net/screenshot/telegram-desktop/19361",
+        "https://screenshots.debian.net/screenshot/telegram-desktop/16683",
+        "https://screenshots.debian.net/screenshot/telegram-desktop/16682",
+        "https://screenshots.debian.net/screenshot/telegram-desktop/16681"
+      ]
     },
     {
       "id": "thunderbird",
@@ -253,27 +431,29 @@
       "size": 99684427,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/thunderbird-151.0.1-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/thunderbird/9138",
+        "https://screenshots.debian.net/screenshot/thunderbird/9137",
+        "https://screenshots.debian.net/screenshot/thunderbird/7717",
+        "https://screenshots.debian.net/screenshot/thunderbird/4229"
+      ]
     },
     {
       "id": "vscode",
-      "apk": "",
+      "apk": "code-oss",
       "name": "Visual Studio Code",
-      "pub": "Microsoft",
+      "pub": "Microsoft / OSS",
       "cat": "Разработка",
-      "desc": "Редактор кода с расширениями — Linux AppImage",
+      "desc": "Редактор кода с расширениями",
       "iconKind": "term",
       "featured": true,
       "launchId": "pkg",
       "price": "Бесплатно",
-      "source": "linux",
-      "platform": "linux",
-      "format": "appimage",
-      "url": "https://github.com/VSCodium/vscodium/releases/download/1.96.4.25017/VSCodium-1.96.4.25017-x86_64.AppImage",
-      "bin": "codium",
-      "version": "1.96.4",
-      "size": 0,
-      "available": true
+      "source": "alpine",
+      "platform": "alpine",
+      "available": false,
+      "version": ""
     },
     {
       "id": "vlc",
@@ -281,23 +461,30 @@
       "name": "VLC media player",
       "pub": "VideoLAN",
       "cat": "Медиа",
-      "desc": "Настоящий VideoLAN VLC: видео, аудио, субтитры и потоки — не оболочка GT",
+      "desc": "Воспроизведение почти любого видео и аудио",
       "iconKind": "video",
       "featured": true,
-      "launchId": "pkg",
+      "launchId": "vlc",
       "engineBins": [
         "vlc",
         "cvlc"
       ],
       "price": "Бесплатно",
-      "homeUrl": "https://www.videolan.org/vlc/",
       "source": "alpine",
       "platform": "alpine",
       "version": "3.0.23-r4",
       "size": 5464350,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/vlc-3.0.23-r4.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/vlc/27973",
+        "https://screenshots.debian.net/screenshot/vlc/27972",
+        "https://screenshots.debian.net/screenshot/vlc/24322",
+        "https://screenshots.debian.net/screenshot/vlc/24321",
+        "https://screenshots.debian.net/screenshot/vlc/24320",
+        "https://screenshots.debian.net/screenshot/vlc/24319"
+      ]
     },
     {
       "id": "vscodium-linux",
@@ -328,6 +515,7 @@
       "desc": "Архиватор 7z / zip / rar",
       "iconKind": "files",
       "launchId": "pkg",
+      "bin": "7zz",
       "price": "Бесплатно",
       "source": "alpine",
       "platform": "alpine",
@@ -335,7 +523,12 @@
       "size": 917978,
       "repo": "main",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/7zip-26.01-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/7zip/29401",
+        "https://screenshots.debian.net/screenshot/7zip/29400",
+        "https://screenshots.debian.net/screenshot/7zip/29399"
+      ]
     },
     {
       "id": "7zip-win",
@@ -343,17 +536,17 @@
       "name": "7-Zip (Windows)",
       "pub": "Igor Pavlov",
       "cat": "Утилиты",
-      "desc": "Архиватор 7-Zip для Windows через Wine",
+      "desc": "Архиватор 7-Zip для Windows через Wine (7zr)",
       "iconKind": "files",
       "source": "windows",
       "platform": "windows",
       "format": "exe",
       "portable": true,
       "launchId": "pkg",
-      "url": "https://www.7-zip.org/a/7za.exe",
-      "exe": "7za.exe",
+      "url": "https://www.7-zip.org/a/7zr.exe",
+      "exe": "7zr.exe",
       "version": "extra",
-      "size": 0,
+      "size": 602624,
       "available": true,
       "price": "Бесплатно"
     },
@@ -373,7 +566,15 @@
       "size": 5116782,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/abiword-3.0.8-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/abiword/17757",
+        "https://screenshots.debian.net/screenshot/abiword/17756",
+        "https://screenshots.debian.net/screenshot/abiword/17755",
+        "https://screenshots.debian.net/screenshot/abiword/17754",
+        "https://screenshots.debian.net/screenshot/abiword/17753",
+        "https://screenshots.debian.net/screenshot/abiword/17752"
+      ]
     },
     {
       "id": "audacious",
@@ -391,7 +592,15 @@
       "size": 360927,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/audacious-4.5.1-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/audacious/23468",
+        "https://screenshots.debian.net/screenshot/audacious/21228",
+        "https://screenshots.debian.net/screenshot/audacious/20524",
+        "https://screenshots.debian.net/screenshot/audacious/18581",
+        "https://screenshots.debian.net/screenshot/audacious/18499",
+        "https://screenshots.debian.net/screenshot/audacious/15734"
+      ]
     },
     {
       "id": "audacity",
@@ -409,40 +618,15 @@
       "size": 9398319,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/audacity-3.7.7-r0.apk",
-      "available": true
-    },
-    {
-      "id": "bitwarden",
-      "apk": "",
-      "name": "Bitwarden",
-      "pub": "Bitwarden Inc.",
-      "cat": "Утилиты",
-      "desc": "Менеджер паролей в браузере",
-      "iconKind": "settings",
-      "homeUrl": "https://vault.bitwarden.com/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
-    },
-    {
-      "id": "bitwarden-linux",
-      "apk": "",
-      "name": "Bitwarden Desktop",
-      "pub": "Bitwarden Inc.",
-      "cat": "Утилиты",
-      "desc": "Менеджер паролей — Linux AppImage",
-      "iconKind": "settings",
-      "source": "linux",
-      "platform": "linux",
-      "format": "appimage",
-      "launchId": "pkg",
-      "url": "https://github.com/bitwarden/clients/releases/download/desktop-v2025.1.3/Bitwarden-2025.1.3-x86_64.AppImage",
-      "version": "2025.1.3",
-      "size": 0,
       "available": true,
-      "price": "Бесплатно"
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/audacity/23241",
+        "https://screenshots.debian.net/screenshot/audacity/22755",
+        "https://screenshots.debian.net/screenshot/audacity/22754",
+        "https://screenshots.debian.net/screenshot/audacity/22753",
+        "https://screenshots.debian.net/screenshot/audacity/22752",
+        "https://screenshots.debian.net/screenshot/audacity/22751"
+      ]
     },
     {
       "id": "darktable",
@@ -460,22 +644,15 @@
       "size": 7654936,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/darktable-5.4.1-r0.apk",
-      "available": true
-    },
-    {
-      "id": "discord",
-      "apk": "",
-      "name": "Discord",
-      "pub": "Discord Inc.",
-      "cat": "Интернет",
-      "desc": "Голос, чаты и сообщества",
-      "iconKind": "browser",
-      "homeUrl": "https://discord.com/app",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/darktable/22052",
+        "https://screenshots.debian.net/screenshot/darktable/22039",
+        "https://screenshots.debian.net/screenshot/darktable/20714",
+        "https://screenshots.debian.net/screenshot/darktable/20713",
+        "https://screenshots.debian.net/screenshot/darktable/20712",
+        "https://screenshots.debian.net/screenshot/darktable/20711"
+      ]
     },
     {
       "id": "docker",
@@ -493,7 +670,10 @@
       "size": 1323,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/docker-29.9.2-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/docker"
+      ]
     },
     {
       "id": "element",
@@ -526,22 +706,15 @@
       "size": 269004,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/evince-48.4-r0.apk",
-      "available": true
-    },
-    {
-      "id": "figma",
-      "apk": "",
-      "name": "Figma",
-      "pub": "Figma Inc.",
-      "cat": "Творчество",
-      "desc": "Дизайн интерфейсов в браузере",
-      "iconKind": "draw",
-      "homeUrl": "https://www.figma.com/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/evince/23371",
+        "https://screenshots.debian.net/screenshot/evince/18669",
+        "https://screenshots.debian.net/screenshot/evince/15840",
+        "https://screenshots.debian.net/screenshot/evince/14109",
+        "https://screenshots.debian.net/screenshot/evince/10395",
+        "https://screenshots.debian.net/screenshot/evince/5788"
+      ]
     },
     {
       "id": "filezilla",
@@ -559,7 +732,15 @@
       "size": 2845923,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/filezilla-3.68.1-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/filezilla/21356",
+        "https://screenshots.debian.net/screenshot/filezilla/21355",
+        "https://screenshots.debian.net/screenshot/filezilla/21354",
+        "https://screenshots.debian.net/screenshot/filezilla/21353",
+        "https://screenshots.debian.net/screenshot/filezilla/21352",
+        "https://screenshots.debian.net/screenshot/filezilla/21351"
+      ]
     },
     {
       "id": "flameshot",
@@ -577,7 +758,15 @@
       "size": 604344,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/flameshot-13.3.0-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/flameshot/18940",
+        "https://screenshots.debian.net/screenshot/flameshot/18939",
+        "https://screenshots.debian.net/screenshot/flameshot/18938",
+        "https://screenshots.debian.net/screenshot/flameshot/18937",
+        "https://screenshots.debian.net/screenshot/flameshot/18936",
+        "https://screenshots.debian.net/screenshot/flameshot/18935"
+      ]
     },
     {
       "id": "git",
@@ -595,7 +784,11 @@
       "size": 3546724,
       "repo": "main",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/git-2.54.0-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/git/9480",
+        "https://screenshots.debian.net/screenshot/git/5831"
+      ]
     },
     {
       "id": "gitcola",
@@ -613,22 +806,10 @@
       "size": 979949,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/git-cola-4.18.2-r1.apk",
-      "available": true
-    },
-    {
-      "id": "github",
-      "apk": "",
-      "name": "GitHub",
-      "pub": "GitHub",
-      "cat": "Разработка",
-      "desc": "Репозитории и CI в браузере",
-      "iconKind": "browser",
-      "homeUrl": "https://github.com/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/git-cola/15369"
+      ]
     },
     {
       "id": "gnumeric",
@@ -646,7 +827,15 @@
       "size": 2569874,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/gnumeric-1.12.60-r1.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/gnumeric/17740",
+        "https://screenshots.debian.net/screenshot/gnumeric/17739",
+        "https://screenshots.debian.net/screenshot/gnumeric/17738",
+        "https://screenshots.debian.net/screenshot/gnumeric/17737",
+        "https://screenshots.debian.net/screenshot/gnumeric/17736",
+        "https://screenshots.debian.net/screenshot/gnumeric/17735"
+      ]
     },
     {
       "id": "gparted",
@@ -664,7 +853,15 @@
       "size": 431861,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/gparted-1.8.1-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/gparted/24065",
+        "https://screenshots.debian.net/screenshot/gparted/23040",
+        "https://screenshots.debian.net/screenshot/gparted/22540",
+        "https://screenshots.debian.net/screenshot/gparted/22539",
+        "https://screenshots.debian.net/screenshot/gparted/21395",
+        "https://screenshots.debian.net/screenshot/gparted/21394"
+      ]
     },
     {
       "id": "joplin-linux",
@@ -718,7 +915,15 @@
       "size": 93649202,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/krita-6.0.1-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/krita/22269",
+        "https://screenshots.debian.net/screenshot/krita/17088",
+        "https://screenshots.debian.net/screenshot/krita/17087",
+        "https://screenshots.debian.net/screenshot/krita/17086",
+        "https://screenshots.debian.net/screenshot/krita/17085",
+        "https://screenshots.debian.net/screenshot/krita/16858"
+      ]
     },
     {
       "id": "mpv",
@@ -736,7 +941,14 @@
       "size": 1213917,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/mpv-0.41.0-r2.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/mpv/26626",
+        "https://screenshots.debian.net/screenshot/mpv/26624",
+        "https://screenshots.debian.net/screenshot/mpv/20971",
+        "https://screenshots.debian.net/screenshot/mpv/13348",
+        "https://screenshots.debian.net/screenshot/mpv/11900"
+      ]
     },
     {
       "id": "neovim",
@@ -754,7 +966,10 @@
       "size": 6146411,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/neovim-0.12.2-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/neovim/24978"
+      ]
     },
     {
       "id": "nodejs",
@@ -772,7 +987,10 @@
       "size": 18522707,
       "repo": "main",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/nodejs-24.22.1-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/nodejs/24258"
+      ]
     },
     {
       "id": "obs",
@@ -790,22 +1008,13 @@
       "size": 8298209,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/obs-studio-32.1.2-r4.apk",
-      "available": true
-    },
-    {
-      "id": "obsidian",
-      "apk": "",
-      "name": "Obsidian",
-      "pub": "Obsidian.md",
-      "cat": "Офис",
-      "desc": "База знаний на Markdown",
-      "iconKind": "notes",
-      "homeUrl": "https://obsidian.md/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/obs-studio/26627",
+        "https://screenshots.debian.net/screenshot/obs-studio/22268",
+        "https://screenshots.debian.net/screenshot/obs-studio/19194",
+        "https://screenshots.debian.net/screenshot/obs-studio/14886"
+      ]
     },
     {
       "id": "okular",
@@ -823,22 +1032,15 @@
       "size": 96736,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/okular-26.04.2-r0.apk",
-      "available": true
-    },
-    {
-      "id": "onlyoffice",
-      "apk": "",
-      "name": "ONLYOFFICE",
-      "pub": "Ascensio System",
-      "cat": "Офис",
-      "desc": "Редактор документов в браузере",
-      "iconKind": "notes",
-      "homeUrl": "https://www.onlyoffice.com/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/okular/21480",
+        "https://screenshots.debian.net/screenshot/okular/21479",
+        "https://screenshots.debian.net/screenshot/okular/18985",
+        "https://screenshots.debian.net/screenshot/okular/15350",
+        "https://screenshots.debian.net/screenshot/okular/9644",
+        "https://screenshots.debian.net/screenshot/okular/2068"
+      ]
     },
     {
       "id": "putty-win",
@@ -876,7 +1078,10 @@
       "size": 8388442,
       "repo": "main",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/python3-3.14.8-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/python3/21030"
+      ]
     },
     {
       "id": "qbittorrent",
@@ -894,7 +1099,15 @@
       "size": 9661463,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/qbittorrent-5.2.1-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/qbittorrent/22732",
+        "https://screenshots.debian.net/screenshot/qbittorrent/22731",
+        "https://screenshots.debian.net/screenshot/qbittorrent/22730",
+        "https://screenshots.debian.net/screenshot/qbittorrent/22729",
+        "https://screenshots.debian.net/screenshot/qbittorrent/22728",
+        "https://screenshots.debian.net/screenshot/qbittorrent/22727"
+      ]
     },
     {
       "id": "rhythmbox",
@@ -912,7 +1125,15 @@
       "size": 1011441,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/rhythmbox-3.4.9-r1.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/rhythmbox/14943",
+        "https://screenshots.debian.net/screenshot/rhythmbox/10367",
+        "https://screenshots.debian.net/screenshot/rhythmbox/10067",
+        "https://screenshots.debian.net/screenshot/rhythmbox/9523",
+        "https://screenshots.debian.net/screenshot/rhythmbox/9112",
+        "https://screenshots.debian.net/screenshot/rhythmbox/8327"
+      ]
     },
     {
       "id": "shotcut",
@@ -930,22 +1151,10 @@
       "size": 12506679,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/shotcut-26.1.30-r0.apk",
-      "available": true
-    },
-    {
-      "id": "spotify",
-      "apk": "",
-      "name": "Spotify",
-      "pub": "Spotify AB",
-      "cat": "Медиа",
-      "desc": "Музыкальный стриминг в браузере",
-      "iconKind": "music",
-      "homeUrl": "https://open.spotify.com/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/shotcut/19494"
+      ]
     },
     {
       "id": "timeshift",
@@ -960,7 +1169,15 @@
       "platform": "alpine",
       "launchId": "pkg",
       "available": false,
-      "version": ""
+      "version": "",
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/timeshift/22339",
+        "https://screenshots.debian.net/screenshot/timeshift/22338",
+        "https://screenshots.debian.net/screenshot/timeshift/22337",
+        "https://screenshots.debian.net/screenshot/timeshift/22336",
+        "https://screenshots.debian.net/screenshot/timeshift/22335",
+        "https://screenshots.debian.net/screenshot/timeshift/22334"
+      ]
     },
     {
       "id": "transmission",
@@ -978,7 +1195,15 @@
       "size": 1288,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/transmission-4.1.2-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/transmission-gtk/27979",
+        "https://screenshots.debian.net/screenshot/transmission-gtk/22702",
+        "https://screenshots.debian.net/screenshot/transmission-gtk/22701",
+        "https://screenshots.debian.net/screenshot/transmission-gtk/22700",
+        "https://screenshots.debian.net/screenshot/transmission-gtk/22699",
+        "https://screenshots.debian.net/screenshot/transmission-gtk/22698"
+      ]
     },
     {
       "id": "vim",
@@ -996,22 +1221,35 @@
       "size": 1826789,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/vim-9.2.1202-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/vim/25402",
+        "https://screenshots.debian.net/screenshot/vim/25401",
+        "https://screenshots.debian.net/screenshot/vim/25400",
+        "https://screenshots.debian.net/screenshot/vim/22682",
+        "https://screenshots.debian.net/screenshot/vim/18876",
+        "https://screenshots.debian.net/screenshot/vim/929"
+      ]
     },
     {
       "id": "whatsapp",
       "apk": "",
       "name": "WhatsApp",
-      "pub": "Meta",
+      "pub": "ZapZap / Meta",
       "cat": "Интернет",
-      "desc": "Мессенджер WhatsApp Web",
+      "desc": "Десктоп-клиент WhatsApp для Linux (ZapZap)",
       "iconKind": "browser",
-      "homeUrl": "https://web.whatsapp.com/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "homeUrl": "https://github.com/rafatosta/zapzap",
+      "source": "linux",
+      "platform": "linux",
+      "format": "appimage",
+      "launchId": "pkg",
+      "url": "https://github.com/rafatosta/zapzap/releases/download/7.5.1/ZapZap-7.5.1-linux-x86_64.AppImage",
+      "bin": "zapzap",
+      "version": "7.5.1",
+      "size": 207947072,
+      "available": true,
+      "price": "Бесплатно"
     },
     {
       "id": "winscp-win",
@@ -1048,22 +1286,10 @@
       "size": 1489,
       "repo": "main",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/main/x86_64/wireguard-tools-1.0.20260223-r0.apk",
-      "available": true
-    },
-    {
-      "id": "youtube",
-      "apk": "",
-      "name": "YouTube",
-      "pub": "Google",
-      "cat": "Медиа",
-      "desc": "Видео и музыка YouTube",
-      "iconKind": "video",
-      "homeUrl": "https://www.youtube.com/",
-      "source": "web",
-      "launchId": "browser",
-      "price": "Бесплатно",
-      "platform": "web",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/wireguard-tools/15232"
+      ]
     },
     {
       "id": "baobab",
@@ -1081,7 +1307,15 @@
       "size": 133294,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/baobab-50.0-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/baobab/24124",
+        "https://screenshots.debian.net/screenshot/baobab/24123",
+        "https://screenshots.debian.net/screenshot/baobab/23175",
+        "https://screenshots.debian.net/screenshot/baobab/18722",
+        "https://screenshots.debian.net/screenshot/baobab/18721",
+        "https://screenshots.debian.net/screenshot/baobab/18720"
+      ]
     },
     {
       "id": "gnome-disk-utility",
@@ -1099,7 +1333,15 @@
       "size": 199385,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/gnome-disk-utility-46.1-r2.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/gnome-disk-utility/23376",
+        "https://screenshots.debian.net/screenshot/gnome-disk-utility/19819",
+        "https://screenshots.debian.net/screenshot/gnome-disk-utility/14949",
+        "https://screenshots.debian.net/screenshot/gnome-disk-utility/6134",
+        "https://screenshots.debian.net/screenshot/gnome-disk-utility/6132",
+        "https://screenshots.debian.net/screenshot/gnome-disk-utility/6131"
+      ]
     },
     {
       "id": "calculator",
@@ -1117,7 +1359,14 @@
       "size": 90214,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/galculator-2.1.4-r5.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/galculator/20360",
+        "https://screenshots.debian.net/screenshot/galculator/18293",
+        "https://screenshots.debian.net/screenshot/galculator/18292",
+        "https://screenshots.debian.net/screenshot/galculator/18291",
+        "https://screenshots.debian.net/screenshot/galculator/620"
+      ]
     },
     {
       "id": "gnome-system-monitor",
@@ -1135,7 +1384,15 @@
       "size": 226319,
       "repo": "community",
       "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/gnome-system-monitor-50.0-r0.apk",
-      "available": true
+      "available": true,
+      "screenshots": [
+        "https://screenshots.debian.net/screenshot/gnome-system-monitor/23389",
+        "https://screenshots.debian.net/screenshot/gnome-system-monitor/15626",
+        "https://screenshots.debian.net/screenshot/gnome-system-monitor/10926",
+        "https://screenshots.debian.net/screenshot/gnome-system-monitor/10413",
+        "https://screenshots.debian.net/screenshot/gnome-system-monitor/10412",
+        "https://screenshots.debian.net/screenshot/gnome-system-monitor/5117"
+      ]
     }
   ]
 }
