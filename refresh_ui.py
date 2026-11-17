@@ -98,6 +98,18 @@ def main() -> None:
                 tree[f"usr/share/gtos/fonts/{fp.name}"] = FsNode("reg", 0o100644, data)
                 # also beside DejaVu so QT_QPA_FONTDIR picks them up
                 tree[f"usr/share/fonts/dejavu/{fp.name}"] = FsNode("reg", 0o100644, data)
+    # эмодзи: fontconfig подставляет Noto Color Emoji после основных шрифтов UI
+    tree["etc/fonts/conf.d"] = FsNode("dir", 0o040755)
+    tree["etc/fonts/conf.d/60-gtos-emoji.conf"] = FsNode("reg", 0o100644, b"""<?xml version="1.0"?>
+<!DOCTYPE fontconfig SYSTEM "fonts.dtd">
+<fontconfig>
+  <alias binding="weak"><family>sans-serif</family><prefer><family>Montserrat</family><family>Noto Color Emoji</family></prefer></alias>
+  <alias binding="weak"><family>serif</family><prefer><family>Noto Color Emoji</family></prefer></alias>
+  <alias binding="weak"><family>monospace</family><prefer><family>Cascadia Mono</family><family>Noto Color Emoji</family></prefer></alias>
+  <alias binding="weak"><family>Montserrat</family><default><family>Noto Color Emoji</family></default></alias>
+  <alias binding="weak"><family>emoji</family><prefer><family>Noto Color Emoji</family></prefer></alias>
+</fontconfig>
+""")
     # session + xorg + init from build (эмулятор 1920×1080)
     from build import SESSION, XORG, RUNTIME_INIT
     tree["usr/bin/gtos-session"] = FsNode("reg", 0o100755, SESSION.encode().replace(b"\r\n", b"\n"))
@@ -107,6 +119,7 @@ def main() -> None:
     tree["usr/bin/gtos-runuser"] = FsNode("reg", 0o100755, runuser)
     ffwrap = (ROOT / "scripts" / "gtos-firefox.sh").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/bin/gtos-firefox"] = FsNode("reg", 0o100755, ffwrap)
+    tree.pop("usr/bin/gtos-lumen", None)
     orbitwrap = (ROOT / "scripts" / "gtos-orbit.sh").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/bin/gtos-orbit"] = FsNode("reg", 0o100755, orbitwrap)
     install_sh = (ROOT / "scripts" / "gtos-install.sh").read_bytes().replace(b"\r\n", b"\n")

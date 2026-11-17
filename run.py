@@ -85,6 +85,54 @@ def ensure_persist(qemu: Path) -> None:
         print(f"Не удалось проверить/расширить диск: {exc}")
 
 
+def qemu_supports_accel(qemu: Path, name: str) -> bool:
+    try:
+        out = subprocess.run(
+            [str(qemu), "-accel", "help"],
+            check=False,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+        blob = (out.stdout or "") + (out.stderr or "")
+        return name.lower() in blob.lower()
+    except Exception:
+        return False
+
+
+def pick_accel(qemu: Path) -> tuple[list[str], str]:
+    """По умолчанию TCG. WHPX — только с --whpx (нужна платформа гипервизора Windows)."""
+    if "--whpx" in sys.argv and qemu_supports_accel(qemu, "whpx"):
+        return ["-accel", "whpx,kernel-irqchip=off", "-cpu", "max,hv_relaxed,hv_vapic,hv_time"], "WHPX"
+    return ["-accel", "tcg,thread=multi,tb-size=256"], "TCG"
+
+
+def pick_display_gpu() -> tuple[list[str], str, bool]:
+    """VirGL (virtio-vga-gl + gtk,gl=on). Флаг: --no-gl — software как раньше."""
+    if "--no-gl" in sys.argv or "--safe" in sys.argv:
+        return (
+            [
+                "-device",
+                "virtio-vga,xres=1920,yres=1080",
+                "-display",
+                "gtk,gl=off,full-screen=off,grab-on-hover=off,zoom-to-fit=on,show-cursor=on,window-close=on",
+            ],
+            "GTK·soft",
+            False,
+        )
+    return (
+        [
+            "-device",
+            "virtio-vga-gl,xres=1920,yres=1080",
+            "-display",
+            "gtk,gl=on,full-screen=off,grab-on-hover=off,zoom-to-fit=on,show-cursor=on,window-close=on",
+        ],
+        "VirGL",
+        True,
+    )
+
+
 def main() -> int:
     if not KERNEL.is_file() or not INITRD.is_file():
         print("Образ ещё не собран. Запусти: python build.py")
@@ -97,29 +145,48 @@ def main() -> int:
     ensure_persist(qemu)
     serial_log = OUT / "gui-serial.log"
     smp = str(min(8, max(4, (os.cpu_count() or 4) // 2)))
-    append = "console=tty0 console=ttyS0,115200 rdinit=/init quiet loglevel=2 video=1920x1080 noapic"
+    accel_args, accel_label = pick_accel(qemu)
+    gpu_args, gpu_label, virgl = pick_display_gpu()
+
+    append = "console=tty0 console=ttyS0,115200 rdinit=/init quiet loglevel=2 video=1920x1080"
+    # noapic оставляем только для TCG (на WHPX мешает)
+    if accel_label == "TCG":
+        append += " noapic"
     if safe:
         append += " gtos.safemode=1"
-    # Рабочий проверенный режим: Full HD + GTK (как до экспериментов)
-    args = [
-        "-accel", "tcg,thread=multi,tb-size=256",
-        "-cpu", "qemu64",
-        "-m", "14336",
-        "-smp", smp,
-        "-kernel", str(KERNEL),
-        "-initrd", str(INITRD),
+    if virgl:
+        append += " gtos.gpu=virgl"
+
+    args: list[str] = [
+        *accel_args,
+    ]
+    # pick_accel уже мог добавить -cpu для WHPX; для TCG — qemu64
+    if "-cpu" not in args:
+        args += ["-cpu", "qemu64"]
+    args += [
+        "-m",
+        "14336",
+        "-smp",
+        smp,
+        "-kernel",
+        str(KERNEL),
+        "-initrd",
+        str(INITRD),
         "-append",
         append,
-        "-device", "virtio-vga,xres=1920,yres=1080",
-        "-display",
-        "gtk,gl=off,full-screen=off,grab-on-hover=off,zoom-to-fit=on,show-cursor=on,window-close=on",
+        *gpu_args,
         "-usb",
-        "-device", "usb-tablet",
-        "-name", "GT/OS 1.6.1" + (" Safe" if safe else ""),
-        "-serial", f"file:{serial_log}",
-        "-netdev", "user,id=net0,hostfwd=tcp::2222-:22",
+        "-device",
+        "usb-tablet",
+        "-name",
+        "GT/OS 1.6.1" + (" Safe" if safe else ""),
+        "-serial",
+        f"file:{serial_log}",
+        "-netdev",
+        "user,id=net0,hostfwd=tcp::2222-:22",
         # romfile= — без PXE option ROM, иначе SeaBIOS зависает на "Booting from ROM"
-        "-device", "virtio-net-pci,netdev=net0,romfile=",
+        "-device",
+        "virtio-net-pci,netdev=net0,romfile=",
     ]
     if DATA_IMG.is_file():
         args += ["-drive", f"file={DATA_IMG},if=virtio,format=qcow2,cache=writeback"]
@@ -130,9 +197,13 @@ def main() -> int:
         args = ["-L", str(bios), *args]
     print(f"QEMU: {qemu}", flush=True)
     mode = "Safe Mode · " if safe else ""
-    print(f"GT/OS 1.6.1 — {mode}1920×1080 · 14 ГБ ОЗУ · диск 16 ГБ · TCG · GTK", flush=True)
+    print(
+        f"GT/OS 1.6.1 — {mode}1920×1080 · 14 ГБ ОЗУ · диск 16 ГБ · {accel_label} · {gpu_label}",
+        flush=True,
+    )
+    if virgl:
+        print("GPU: VirGL (хост OpenGL). Откат: python run.py --no-gl", flush=True)
     print("Закрой окно QEMU, чтобы выключить систему.", flush=True)
-    # Не даём print/кодировке уронить процесс: QEMU уже в args
     try:
         return subprocess.run([str(qemu), *args], check=False).returncode
     except KeyboardInterrupt:

@@ -855,23 +855,36 @@ if command -v amixer >/dev/null 2>&1; then
     amixer -q set Headphone unmute 2>/dev/null || true
     echo GTOS_AUDIO_DEFAULT > /dev/ttyS0
 fi
-# GPU только на реальном железе. QEMU virtio-gpu без VirGL даёт
-# «virtio_gpu: driver missing» и роняет Qt Quick — там software.
+# GPU: реальное железо или QEMU VirGL (cmdline gtos.gpu=virgl из run.py).
+# Обычный virtio-vga без -gl роняет Qt Quick — там software.
 USE_GPU=0
 drm_drv=""
+WANT_VIRGL=0
+if grep -qw 'gtos.gpu=virgl' /proc/cmdline 2>/dev/null || grep -qw 'gtos.virgl=1' /proc/cmdline 2>/dev/null; then
+    WANT_VIRGL=1
+fi
 if [ -e /dev/dri/card0 ] || [ -e /dev/dri/renderD128 ]; then
     if [ -L /sys/class/drm/card0/device/driver ]; then
         drm_drv=$(basename "$(readlink -f /sys/class/drm/card0/device/driver)" 2>/dev/null || true)
     fi
     case "$drm_drv" in
         i915|amdgpu|radeon|nouveau|xe) USE_GPU=1 ;;
+        virtio_gpu)
+            if [ "$WANT_VIRGL" = 1 ]; then USE_GPU=1; else USE_GPU=0; fi
+            ;;
         *) USE_GPU=0 ;;
     esac
 fi
 if [ "$USE_GPU" = 1 ]; then
-    unset QT_QUICK_BACKEND QSG_RHI_BACKEND LIBGL_ALWAYS_SOFTWARE QT_OPENGL 2>/dev/null
+    unset QT_QUICK_BACKEND QSG_RHI_BACKEND LIBGL_ALWAYS_SOFTWARE QT_OPENGL QT_XCB_GL_INTEGRATION 2>/dev/null
     export QSG_RENDER_LOOP=threaded
-    echo "GTOS_RENDER gpu:$drm_drv" > /dev/ttyS0
+    export LIBGL_DRIVERS_PATH="${LIBGL_DRIVERS_PATH:-/usr/lib/dri}"
+    if [ "$drm_drv" = "virtio_gpu" ]; then
+        # гостевой Mesa → VirGL на хосте
+        export MESA_LOADER_DRIVER_OVERRIDE="${MESA_LOADER_DRIVER_OVERRIDE:-virtio_gpu}"
+        export GALLIUM_DRIVER="${GALLIUM_DRIVER:-virgl}"
+    fi
+    echo "GTOS_RENDER gpu:$drm_drv virgl:$WANT_VIRGL" > /dev/ttyS0
 else
     export QT_QUICK_BACKEND=software
     export QSG_RHI_BACKEND=software

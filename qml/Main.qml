@@ -20,6 +20,8 @@ Window {
     FontLoader { id: fontMontserrat; source: "file:///usr/share/gtos/fonts/Montserrat.ttf" }
     FontLoader { id: fontMontserratSb; source: "file:///usr/share/gtos/fonts/Montserrat-SemiBold.ttf" }
     FontLoader { id: fontCascadia; source: "file:///usr/share/gtos/fonts/CascadiaMono.ttf" }
+    FontLoader { id: fontEmoji; source: "file:///usr/share/gtos/fonts/NotoColorEmoji.ttf" }
+    property string emojiFont: fontEmoji.status === FontLoader.Ready ? fontEmoji.name : "Noto Color Emoji"
     property string uiFont: fontMontserrat.status === FontLoader.Ready ? fontMontserrat.name : (fontSora.status === FontLoader.Ready ? fontSora.name : "Montserrat")
     // SemiBold того же семейства — иначе font.bold тянет DejaVu
     property string uiFontBold: fontMontserratSb.status === FontLoader.Ready ? fontMontserratSb.name : uiFont
@@ -38,6 +40,7 @@ Window {
     // раскладка: ru/en — X11 setxkbmap + запасной remap в полях
     property string inputLang: "ru"
     property bool langMenuOpen: false
+    property bool langOsdOpen: false
     property bool xkbReady: false
     property string viewerPath: ""
     property real viewerRot: 0
@@ -87,6 +90,7 @@ Window {
     property string storeInstallLabel: ""
     property bool storeInstallStalled: false
     property int storeStallTicks: 0
+    property int storeDlBase: -1
     property var storePendingApp: null
     property var storeLaunchCheckApp: null
     property var storePendingGlibcApp: null
@@ -197,6 +201,15 @@ Window {
     property bool dockShareAnyWindow: true
     property bool dockCornerDesktop: true
     property string dockMultiDisplayApps: "all" // all | main | taskbar_open
+    property bool dockShowLabels: false
+    property string dockStyle: "pill"   // pill (плашка) | line (линия во всю ширину)
+    property bool settingsDropOpen: false
+    property var settingsDropOptions: []
+    property string settingsDropCurrent: ""
+    property string settingsDropKey: ""
+    property real settingsDropX: 0
+    property real settingsDropY: 0
+    property real settingsDropW: 280
     property string notePath: "/home/misha/Документы/заметка.txt"
     property string noteText: ""
     property var noteTabs: []
@@ -369,6 +382,8 @@ Window {
     property string osVersion: "1.6.1"
     property bool safeMode: false
     property bool secureDeskOpen: false
+    property string secureDeskMode: ""   // "" | "pwd" | "power"
+    property real secureDeskAppear: 0
     property var pendingOps: []
     property bool opsFlyoutOpen: false
     property string backupSchedule: "off"   // off | daily | weekly
@@ -1785,9 +1800,16 @@ Window {
         if (ow === "video" && op.length) { openMediaFile(op); return }
         if (ow === "vlc") {
             var va = storeAppById("vlc")
-            if (va) openStoreApp(va)
-            else launch("vlc", "VLC")
-            if (op.length) notify("VLC", "Файл: " + name, "ok")
+            // сразу настоящий VLC, без shell-плеера
+            if (op.length && sys.run("command -v vlc >/dev/null 2>&1 && echo y").trim() === "y") {
+                runAsDesktopUser("vlc " + shQuote(op), "/tmp/gtos-pkg-vlc.log")
+                notify("VLC", "Открываю «" + name + "»", "ok")
+            } else if (va) {
+                openStoreApp(va)
+                if (op.length) notify("VLC", "Файл: " + name, "ok")
+            } else {
+                notify("VLC", "Плеер не найден", "info")
+            }
             return
         }
         if (ow === "firefox" || ow === "browser") {
@@ -2361,6 +2383,82 @@ Window {
         return "Все"
     }
 
+    function appIconNetUrl(appOrId) {
+        var app = (typeof appOrId === "object" && appOrId) ? appOrId : storeAppById(appOrId)
+        var id = normalizeAppIconId(app ? app.id : appOrId)
+        if (!id.length)
+            return ""
+        if (app && app.iconUrl && String(app.iconUrl).indexOf("http") === 0)
+            return String(app.iconUrl)
+        // Явные CDN-иконки (не пакуем в образ — тянем по сети)
+        var known = {
+            "firefox": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/firefox.png",
+            "chromium": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/chromium.png",
+            "telegram": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/telegram.png",
+            "telegram-desktop": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/telegram.png",
+            "gimp": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/gimp.png",
+            "libreoffice": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/libreoffice.png",
+            "blender": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/blender.png",
+            "thunderbird": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/thunderbird.png",
+            "discord": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/discord.png",
+            "spotify": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/spotify.png",
+            "whatsapp": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/whatsapp.png",
+            "qbittorrent": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/qbittorrent.png",
+            "filezilla": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/filezilla.png",
+            "obsidian": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/obsidian.png",
+            "onlyoffice": "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/onlyoffice.png",
+            "vlc": "https://www.google.com/s2/favicons?domain=videolan.org&sz=128",
+            "mpv": "https://www.google.com/s2/favicons?domain=mpv.io&sz=128",
+            "obs": "https://www.google.com/s2/favicons?domain=obsproject.com&sz=128",
+            "inkscape": "https://www.google.com/s2/favicons?domain=inkscape.org&sz=128",
+            "cursor-linux": "https://www.google.com/s2/favicons?domain=cursor.com&sz=128"
+        }
+        if (known[id])
+            return known[id]
+        if (app && app.homeUrl) {
+            var m = String(app.homeUrl).match(/^https?:\/\/([^\/]+)/)
+            if (m && m[1])
+                return "https://www.google.com/s2/favicons?domain=" + m[1] + "&sz=128"
+        }
+        return "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/" + id + ".png"
+    }
+
+    function fetchMissingAppIcons() {
+        if (appIconFetchPending)
+            return
+        var c = storeCatalog()
+        var cmds = ["mkdir -p /usr/share/gtos/app-icons /var/cache/gtos/app-icons", "rm -f /tmp/gtos-icons-done"]
+        var n = 0
+        for (var i = 0; i < c.length && n < 40; ++i) {
+            var a = c[i]
+            if (!a || !a.id)
+                continue
+            var id = String(a.id).replace(/[^a-zA-Z0-9._+-]/g, "")
+            if (!id.length)
+                continue
+            if (isBuiltinShellApp(id))
+                continue
+            // уже есть локальный кэш или иконка из установленного пакета
+            if (appIconPaths[id] && String(appIconPaths[id]).indexOf("http") !== 0)
+                continue
+            var url = appIconNetUrl(a)
+            if (!url.length)
+                continue
+            cmds.push("if [ ! -s /usr/share/gtos/app-icons/" + id + ".png ]; then "
+                      + "curl -fsSL --max-time 18 -o /usr/share/gtos/app-icons/" + id + ".png.tmp " + shQuote(url)
+                      + " && mv /usr/share/gtos/app-icons/" + id + ".png.tmp /usr/share/gtos/app-icons/" + id + ".png"
+                      + " || rm -f /usr/share/gtos/app-icons/" + id + ".png.tmp; fi")
+            n++
+        }
+        if (n === 0)
+            return
+        cmds.push("echo done >/tmp/gtos-icons-done")
+        appIconFetchPending = true
+        sys.run("(" + cmds.join("; ") + ") </dev/null >/tmp/gtos-icons.log 2>&1 &")
+    }
+
+    property bool appIconFetchPending: false
+
     function refreshAppIconCache() {
         var c = storeCatalog()
         var names = []
@@ -2380,12 +2478,13 @@ Window {
             return
         var script = "mkdir -p /usr/share/gtos/app-icons 2>/dev/null; "
             + "resolve(){ f=\"$1\"; [ -e \"$f\" ]||return 1; "
+            + "sz=$(wc -c <\"$f\" 2>/dev/null || echo 0); [ \"$sz\" -gt 200 ]||return 1; "
             + "if [ -L \"$f\" ]; then t=$(readlink \"$f\" 2>/dev/null); "
             + "case \"$t\" in /*) echo \"$t\";; *) echo \"$(dirname \"$f\")/$t\";; esac; "
             + "else echo \"$f\"; fi; }; "
             + "for id in " + names.map(function (n) { return shQuote(n) }).join(" ") + "; do "
             + "  found=; "
-            + "  for f in /usr/share/gtos/app-icons/$id.png /usr/share/gtos/app-icons/$id.svg; do "
+            + "  for f in /usr/share/gtos/app-icons/$id.png /var/cache/gtos/app-icons/$id.png; do "
             + "    p=$(resolve \"$f\") && found=$p && break; done; "
             + "  if [ -z \"$found\" ]; then "
             + "    for n in \"$id\" \"${id%-desktop}\" \"${id%-bin}\"; do "
@@ -2420,12 +2519,8 @@ Window {
                 map[line.slice(0, pipe)] = line.slice(pipe + 1)
             }
         }
-        // статические запасные пути (если shell не успел / нет readlink)
-        if (!map.firefox)
-            map.firefox = "/usr/lib/firefox/browser/chrome/icons/default/default128.png"
-        if (!map.vlc)
-            map.vlc = "/usr/share/vlc/lua/http/images/vlc-48.png"
         appIconPaths = map
+        Qt.callLater(function () { root.fetchMissingAppIcons() })
     }
 
     function appIconPath(appId) {
@@ -2434,22 +2529,8 @@ Window {
             return ""
         if (appIconPaths[id])
             return appIconPaths[id]
-        var sa = storeAppById(id)
-        if (sa && sa.iconFile)
-            return String(sa.iconFile)
-        if (id === "firefox")
-            return "/usr/share/gtos/app-icons/firefox.png"
-        if (id === "vlc")
-            return "/usr/share/gtos/app-icons/vlc.png"
-        if (id === "chromium")
-            return "/usr/share/gtos/app-icons/chromium.png"
-        if (id === "telegram" || id === "telegram-desktop")
-            return "/usr/share/gtos/app-icons/telegram.png"
-        if (id === "gimp")
-            return "/usr/share/gtos/app-icons/gimp.png"
-        if (id === "libreoffice")
-            return "/usr/share/gtos/app-icons/libreoffice.png"
-        return "/usr/share/gtos/app-icons/" + id + ".png"
+        // Сетевой URL — Image в DeskIconArt подхватит https напрямую, пока кэш качается
+        return appIconNetUrl(id)
     }
 
     function winIconKind(appId) {
@@ -2838,10 +2919,9 @@ Window {
         return null
     }
 
-    function killSelectedTask() {
-        var r = selectedTaskRow()
+    function killTaskRow(r, tree) {
         if (!r || !r.canKill)
-            return
+            return false
         if (r.appId && r.appId.length) {
             for (var i = windows.count - 1; i >= 0; --i) {
                 if (windows.get(i).appId === r.appId)
@@ -2849,11 +2929,68 @@ Window {
             }
             notify("Диспетчер задач", "Закрыто: " + r.name, "ok")
         } else if (r.pid > 1) {
-            sys.run("kill " + r.pid + " 2>/dev/null; sleep 0.2; kill -9 " + r.pid + " 2>/dev/null")
-            notify("Диспетчер задач", "Завершено: " + r.name, "ok")
+            if (tree)
+                sys.run("pkill -P " + r.pid + " 2>/dev/null; kill " + r.pid
+                        + " 2>/dev/null; sleep 0.15; kill -9 " + r.pid + " 2>/dev/null; true")
+            else
+                sys.run("kill " + r.pid + " 2>/dev/null; sleep 0.15; kill -9 " + r.pid + " 2>/dev/null; true")
+            notify("Диспетчер задач", (tree ? "Дерево завершено: " : "Завершено: ") + r.name, "ok")
+        } else {
+            return false
         }
         taskMgrSelKey = ""
         refreshTaskMgr()
+        return true
+    }
+
+    function killSelectedTask() {
+        killTaskRow(selectedTaskRow(), false)
+    }
+
+    function focusTaskRow(r) {
+        if (!r || !r.appId)
+            return
+        for (var i = 0; i < windows.count; ++i) {
+            if (windows.get(i).appId === r.appId) {
+                focusWindowAt(i)
+                return
+            }
+        }
+        notify("Диспетчер задач", "Окно «" + r.name + "» не найдено", "info")
+    }
+
+    function minimizeTaskRow(r) {
+        if (!r || !r.appId)
+            return
+        var n = 0
+        for (var i = 0; i < windows.count; ++i) {
+            if (windows.get(i).appId === r.appId) {
+                windows.setProperty(i, "hidden", true)
+                n++
+            }
+        }
+        notify("Диспетчер задач", n ? ("Свёрнуто: " + r.name) : ("Нет окна «" + r.name + "»"), n ? "ok" : "info")
+    }
+
+    function openTaskMgrCtx(item, mx, my, row) {
+        if (!row)
+            return
+        taskMgrSelKey = row.key || ""
+        var items = []
+        if (row.canKill) {
+            items.push({ label: "Завершить задачу", action: "task:kill", icon: "close", bold: true })
+            if (row.pid > 1)
+                items.push({ label: "Завершить дерево процессов", action: "task:killtree", icon: "close" })
+            items.push({ label: "-", action: "sep" })
+        }
+        if (row.appId && row.appId.length) {
+            items.push({ label: "Перейти к окну", action: "task:focus", icon: "open" })
+            items.push({ label: "Свернуть", action: "task:minimize", icon: "hide" })
+            items.push({ label: "-", action: "sep" })
+        }
+        items.push({ label: "Сведения", action: "task:details", icon: "props" })
+        items.push({ label: "Обновить список", action: "task:refresh", icon: "refresh" })
+        openCtxMenuAt(item, mx, my, items, "taskmgr")
     }
 
     function toggleStartup(id) {
@@ -3600,6 +3737,13 @@ Window {
             + ") >/dev/null 2>&1 &"
         )
         xkbReady = true
+    }
+
+    function cycleInputLang() {
+        inputLang = inputLang === "ru" ? "en" : "ru"
+        applyInputLang()
+        langOsdOpen = true
+        langOsdTimer.restart()
     }
 
     function loadInputLang() {
@@ -4413,7 +4557,7 @@ Window {
             { id: "firefox", apk: "firefox", launchId: "pkg", name: "Firefox", pub: "Mozilla", cat: "Интернет", desc: "Настоящий браузер Mozilla (JS, вкладки)", iconKind: "globe", iconFile: "/usr/share/gtos/app-icons/firefox.png", price: "Бесплатно", homeUrl: "https://www.mozilla.org/firefox/", source: "alpine", engineBins: ["firefox"] },
             { id: "chromium", apk: "chromium", launchId: "pkg", name: "Chromium", pub: "The Chromium Authors", cat: "Интернет", desc: "Браузер на движке Chromium", iconKind: "globe", iconFile: "/usr/share/gtos/app-icons/chromium.png", price: "Бесплатно", homeUrl: "https://www.google.com/chrome/", source: "alpine", engineBins: ["chromium", "chrome"] },
             { id: "telegram", apk: "telegram-desktop", launchId: "telegram", name: "Telegram", pub: "Telegram FZ-LLC", cat: "Интернет", desc: "Мессенджер с облачными чатами", iconKind: "mail", iconFile: "/usr/share/gtos/app-icons/telegram.png", price: "Бесплатно", homeUrl: "https://web.telegram.org/k/", source: "alpine" },
-            { id: "vlc", apk: "vlc", launchId: "vlc", name: "VLC media player", pub: "VideoLAN", cat: "Медиа", desc: "Видео и аудио", iconKind: "video", iconFile: "/usr/share/gtos/app-icons/vlc.png", price: "Бесплатно", engineBins: ["vlc", "cvlc"], source: "alpine" },
+            { id: "vlc", apk: "vlc", launchId: "pkg", name: "VLC media player", pub: "VideoLAN", cat: "Медиа", desc: "Настоящий VideoLAN VLC: видео, аудио, субтитры и потоки — не оболочка GT", iconKind: "video", iconFile: "/usr/share/gtos/app-icons/vlc.png", price: "Бесплатно", homeUrl: "https://www.videolan.org/vlc/", engineBins: ["vlc", "cvlc"], source: "alpine", version: "3.0" },
             { id: "gimp", apk: "gimp", launchId: "draw", name: "GIMP", pub: "GIMP Team", cat: "Творчество", desc: "Редактор графики", iconKind: "draw", iconFile: "/usr/share/gtos/app-icons/gimp.png", price: "Бесплатно", source: "alpine", url: "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/gimp-3.2.4-r0.apk" },
             { id: "libreoffice", apk: "libreoffice", launchId: "notes", name: "LibreOffice", pub: "The Document Foundation", cat: "Офис", desc: "Офисный пакет", iconKind: "notes", iconFile: "/usr/share/gtos/app-icons/libreoffice.png", price: "Бесплатно", source: "alpine" }
         ]
@@ -4484,7 +4628,10 @@ Window {
             if (applyStoreCatalogPayload(data, urls[i])) {
                 if (forceNotify)
                     notify("Магазин GT", "Загружено " + storeRemoteApps.length + " приложений из сети", "ok")
-                Qt.callLater(function () { root.queueDefaultStoreDownloads() })
+                Qt.callLater(function () {
+                    root.refreshAppIconCache()
+                    root.queueDefaultStoreDownloads()
+                })
                 return true
             }
         }
@@ -4564,11 +4711,10 @@ Window {
                 return "mail"
             if (lid === "notespro")
                 return "notes"
-            if (lid === "vlc")
-                return "vlc"
             if (lid === "video")
                 return "video"
-            if (lid === "pkg" || lid === a.id || a.source === "alpine"
+            // VLC и прочие Alpine GUI — через pkg (настоящий бинарник), не shell-заглушка
+            if (lid === "pkg" || lid === "vlc" || lid === a.id || a.source === "alpine"
                     || a.source === "linux" || a.source === "windows")
                 return "pkg"
             return lid
@@ -4670,6 +4816,7 @@ Window {
         storeInstallLabel = "Подготовка…"
         storeInstallStalled = false
         storeStallTicks = 0
+        storeDlBase = -1
         var plat = storePlatformOf(app)
         var src = String(app.source || (app.apk ? "alpine" : "web"))
         upsertPendingOp("store-" + app.id, "Загрузка «" + app.name + "»", storePlatformLabel(plat), 2, "download")
@@ -4704,15 +4851,19 @@ Window {
             "mkdir -p /var/lib/gtos/apk-cache /var/lib/gtos/apps /home/" + currentUser + "/Загрузки; "
             + "pkill -f 'grep -aobm1 hsqs' 2>/dev/null || true; "
             + "rm -f /tmp/gtos-apk-done /tmp/gtos-apk-rc /tmp/gtos-store-done /tmp/gtos-store-rc "
-            + "/tmp/gtos-store-phase /tmp/gtos-store-bytes /tmp/gtos-store-speed /tmp/gtos-store-label /tmp/gtos-store-eta; "
+            + "/tmp/gtos-store-phase /tmp/gtos-store-bytes /tmp/gtos-store-speed /tmp/gtos-store-label /tmp/gtos-store-eta "
+            + "/tmp/gtos-store-expect; "
             + "echo prepare >/tmp/gtos-store-phase; echo 0 >/tmp/gtos-store-bytes; "
             + "echo 'Подготовка…' >/tmp/gtos-store-label; "
             + (storeExpectBytes > 1000 ? ("echo " + Math.floor(storeExpectBytes) + " >/tmp/gtos-store-expect; ") : "")
             + "export GTOS_USER=" + shQuote(desktopUserName()) + "; "
-            + "( /usr/bin/gtos-store-install /tmp/gtos-store-job.env "
+            // stdio отвязан: иначе sys.run ждёт открытые пайпы и по таймауту рвёт установщик
+            + "RUN='( /usr/bin/gtos-store-install /tmp/gtos-store-job.env "
             + "|| ( echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; "
-            + "echo error >/tmp/gtos-store-phase; echo 'Сбой установщика' >/tmp/gtos-store-label ); "
-            + "cp -f /tmp/gtos-apk-log /home/" + currentUser + "/Загрузки/" + pkg + "-install.log 2>/dev/null ) &"
+            + "echo error >/tmp/gtos-store-phase; echo \"Сбой установщика\" >/tmp/gtos-store-label ); "
+            + "cp -f /tmp/gtos-apk-log /home/" + currentUser + "/Загрузки/" + pkg + "-install.log 2>/dev/null )'; "
+            + "if command -v setsid >/dev/null 2>&1; then setsid sh -c \"$RUN\" </dev/null >/tmp/gtos-store-run.log 2>&1 & "
+            + "else nohup sh -c \"$RUN\" </dev/null >/tmp/gtos-store-run.log 2>&1 & fi; echo started"
         )
         storeInstallTimer.start()
     }
@@ -4833,6 +4984,32 @@ Window {
             return
         }
         notify("Установка завершена", "«" + app.name + "» (" + storePlatformLabel(storePlatformOf(app)) + ") установлено.", "ok")
+    }
+
+    function uninstallStoreApp(app) {
+        if (!app || !app.id || !installedApps[app.id])
+            return
+        var map = {}
+        var keys = []
+        for (var k in installedApps) {
+            if (k === app.id || !installedApps[k])
+                continue
+            map[k] = true
+            keys.push(k)
+        }
+        installedApps = map
+        sys.writeFile("/var/lib/gtos/installed.json", keys.join(",") + "\n")
+        var pkg = String(app.apk || "").replace(/[^a-zA-Z0-9._+-]/g, "")
+        var cmd = "rm -rf " + shQuote("/var/lib/gtos/apps/" + app.id)
+        if (app.source === "alpine" && pkg.length)
+            cmd += "; apk del --no-progress " + pkg + " >/tmp/gtos-store-uninstall.log 2>&1"
+        sys.run("( " + cmd + " ) </dev/null >/dev/null 2>&1 &")
+        var pins = pinnedApps.filter(function (p) { return p !== "pkg-" + app.id })
+        if (pins.length !== pinnedApps.length)
+            pinnedApps = pins
+        saveDesktop()
+        refreshAppIconCache()
+        notify("Магазин GT", "«" + (app.name || app.id) + "» удалено", "ok")
     }
 
     function openStoreApp(app) {
@@ -5236,6 +5413,8 @@ Window {
             "dockResume=" + (dockShowResume ? "1" : "0"),
             "dockCombine=" + dockCombineButtons,
             "dockSmallIcons=" + dockSmallIcons,
+            "dockLabels=" + (dockShowLabels ? "1" : "0"),
+            "dockStyle=" + dockStyle,
             "dockBadges=" + (dockShowBadges ? "1" : "0"),
             "dockFlash=" + (dockShowFlash ? "1" : "0"),
             "dockAllDisplays=" + (dockShowOnAllDisplays ? "1" : "0"),
@@ -5322,6 +5501,8 @@ Window {
             else if (k === "dockWidgets") dockShowWidgets = v === "1"
             else if (k === "dockResume") dockShowResume = v === "1"
             else if (k === "dockCombine") dockCombineButtons = v || "never"
+            else if (k === "dockLabels") dockShowLabels = v === "1"
+            else if (k === "dockStyle") dockStyle = v === "line" ? "line" : "pill"
             else if (k === "dockSmallIcons") dockSmallIcons = v || "full"
             else if (k === "dockBadges") dockShowBadges = v !== "0"
             else if (k === "dockFlash") dockShowFlash = v !== "0"
@@ -5582,6 +5763,28 @@ Window {
                 || action === "openwith" || action === "openwithdir" || action === "sendto")
             return
         closeCtxMenu()
+        if (action.indexOf("task:") === 0) {
+            var tr = selectedTaskRow()
+            if (action === "task:kill")
+                killTaskRow(tr, false)
+            else if (action === "task:killtree")
+                killTaskRow(tr, true)
+            else if (action === "task:focus")
+                focusTaskRow(tr)
+            else if (action === "task:minimize")
+                minimizeTaskRow(tr)
+            else if (action === "task:details") {
+                if (tr) {
+                    notify("Сведения", tr.name + " · PID " + (tr.pid || "—")
+                           + " · ЦП " + (Math.round((tr.cpu || 0) * 10) / 10) + "%"
+                           + " · ОЗУ " + Math.round(tr.mem || 0) + " МБ"
+                           + (tr.status ? (" · " + tr.status) : ""), "info")
+                }
+            } else if (action === "task:refresh") {
+                refreshTaskMgr()
+            }
+            return
+        }
         if (action === "open") {
             for (var i = 0; i < fileEntries.length; ++i)
                 if (fileEntries[i].name === selectedName) { enterFile(fileEntries[i]); return }
@@ -6028,11 +6231,79 @@ Window {
     }
 
     function dockDropdownPick(options, current) {
-        // options: [{id,name},...] — cycle for compact UI
+        // legacy cycle — списки в персонализации открывают openSettingsDrop
         var ix = 0
         for (var i = 0; i < options.length; ++i)
             if (options[i].id === current) { ix = i; break }
         return options[(ix + 1) % options.length]
+    }
+
+    function dockLabelsEffective() {
+        if (!dockShowLabels)
+            return false
+        if (dockCombineButtons === "always")
+            return false
+        if (dockCombineButtons === "full") {
+            var n = 0
+            var list = dockAppList()
+            for (var i = 0; i < list.length; ++i) {
+                if (list[i] === "browser" && !dockShowBrowser)
+                    continue
+                if (list[i] === "mail" && !dockShowMail)
+                    continue
+                if (list[i] === "orbit")
+                    continue
+                n++
+            }
+            if (n > 7)
+                return false
+        }
+        return true
+    }
+
+    function openSettingsDrop(key, options, current, anchorItem) {
+        if (!anchorItem || !options || !options.length)
+            return
+        if (settingsDropOpen && settingsDropKey === key) {
+            settingsDropOpen = false
+            return
+        }
+        settingsDropKey = key
+        settingsDropOptions = options
+        settingsDropCurrent = current
+        var p = anchorItem.mapToItem(settingsDropLayer, 0, anchorItem.height + 4)
+        settingsDropX = p.x
+        settingsDropY = p.y
+        settingsDropW = Math.max(260, anchorItem.width)
+        settingsDropOpen = true
+    }
+
+    function applySettingsDrop(id) {
+        settingsDropOpen = false
+        var key = settingsDropKey
+        if (key === "align") {
+            dockAlign = id === "left" ? "left" : "center"
+        } else if (key === "style") {
+            dockStyle = id === "line" ? "line" : "pill"
+        } else if (key === "size") {
+            applyDockSizePreset(id)
+            return
+        } else if (key === "multi") {
+            dockMultiDisplayApps = id
+        } else if (key === "combine") {
+            dockCombineButtons = id
+            if (id === "always")
+                dockShowLabels = false
+        } else if (key === "combineOther") {
+            dockCombineButtons = id === "always" ? "always" : "never"
+            if (dockCombineButtons === "always")
+                dockShowLabels = false
+        } else if (key === "smallIcons") {
+            dockSmallIcons = id
+        } else {
+            return
+        }
+        saveDesktop()
     }
 
     function filesCtxItems() {
@@ -6189,11 +6460,65 @@ Window {
         snapLayoutOpen = false
         opsFlyoutOpen = false
         closeCtxMenu()
+        secureDeskMode = ""
+        pwdDraft = ""
+        pwdDraft2 = ""
+        secureDeskAppear = 0
         secureDeskOpen = true
     }
 
     function closeSecureDesk() {
         secureDeskOpen = false
+        secureDeskMode = ""
+        secureDeskAppear = 0
+        pwdDraft = ""
+        pwdDraft2 = ""
+    }
+
+    function secureDeskAction(id) {
+        if (id === "lock") {
+            closeSecureDesk()
+            lockSession()
+        } else if (id === "switch") {
+            switchUserFromSecure()
+        } else if (id === "signout") {
+            signOutSession()
+        } else if (id === "password") {
+            pwdDraft = ""
+            pwdDraft2 = ""
+            secureDeskMode = "pwd"
+        } else if (id === "tasks") {
+            closeSecureDesk()
+            launch("monitor", "Диспетчер задач")
+        } else if (id === "control") {
+            closeSecureDesk()
+            launch("control", "Контрольный центр")
+        } else if (id === "settings") {
+            closeSecureDesk()
+            settingsSection = "accounts"
+            launch("settings", "Параметры")
+        } else if (id === "safeboot") {
+            rebootToSafeMode()
+        } else if (id === "reboot") {
+            closeSecureDesk()
+            powerAction("reboot")
+        } else if (id === "power") {
+            secureDeskMode = "power"
+        } else if (id === "poweroff") {
+            closeSecureDesk()
+            powerAction("poweroff")
+        } else if (id === "sleep") {
+            closeSecureDesk()
+            enterSleep()
+        } else if (id === "network") {
+            closeSecureDesk()
+            settingsSection = "network"
+            launch("settings", "Параметры")
+        } else if (id === "a11y") {
+            closeSecureDesk()
+            settingsSection = "system"
+            launch("settings", "Параметры")
+        }
     }
 
     function signOutSession() {
@@ -6687,6 +7012,46 @@ Window {
         pinAppAt(appId, typeof atIndex === "number" ? atIndex : pinnedApps.length)
         notify("Панель задач", "Закреплено: " + appTitleOf(appId), "ok")
         return true
+    }
+
+    function unpinApp(appId) {
+        if (!appId || !String(appId).length)
+            return false
+        var arr = pinnedApps.slice()
+        var ix = arr.indexOf(appId)
+        if (ix < 0)
+            return false
+        arr.splice(ix, 1)
+        pinnedApps = arr
+        if (appId === "browser")
+            dockShowBrowser = false
+        if (appId === "mail")
+            dockShowMail = false
+        saveDesktop()
+        return true
+    }
+
+    function setDockAppVisible(appId, on) {
+        if (!appId || !String(appId).length)
+            return
+        if (on) {
+            if (appId === "browser")
+                dockShowBrowser = true
+            if (appId === "mail")
+                dockShowMail = true
+            if (pinnedApps.indexOf(appId) < 0)
+                pinAppAt(appId, pinnedApps.length)
+        } else {
+            if (appId === "browser") {
+                dockShowBrowser = false
+                return
+            }
+            if (appId === "mail") {
+                dockShowMail = false
+                return
+            }
+            unpinApp(appId)
+        }
     }
 
     function deskAppIdForPin(item) {
@@ -7701,7 +8066,7 @@ Window {
                   items: [{ name: aboutCpu, detail: aboutCpuHz, state: "ОК", warn: false }] },
                 { id: "disk", name: "Дисковые устройства", icon: "files", open: true, count: 1,
                   items: [{ name: "Системный накопитель", detail: aboutDiskUsed + " из " + aboutDiskTotal, state: "ОК", warn: false }] },
-                { id: "net", name: "Сетевые адаптеры", icon: "globe", open: true, count: 1,
+                { id: "net", name: "Сетевые адаптеры", icon: "network", open: true, count: 1,
                   items: [{ name: "eth0", detail: netIp, state: "ОК", warn: false }] }
             ]
         }
@@ -10307,29 +10672,36 @@ Window {
             root.storeInstallEta = eta
 
             var label = "Загрузка «" + app.name + "»"
-            var pct = root.storeInstallPct
+            var prev = root.storeInstallPct
+            var pct = prev
             if (phase === "extract") {
-                pct = Math.max(pct, 92)
-                pct = Math.min(99, pct + 1)
+                pct = Math.min(99, Math.max(pct, 92) + 1)
                 label = "Распаковка «" + app.name + "»"
             } else if (phase === "apk") {
                 pct = Math.min(88, Math.max(pct, 8 + Math.floor(bytes / (256 * 1024))))
                 label = "Установка «" + app.name + "»…"
             } else if (phase === "download" || (bytes > 0 && phase !== "prepare" && phase !== "init")) {
-                if (expect > 1000)
-                    pct = Math.max(2, Math.min(90, Math.floor(bytes * 90 / expect)))
+                // загрузка продолжает шкалу с точки, где закончилась подготовка (не сбрасывает на 2%)
+                if (root.storeDlBase < 0)
+                    root.storeDlBase = Math.max(3, Math.min(30, prev))
+                var base = root.storeDlBase
+                if (expect > 1000 && bytes > 0)
+                    pct = base + Math.floor(bytes * (90 - base) / expect)
+                else if (bytes > 0)
+                    pct = Math.min(85, base + Math.floor(bytes / (1024 * 1024)))
                 else
-                    pct = Math.min(85, Math.max(pct, 5 + Math.floor(bytes / (1024 * 1024))))
-                label = "Загрузка «" + app.name + "»"
+                    pct = Math.min(base + 4, prev + (root.storeStallTicks % 4 === 0 ? 1 : 0))
+                label = bytes > 0 ? ("Загрузка «" + app.name + "»") : ("Соединение с сервером…")
             } else if (phase === "prepare" || phase === "init" || !phase.length) {
-                // раньше залипало на 8% — двигаем 2→35% по heartbeat
-                pct = Math.min(35, Math.max(pct, 2 + Math.floor(bytes / (512 * 1024))))
+                pct = Math.min(30, Math.max(pct, 2 + Math.floor(bytes / (512 * 1024))))
                 label = "Подготовка «" + app.name + "»…"
             } else if (phase === "error") {
                 pct = 100
             } else {
                 pct = Math.min(90, pct + 1)
             }
+            if (phase !== "error")
+                pct = Math.max(prev, Math.min(99, pct))
             if (statusLabel.length)
                 root.storeInstallLabel = statusLabel
             else
@@ -10410,6 +10782,7 @@ Window {
         interval: 400
         onTriggered: root.browserProgress = 0
     }
+
 
     Image {
         anchors.fill: parent
@@ -10536,86 +10909,135 @@ Window {
                 anchors.left: parent.left
                 anchors.top: parent.bottom
                 anchors.topMargin: 8
-                width: 300
-                height: 188
-                radius: 14
-                color: "#121a18"
+                width: 320
+                height: langPopCol.implicitHeight + 24
+                radius: 16
+                color: "#0e1412"
                 border.width: 1
                 border.color: "#2a3a34"
                 z: 50
+                scale: root.langMenuOpen ? 1 : 0.96
+                transformOrigin: Item.TopLeft
                 Behavior on opacity { NumberAnimation { duration: 160 } }
+                Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                 Column {
-                    anchors.fill: parent
+                    id: langPopCol
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
                     anchors.margins: 12
                     spacing: 6
-                    Row {
-                        width: parent.width
-                        Text {
-                            text: "Раскладка клавиатуры"
-                            color: "#e8eef2"
-                            font.pixelSize: 13
-                            font.family: root.uiFontBold
-                            anchors.verticalCenter: parent.verticalCenter
-                        }
-                        Item { width: parent.width - 210; height: 1 }
-                        Rectangle {
-                            width: 72; height: 22; radius: 6
-                            color: "#1a2420"
-                            anchors.verticalCenter: parent.verticalCenter
-                            Text {
-                                anchors.centerIn: parent
-                                text: "Win+␣"
-                                color: "#9aa7b2"
-                                font.pixelSize: 10
-                                font.family: root.uiFont
-                            }
-                        }
+                    Text {
+                        text: "Раскладка клавиатуры"
+                        color: "#ffffff"
+                        font.pixelSize: 14
+                        font.family: root.uiFontBold
+                        leftPadding: 4
+                    }
+                    Text {
+                        text: "Быстрая смена — сочетанием клавиш"
+                        color: "#8b98a3"
+                        font.pixelSize: 11
+                        font.family: root.uiFont
+                        leftPadding: 4
+                        bottomPadding: 4
                     }
                     Repeater {
                         model: [
-                            { id: "ru", title: "РУС Русский", sub: "Русская" },
-                            { id: "en", title: "ENG Английский (США)", sub: "США" }
+                            { id: "ru", code: "РУС", title: "Русский", sub: "ЙЦУКЕН" },
+                            { id: "en", code: "ENG", title: "Английский (США)", sub: "QWERTY" }
                         ]
                         delegate: Rectangle {
+                            property bool cur: root.inputLang === modelData.id
                             width: parent.width
-                            height: 48
-                            radius: 10
-                            color: root.inputLang === modelData.id ? "#1e2a28" : (langRowH.containsMouse ? "#16201c" : "transparent")
+                            height: 52
+                            radius: 12
+                            color: cur ? "#16352e" : (langRowH.containsMouse ? "#151d1a" : "transparent")
+                            border.width: cur ? 1 : 0
+                            border.color: "#2a4a3c"
+                            Behavior on color { ColorAnimation { duration: 120 } }
                             Rectangle {
-                                visible: root.inputLang === modelData.id
+                                id: langCodeBox
                                 anchors.left: parent.left
+                                anchors.leftMargin: 10
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 3; height: 22; radius: 2
-                                color: "#f59e0b"
+                                width: 44; height: 32; radius: 8
+                                color: cur ? root.accentColor : "#1a2420"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: modelData.code
+                                    color: cur ? "#06210f" : "#c5d0d8"
+                                    font.pixelSize: 12
+                                    font.family: root.uiFontBold
+                                }
                             }
                             Column {
-                                anchors.left: parent.left; anchors.leftMargin: 14
+                                anchors.left: langCodeBox.right
+                                anchors.leftMargin: 12
                                 anchors.verticalCenter: parent.verticalCenter
                                 spacing: 2
                                 Text { text: modelData.title; color: "#fff"; font.pixelSize: 13; font.family: root.uiFontBold }
                                 Text { text: modelData.sub; color: "#8b98a3"; font.pixelSize: 11; font.family: root.uiFont }
                             }
+                            Text {
+                                visible: cur
+                                anchors.right: parent.right
+                                anchors.rightMargin: 14
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "✓"
+                                color: root.accentColor
+                                font.pixelSize: 15
+                                font.family: root.uiFontBold
+                            }
                             MouseArea {
                                 id: langRowH; anchors.fill: parent; hoverEnabled: true
+                                cursorShape: Qt.PointingHandCursor
                                 onClicked: {
                                     root.inputLang = modelData.id
                                     root.applyInputLang()
                                     root.langMenuOpen = false
-                                    root.notify("Клавиатура", modelData.title, "ok")
+                                    root.langOsdOpen = true
+                                    langOsdTimer.restart()
                                 }
                             }
                         }
                     }
-                    Rectangle { width: parent.width; height: 1; color: "#243038" }
+                    Rectangle { width: parent.width; height: 1; color: "#1e2a26" }
+                    Flow {
+                        width: parent.width
+                        spacing: 6
+                        Repeater {
+                            model: ["Win + Пробел", "Ctrl + Пробел", "Alt + Shift + Пробел"]
+                            delegate: Rectangle {
+                                height: 24
+                                width: kbHint.implicitWidth + 14
+                                radius: 6
+                                color: "#141c19"
+                                border.width: 1
+                                border.color: "#24332e"
+                                Text {
+                                    id: kbHint
+                                    anchors.centerIn: parent
+                                    text: modelData
+                                    color: "#9aa7b2"
+                                    font.pixelSize: 10
+                                    font.family: root.uiFont
+                                }
+                            }
+                        }
+                    }
                     Text {
                         text: "Дополнительные настройки клавиатуры"
-                        color: "#e8eef2"
+                        color: kbMoreH.containsMouse ? root.accentColor : "#c5d0d8"
                         font.pixelSize: 12
                         font.family: root.uiFont
-                        leftPadding: 6
-                        topPadding: 4
+                        leftPadding: 4
+                        topPadding: 2
                         MouseArea {
+                            id: kbMoreH
                             anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 root.langMenuOpen = false
                                 root.openSettingsSection("system")
@@ -12061,9 +12483,14 @@ Rectangle {
         z: 220
         width: 920
         height: 620
-        anchors.horizontalCenter: parent.horizontalCenter
+        // при выравнивании «Слева» Пуск открывается у кнопки, а не по центру
+        property bool alignLeft: root.dockAlign === "left" && root.dockEdge === "bottom"
+        anchors.horizontalCenter: alignLeft ? undefined : parent.horizontalCenter
+        anchors.left: alignLeft ? parent.left : undefined
+        anchors.leftMargin: alignLeft ? (root.dockStyle === "line" ? 8 : 16) : 0
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: root.dockSize + 36
+        anchors.bottomMargin: root.dockStyle === "line" && root.dockEdge === "bottom"
+                              ? root.dockSize + 12 : root.dockSize + 36
         radius: 20
         color: "#0e1816"
         border.width: 1
@@ -12071,7 +12498,7 @@ Rectangle {
         opacity: root.startOpen ? 1 : 0
         scale: root.startOpen ? 1 : 0.94
         visible: root.startOpen || opacity > 0
-        transformOrigin: Item.Bottom
+        transformOrigin: alignLeft ? Item.BottomLeft : Item.Bottom
         clip: true
         property string startCat: "all"
         property bool powerMenu: false
@@ -13067,22 +13494,41 @@ Rectangle {
         id: dock
         z: 200
         property bool containsMouse: dockHoverMa.containsMouse
-        anchors.horizontalCenter: (root.dockEdge === "bottom" || root.dockEdge === "top") && root.dockAlign !== "left" ? parent.horizontalCenter : undefined
-        anchors.left: root.dockEdge === "left" || ((root.dockEdge === "bottom" || root.dockEdge === "top") && root.dockAlign === "left") ? parent.left : undefined
-        anchors.verticalCenter: root.dockEdge === "left" || root.dockEdge === "right" ? parent.verticalCenter : undefined
+        property bool isVertical: root.dockEdge === "left" || root.dockEdge === "right"
+        property bool isHorizontal: !isVertical
+        // линия: панель во всю ширину/высоту экрана, прижата к краю
+        property bool isLine: root.dockStyle === "line"
+        property real edgeGap: isLine ? 0 : 16
+        // Горизонтальная панель: только x (не якоря left/center — иначе left↔center раздувает ширину)
+        anchors.left: root.dockEdge === "left" ? parent.left : undefined
+        anchors.right: root.dockEdge === "right" ? parent.right : undefined
+        anchors.verticalCenter: isVertical ? parent.verticalCenter : undefined
+        anchors.verticalCenterOffset: isVertical && isLine ? 24 : 0
         anchors.bottom: root.dockEdge === "bottom" ? parent.bottom : undefined
         anchors.top: root.dockEdge === "top" ? parent.top : undefined
-        anchors.right: root.dockEdge === "right" ? parent.right : undefined
-        anchors.bottomMargin: root.dockEdge === "bottom" ? (root.dockAutoHide && !root.dockHoverReveal && !dock.containsMouse ? -root.dockSize + 4 : 16) : 0
-        anchors.topMargin: root.dockEdge === "top" ? 54 : 0
-        anchors.leftMargin: root.dockEdge === "left" ? 16 : ((root.dockEdge === "bottom" || root.dockEdge === "top") && root.dockAlign === "left" ? 16 : 0)
-        anchors.rightMargin: root.dockEdge === "right" ? 16 : 0
-        width: root.dockEdge === "left" || root.dockEdge === "right" ? root.dockSize : dockRow.width + 28
-        height: root.dockEdge === "left" || root.dockEdge === "right" ? dockRow.height + 28 : root.dockSize
-        radius: 20
-        color: "#1a2126"
-        border.width: root.dockDropHot ? 2 : 1
+        anchors.bottomMargin: root.dockEdge === "bottom" ? (root.dockAutoHide && !root.dockHoverReveal && !dock.containsMouse ? -root.dockSize + 4 : edgeGap) : 0
+        anchors.topMargin: root.dockEdge === "top" ? (isLine ? 48 : 54) : 0
+        anchors.leftMargin: root.dockEdge === "left" ? edgeGap : 0
+        anchors.rightMargin: root.dockEdge === "right" ? edgeGap : 0
+        x: isHorizontal
+           ? (isLine ? 0 : (root.dockAlign === "left" ? 16 : Math.round((root.width - width) / 2)))
+           : 0
+        width: isVertical ? root.dockSize : (isLine ? root.width : dockRow.width + 28)
+        height: isVertical ? (isLine ? root.height - 48 : dockRow.height + 28) : (isLine ? root.dockSize - 8 : root.dockSize)
+        radius: isLine ? 0 : 20
+        color: isLine ? "#ee11171b" : "#1a2126"
+        border.width: root.dockDropHot ? 2 : (isLine ? 0 : 1)
         border.color: root.dockDropHot ? root.accentColor : "#2c3840"
+        Behavior on radius { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        // тонкая граница со стороны рабочего стола в режиме «линия»
+        Rectangle {
+            visible: dock.isLine
+            color: "#2c3840"
+            x: root.dockEdge === "left" ? parent.width - 1 : 0
+            y: root.dockEdge === "bottom" ? 0 : (root.dockEdge === "top" ? parent.height - 1 : 0)
+            width: dock.isVertical ? 1 : parent.width
+            height: dock.isVertical ? parent.height : 1
+        }
         Behavior on border.color { ColorAnimation { duration: 140 } }
         Behavior on anchors.bottomMargin { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
         opacity: root.dockReady ? 1 : 0
@@ -13234,7 +13680,11 @@ Rectangle {
 
         Flow {
             id: dockRow
-            anchors.centerIn: parent
+            property bool lineLeft: dock.isLine && dock.isHorizontal && root.dockAlign === "left"
+            anchors.centerIn: lineLeft ? undefined : parent
+            anchors.left: lineLeft ? parent.left : undefined
+            anchors.leftMargin: lineLeft ? 10 : 0
+            anchors.verticalCenter: lineLeft ? parent.verticalCenter : undefined
             spacing: 8
             flow: root.dockEdge === "left" || root.dockEdge === "right" ? Flow.TopToBottom : Flow.LeftToRight
             width: root.dockEdge === "left" || root.dockEdge === "right" ? root.dockSize - 20 : undefined
@@ -13303,7 +13753,7 @@ Rectangle {
                 }
             }
 
-            // Мини-приложения
+            // Центр уведомлений (кнопка на панели)
             Item {
                 visible: root.dockShowWidgets
                 width: 40; height: 40
@@ -13314,7 +13764,7 @@ Rectangle {
                     Text {
                         anchors.centerIn: parent
                         text: "▦"
-                        color: dockWidgetsH.containsMouse ? "#60a5fa" : "#e8eef2"
+                        color: dockWidgetsH.containsMouse ? root.accentColor : "#e8eef2"
                         font.pixelSize: 16
                     }
                     MouseArea {
@@ -13334,44 +13784,29 @@ Rectangle {
                 }
             }
 
-            // Возобновить
-            Item {
-                visible: root.dockShowResume
-                width: 40; height: 40
-                Rectangle {
-                    anchors.fill: parent
-                    radius: 10
-                    color: dockResumeH.containsMouse ? "#1e2a28" : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "↷"
-                        color: dockResumeH.containsMouse ? root.accentColor : "#e8eef2"
-                        font.pixelSize: 16
-                    }
-                    MouseArea {
-                        id: dockResumeH
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.notify("Возобновить", "Нет незавершённых сеансов", "info")
-                    }
-                }
-            }
-
             Repeater {
                 model: root.dockAppList()
                 delegate: Item {
                     id: dockSlot
-                    width: 46
+                    property string slotApp: modelData
+                    // метки только у открытых приложений (есть окно), не у пустых закрепов
+                    property bool showLabel: root.dockLabelsEffective() && root.isAppRunning(modelData)
+                    property string slotTitle: {
+                        var wins = root.windowsForApp(modelData)
+                        if (wins.length === 1 && (wins[0].title || "").length)
+                            return wins[0].title
+                        return root.appTitleOf(modelData)
+                    }
+                    width: showLabel ? Math.min(168, 52 + Math.max(28, Math.min(110, slotLabel.implicitWidth))) : 46
                     height: 50
                     visible: (modelData !== "browser" || root.dockShowBrowser)
                              && (modelData !== "mail" || root.dockShowMail)
                              && modelData !== "orbit"
                     opacity: root.dockDragApp === modelData ? 0.35 : 1
                     scale: root.dockDropIndex === root.pinnedApps.indexOf(modelData) && root.dockDragApp.length && root.dockDragApp !== modelData ? 1.08 : 1
+                    Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
                     Behavior on opacity { NumberAnimation { duration: 120 } }
                     Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
-                    property string slotApp: modelData
                     property bool previewOn: root.dockPreviewOpen && root.dockPreviewApp === modelData && root.dockDragApp.length === 0 && root.windowsForApp(modelData).length > 0
 
                     // Предпросмотр окон над значком
@@ -13503,18 +13938,47 @@ Rectangle {
                         }
                     }
 
-                    DockButton {
-                        id: dockBtnRef
-                        kind: root.winIconKind(modelData)
-                        appId: modelData
-                        tip: root.appTitleOf(modelData)
-                        showTip: !dockSlot.previewOn && root.dockDragApp.length === 0
-                        interactive: false
+                    Row {
+                        id: dockSlotRow
                         anchors.horizontalCenter: parent.horizontalCenter
-                        hoveredBridge: dockSlotMa.containsMouse && !dockSlotMa.dragging
+                        anchors.top: parent.top
+                        anchors.topMargin: 0
+                        spacing: 6
+                        height: 46
+                        DockButton {
+                            id: dockBtnRef
+                            kind: root.winIconKind(modelData)
+                            appId: modelData
+                            tip: root.appTitleOf(modelData)
+                            showTip: !dockSlot.showLabel && !dockSlot.previewOn && root.dockDragApp.length === 0
+                            interactive: false
+                            hoveredBridge: dockSlotMa.containsMouse && !dockSlotMa.dragging
+                        }
+                        Item {
+                            id: slotLabelBox
+                            anchors.verticalCenter: parent.verticalCenter
+                            height: 46
+                            clip: true
+                            width: dockSlot.showLabel ? Math.min(110, Math.max(28, slotLabel.implicitWidth)) : 0
+                            Behavior on width { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                            Text {
+                                id: slotLabel
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: dockSlot.slotTitle
+                                color: "#e8eef2"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                                elide: Text.ElideRight
+                                maximumLineCount: 1
+                                opacity: dockSlot.showLabel ? 1 : 0
+                                x: dockSlot.showLabel ? 0 : -10
+                                Behavior on opacity { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                Behavior on x { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                            }
+                        }
                     }
                     Rectangle {
-                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.horizontalCenter: dockSlot.showLabel ? dockBtnRef.horizontalCenter : parent.horizontalCenter
                         anchors.bottom: parent.bottom
                         width: root.isAppActive(modelData) ? 18 : 6
                         height: 3
@@ -13964,12 +14428,72 @@ Rectangle {
         onClicked: root.langMenuOpen = false
     }
 
+    Shortcut { sequence: "Ctrl+Space"; onActivated: root.cycleInputLang() }
+    Shortcut { sequence: "Alt+Shift+Space"; onActivated: root.cycleInputLang() }
+    Timer { id: langOsdTimer; interval: 1300; onTriggered: root.langOsdOpen = false }
+
+    // индикатор смены раскладки по центру экрана
+    Rectangle {
+        z: 990
+        anchors.horizontalCenter: parent.horizontalCenter
+        anchors.verticalCenter: parent.verticalCenter
+        anchors.verticalCenterOffset: root.height * 0.22
+        width: langOsdRow.implicitWidth + 40
+        height: 76
+        radius: 18
+        color: "#ee0e1412"
+        border.width: 1
+        border.color: "#2a3a34"
+        visible: opacity > 0.01
+        opacity: root.langOsdOpen ? 1 : 0
+        scale: root.langOsdOpen ? 1 : 0.92
+        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack } }
+        Row {
+            id: langOsdRow
+            anchors.centerIn: parent
+            spacing: 10
+            Repeater {
+                model: [
+                    { id: "ru", code: "РУС", name: "Русский" },
+                    { id: "en", code: "ENG", name: "English" }
+                ]
+                delegate: Rectangle {
+                    property bool cur: root.inputLang === modelData.id
+                    width: 120
+                    height: 52
+                    radius: 12
+                    color: cur ? "#16352e" : "transparent"
+                    border.width: cur ? 1 : 0
+                    border.color: root.accentColor
+                    Behavior on color { ColorAnimation { duration: 140 } }
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 2
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData.code
+                            color: cur ? root.accentColor : "#8b98a3"
+                            font.pixelSize: 18
+                            font.family: root.uiFontBold
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: modelData.name
+                            color: cur ? "#e8eef2" : "#6b7785"
+                            font.pixelSize: 11
+                            font.family: root.uiFont
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Shortcut {
         sequence: "Meta+Space"
         onActivated: {
-            root.inputLang = root.inputLang === "ru" ? "en" : "ru"
-            root.applyInputLang()
-            root.notify("Клавиатура", root.inputLang === "ru" ? "РУС Русский" : "ENG Английский (США)", "ok")
+            root.cycleInputLang()
         }
     }
 
@@ -14712,7 +15236,7 @@ Rectangle {
                     text: root.setupStep === 0
                           ? "Укажите имя и при желании пароль — данные сохранятся на постоянном томе."
                           : (root.setupStep === 1
-                             ? "Выберите раскладку клавиатуры. Позже смените через Win+Пробел."
+                             ? "Выберите раскладку клавиатуры. Позже смените через Win+Пробел или Ctrl+Пробел."
                              : (root.setupStep === 2
                                 ? "Подключите сеть: Ethernet поднимается сам, Wi‑Fi — из быстрых настроек."
                                 : "Включите бэкапы по желанию. Обновления можно проверить сразу после входа."))
@@ -17015,7 +17539,7 @@ Rectangle {
                             Rectangle {
                                 width: 56; height: 56; radius: 14; color: "#243028"
                                 anchors.verticalCenter: parent.verticalCenter
-                                DeskIconArt { anchors.centerIn: parent; width: 28; height: 28; kind: "globe" }
+                                DeskIconArt { anchors.centerIn: parent; width: 28; height: 28; kind: "network" }
                             }
                             Column {
                                 anchors.verticalCenter: parent.verticalCenter; spacing: 4; width: parent.width - 220
@@ -17326,6 +17850,9 @@ Rectangle {
                     component TbDrop: Rectangle {
                         property string title: ""
                         property string valueLabel: ""
+                        property string dropKey: ""
+                        property string currentId: ""
+                        property var options: []
                         signal cycled()
                         width: parent ? parent.width : 400
                         height: Math.max(56, tbDropCol.height + 20)
@@ -17345,12 +17872,13 @@ Rectangle {
                                 wrapMode: Text.WordWrap
                             }
                             Rectangle {
+                                id: tbDropBox
                                 width: Math.min(parent.width, 280)
                                 height: 32
                                 radius: 4
-                                color: "#3a3a3a"
+                                color: root.settingsDropOpen && root.settingsDropKey === dropKey ? "#454545" : "#3a3a3a"
                                 border.width: 1
-                                border.color: "#4a4a4a"
+                                border.color: root.settingsDropOpen && root.settingsDropKey === dropKey ? root.accentColor : "#4a4a4a"
                                 Text {
                                     anchors.left: parent.left
                                     anchors.leftMargin: 12
@@ -17366,14 +17894,19 @@ Rectangle {
                                     anchors.right: parent.right
                                     anchors.rightMargin: 10
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "▾"
+                                    text: root.settingsDropOpen && root.settingsDropKey === dropKey ? "▴" : "▾"
                                     color: "#c8c8c8"
                                     font.pixelSize: 12
                                 }
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: cycled()
+                                    onClicked: {
+                                        if (options && options.length)
+                                            root.openSettingsDrop(dropKey, options, currentId, tbDropBox)
+                                        else
+                                            cycled()
+                                    }
                                 }
                             }
                         }
@@ -17511,7 +18044,7 @@ Rectangle {
                             }
                             Text {
                                 width: parent.width
-                                text: "Отобразить или скрыть кнопки, отображаемые на панели задач"
+                                text: "Показать или скрыть приложения на панели задач"
                                 color: "#a0a0a0"
                                 font.pixelSize: 12
                                 font.family: root.uiFont
@@ -17519,134 +18052,63 @@ Rectangle {
                             }
                             Item { width: 1; height: 8 }
 
-                            // Представление задач
-                            Rectangle {
-                                width: parent.width
-                                height: 48
-                                color: "transparent"
-                                Row {
-                                    anchors.fill: parent
-                                    spacing: 12
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "⧉"
-                                        color: "#e8e8e8"
-                                        font.pixelSize: 16
-                                        width: 22
+                            // Только приложения (не настройки поведения)
+                            Repeater {
+                                model: [
+                                    { id: "files", title: "Файлы", kind: "files" },
+                                    { id: "browser", title: "Браузер", kind: "globe" },
+                                    { id: "mail", title: "Почта", kind: "mail" },
+                                    { id: "notes", title: "Заметки", kind: "notes" },
+                                    { id: "term", title: "Терминал", kind: "term" },
+                                    { id: "store", title: "Магазин", kind: "store" },
+                                    { id: "settings", title: "Параметры", kind: "settings" },
+                                    { id: "monitor", title: "Диспетчер задач", kind: "monitor" }
+                                ]
+                                delegate: Rectangle {
+                                    width: tbItemsCol.width
+                                    height: 48
+                                    color: "transparent"
+                                    function appOn() {
+                                        if (modelData.id === "browser")
+                                            return root.dockShowBrowser && root.pinnedApps.indexOf("browser") >= 0
+                                        if (modelData.id === "mail")
+                                            return root.dockShowMail && root.pinnedApps.indexOf("mail") >= 0
+                                        return root.pinnedApps.indexOf(modelData.id) >= 0
                                     }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "Представление задач"
-                                        color: "#ffffff"
-                                        font.pixelSize: 14
-                                        font.family: root.uiFont
-                                        width: parent.width - 100
+                                    function appToggle() {
+                                        root.setDockAppVisible(modelData.id, !appOn())
+                                        root.saveDesktop()
                                     }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: root.dockShowTaskView ? "Вкл." : "Выкл."
-                                        color: "#a0a0a0"
-                                        font.pixelSize: 12
-                                        font.family: root.uiFont
-                                    }
-                                    ToggleSwitch {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        on: root.dockShowTaskView
-                                        onToggled: {
-                                            root.dockShowTaskView = !root.dockShowTaskView
-                                            root.saveDesktop()
+                                    Row {
+                                        anchors.fill: parent
+                                        spacing: 12
+                                        DeskIconArt {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: 22
+                                            height: 22
+                                            kind: modelData.kind
+                                            appId: modelData.id
                                         }
-                                    }
-                                }
-                            }
-
-                            // Мини-приложения
-                            Rectangle {
-                                width: parent.width
-                                height: 48
-                                color: "transparent"
-                                Row {
-                                    anchors.fill: parent
-                                    spacing: 12
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "▦"
-                                        color: "#60a5fa"
-                                        font.pixelSize: 16
-                                        width: 22
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "Мини-приложения"
-                                        color: "#ffffff"
-                                        font.pixelSize: 14
-                                        font.family: root.uiFont
-                                        width: parent.width - 100
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: root.dockShowWidgets ? "Вкл." : "Выкл."
-                                        color: "#a0a0a0"
-                                        font.pixelSize: 12
-                                    }
-                                    ToggleSwitch {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        on: root.dockShowWidgets
-                                        onToggled: {
-                                            root.dockShowWidgets = !root.dockShowWidgets
-                                            root.saveDesktop()
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Возобновить
-                            Rectangle {
-                                width: parent.width
-                                height: Math.max(56, resumeCol.height + 16)
-                                color: "transparent"
-                                Row {
-                                    anchors.fill: parent
-                                    spacing: 12
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: "⧉"
-                                        color: "#e8e8e8"
-                                        font.pixelSize: 16
-                                        width: 22
-                                    }
-                                    Column {
-                                        id: resumeCol
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        width: parent.width - 120
-                                        spacing: 2
                                         Text {
-                                            text: "Возобновить"
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            width: parent.width - 120
+                                            text: modelData.title
                                             color: "#ffffff"
                                             font.pixelSize: 14
                                             font.family: root.uiFont
+                                            elide: Text.ElideRight
                                         }
                                         Text {
-                                            width: parent.width
-                                            text: "Показывать приложение с уведомлением на значке, когда резюме доступно"
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            text: appOn() ? "Вкл." : "Выкл."
                                             color: "#a0a0a0"
-                                            font.pixelSize: 11
+                                            font.pixelSize: 12
                                             font.family: root.uiFont
-                                            wrapMode: Text.WordWrap
                                         }
-                                    }
-                                    Text {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        text: root.dockShowResume ? "Вкл." : "Выкл."
-                                        color: "#a0a0a0"
-                                        font.pixelSize: 12
-                                    }
-                                    ToggleSwitch {
-                                        anchors.verticalCenter: parent.verticalCenter
-                                        on: root.dockShowResume
-                                        onToggled: {
-                                            root.dockShowResume = !root.dockShowResume
-                                            root.saveDesktop()
+                                        ToggleSwitch {
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            on: appOn()
+                                            onToggled: appToggle()
                                         }
                                     }
                                 }
@@ -17700,88 +18162,102 @@ Rectangle {
                     }
 
                     TbDrop {
+                        title: "Стиль панели задач"
+                        dropKey: "style"
+                        currentId: root.dockStyle
+                        valueLabel: root.dockStyle === "line" ? "Линия" : "Плашка"
+                        options: [
+                            { id: "pill", name: "Плашка" },
+                            { id: "line", name: "Линия" }
+                        ]
+                    }
+                    TbDrop {
                         title: "Выравнивание значков на панели задач"
+                        dropKey: "align"
+                        currentId: root.dockAlign
                         valueLabel: root.dockAlign === "left" ? "Слева" : "По центру"
-                        onCycled: {
-                            var n = root.dockDropdownPick([
-                                { id: "center", name: "По центру" },
-                                { id: "left", name: "Слева" }
-                            ], root.dockAlign)
-                            root.dockAlign = n.id
-                            root.saveDesktop()
-                        }
+                        options: [
+                            { id: "center", name: "По центру" },
+                            { id: "left", name: "Слева" }
+                        ]
                     }
                     TbDrop {
                         title: "Размер панели задач"
+                        dropKey: "size"
+                        currentId: root.dockSizePreset
                         valueLabel: root.dockSizePreset === "small" ? "Маленький"
                                     : root.dockSizePreset === "large" ? "Крупный" : "По умолчанию"
-                        onCycled: {
-                            var n = root.dockDropdownPick([
-                                { id: "small", name: "Маленький" },
-                                { id: "default", name: "По умолчанию" },
-                                { id: "large", name: "Крупный" }
-                            ], root.dockSizePreset)
-                            root.applyDockSizePreset(n.id)
-                        }
+                        options: [
+                            { id: "small", name: "Маленький" },
+                            { id: "default", name: "По умолчанию" },
+                            { id: "large", name: "Крупный" }
+                        ]
                     }
                     TbDrop {
                         title: "При использовании нескольких дисплеев отображать приложения панели задач на"
+                        dropKey: "multi"
+                        currentId: root.dockMultiDisplayApps
                         valueLabel: root.dockMultiDisplayApps === "main" ? "Главной панели задач"
                                     : root.dockMultiDisplayApps === "taskbar_open" ? "Панели задач, где открыто окно"
                                     : "Все панели задач"
-                        onCycled: {
-                            var n = root.dockDropdownPick([
-                                { id: "all", name: "Все" },
-                                { id: "main", name: "Главная" },
-                                { id: "taskbar_open", name: "Где открыто" }
-                            ], root.dockMultiDisplayApps)
-                            root.dockMultiDisplayApps = n.id
-                            root.saveDesktop()
-                        }
+                        options: [
+                            { id: "all", name: "Все панели задач" },
+                            { id: "main", name: "Главной панели задач" },
+                            { id: "taskbar_open", name: "Панели задач, где открыто окно" }
+                        ]
                     }
                     TbDrop {
                         title: "Объединить кнопки панели задач и скрыть метки"
+                        dropKey: "combine"
+                        currentId: root.dockCombineButtons
                         valueLabel: root.dockCombineButtons === "always" ? "Всегда"
                                     : root.dockCombineButtons === "full" ? "При заполнении панели задач"
                                     : "Никогда"
-                        onCycled: {
-                            var n = root.dockDropdownPick([
-                                { id: "never", name: "Никогда" },
-                                { id: "full", name: "При заполнении" },
-                                { id: "always", name: "Всегда" }
-                            ], root.dockCombineButtons)
-                            root.dockCombineButtons = n.id
-                            root.saveDesktop()
-                        }
+                        options: [
+                            { id: "never", name: "Никогда" },
+                            { id: "full", name: "При заполнении панели задач" },
+                            { id: "always", name: "Всегда" }
+                        ]
                     }
                     TbDrop {
                         title: "Объединить кнопки панели задач и скрыть метки на других панелях задач"
+                        dropKey: "combineOther"
+                        currentId: root.dockCombineButtons === "never" ? "never" : "always"
                         valueLabel: root.dockCombineButtons === "never" ? "Никогда" : "Всегда"
-                        onCycled: {
-                            // зеркало основного режима для secondary
-                            root.dockCombineButtons = root.dockCombineButtons === "always" ? "never" : "always"
-                            root.saveDesktop()
-                        }
+                        options: [
+                            { id: "never", name: "Никогда" },
+                            { id: "always", name: "Всегда" }
+                        ]
                     }
                     TbDrop {
                         title: "Показывать уменьшенные значки приложений"
+                        dropKey: "smallIcons"
+                        currentId: root.dockSmallIcons
                         valueLabel: root.dockSmallIcons === "always" ? "Всегда"
                                     : root.dockSmallIcons === "never" ? "Никогда"
                                     : "При переполнении панели задач"
-                        onCycled: {
-                            var n = root.dockDropdownPick([
-                                { id: "never", name: "Никогда" },
-                                { id: "full", name: "При переполнении" },
-                                { id: "always", name: "Всегда" }
-                            ], root.dockSmallIcons)
-                            root.dockSmallIcons = n.id
-                            root.saveDesktop()
-                        }
+                        options: [
+                            { id: "never", name: "Никогда" },
+                            { id: "full", name: "При переполнении панели задач" },
+                            { id: "always", name: "Всегда" }
+                        ]
                     }
 
                     Item { width: 1; height: 4 }
                     Rectangle { width: parent.width; height: 1; color: "#333" }
 
+                    TbCheck {
+                        title: "Показывать метки окон на панели задач"
+                        note: root.dockCombineButtons === "always"
+                              ? "Сейчас скрыто: включено объединение кнопок."
+                              : "Название рядом со значком — только пока приложение открыто."
+                        checked: root.dockShowLabels
+                        enabled: root.dockCombineButtons !== "always"
+                        onToggled: {
+                            root.dockShowLabels = !root.dockShowLabels
+                            root.saveDesktop()
+                        }
+                    }
                     TbCheck {
                         title: "Автоматически скрывать панель задач"
                         note: "Этот параметр доступен только когда панель задач находится внизу."
@@ -17794,7 +18270,17 @@ Rectangle {
                         }
                     }
                     TbCheck {
-                        title: "Показывать значки в приложениях на панели задач"
+                        title: "Показывать обзор рабочих столов на панели"
+                        checked: root.dockShowTaskView
+                        onToggled: { root.dockShowTaskView = !root.dockShowTaskView; root.saveDesktop() }
+                    }
+                    TbCheck {
+                        title: "Показывать центр уведомлений на панели"
+                        checked: root.dockShowWidgets
+                        onToggled: { root.dockShowWidgets = !root.dockShowWidgets; root.saveDesktop() }
+                    }
+                    TbCheck {
+                        title: "Показывать значки уведомлений на приложениях"
                         checked: root.dockShowBadges
                         onToggled: { root.dockShowBadges = !root.dockShowBadges; root.saveDesktop() }
                     }
@@ -17814,28 +18300,9 @@ Rectangle {
                         onToggled: { root.dockShareAnyWindow = !root.dockShareAnyWindow; root.saveDesktop() }
                     }
                     TbCheck {
-                        title: "Щелкните в дальнем углу панели задач, чтобы показать рабочий стол"
+                        title: "Щёлкните в дальнем углу панели задач, чтобы показать рабочий стол"
                         checked: root.dockCornerDesktop
                         onToggled: { root.dockCornerDesktop = !root.dockCornerDesktop; root.saveDesktop() }
-                    }
-
-                    Item { width: 1; height: 8 }
-                    Text {
-                        text: "Закреплённые элементы"
-                        color: "#a0a0a0"
-                        font.pixelSize: 12
-                        font.family: root.uiFont
-                    }
-                    TbToggle {
-                        title: "Браузер"
-                        subtitle: "Значок браузера на панели"
-                        on: root.dockShowBrowser
-                        onToggled: { root.dockShowBrowser = !root.dockShowBrowser; root.saveDesktop() }
-                    }
-                    TbToggle {
-                        title: "Почта"
-                        on: root.dockShowMail
-                        onToggled: { root.dockShowMail = !root.dockShowMail; root.saveDesktop() }
                     }
                 }
             }
@@ -19850,7 +20317,7 @@ Rectangle {
                                     spacing: 6
                                     Row {
                                         spacing: 10
-                                        DeskIconArt { width: 22; height: 22; kind: "globe" }
+                                        DeskIconArt { width: 22; height: 22; kind: "network" }
                                         Text {
                                             anchors.verticalCenter: parent.verticalCenter
                                             text: "Сеть"
@@ -20349,11 +20816,34 @@ Rectangle {
                 return !!root.installedApps[app.id]
             }
 
+            property int featIndex: 0
+
+            function featuredList() {
+                var out = []
+                var prefer = ["firefox", "vlc", "gimp", "libreoffice", "telegram-desktop", "chromium"]
+                for (var p = 0; p < prefer.length; ++p)
+                    for (var i = 0; i < catalog.length; ++i)
+                        if (catalog[i].id === prefer[p]) { out.push(catalog[i]); break }
+                for (var j = 0; j < catalog.length && out.length < 5; ++j)
+                    if (catalog[j].featured && out.indexOf(catalog[j]) < 0)
+                        out.push(catalog[j])
+                if (!out.length && catalog.length)
+                    out.push(catalog[0])
+                return out.slice(0, 5)
+            }
+
             function featuredApp() {
-                for (var i = 0; i < catalog.length; ++i)
-                    if (catalog[i].id === "firefox")
-                        return catalog[i]
-                return catalog[0]
+                var l = featuredList()
+                if (!l.length)
+                    return ({})
+                return l[featIndex % l.length]
+            }
+
+            Timer {
+                interval: 8000
+                repeat: true
+                running: root.storeDetailId.length === 0 && !featHeroH.containsMouse
+                onTriggered: featIndex = (featIndex + 1) % Math.max(1, featuredList().length)
             }
 
             function detailApp() {
@@ -20383,161 +20873,502 @@ Rectangle {
                     spacing: 16
                     visible: root.storeDetailId.length > 0
 
-                    Text {
-                        text: "← Назад"
-                        color: root.accentColor
-                        font.pixelSize: 14
-                        font.family: root.uiFont
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.storeDetailId = "" }
-                    }
-
-                    Rectangle {
+                    Flickable {
                         width: parent.width
-                        height: 200
-                        radius: 18
-                        gradient: Gradient {
-                            GradientStop { position: 0; color: "#1c2a24" }
-                            GradientStop { position: 1; color: "#1a1a1a" }
-                        }
-                        Item {
-                            anchors.fill: parent
-                            anchors.margins: 28
-                            DeskIconArt {
-                                id: detailIco
-                                width: 96; height: 96
-                                anchors.left: parent.left
-                                anchors.verticalCenter: parent.verticalCenter
-                                kind: detailApp().iconKind || "store"
-                                appId: detailApp().id || ""
-                            }
-                            Column {
-                                anchors.left: detailIco.right
-                                anchors.leftMargin: 22
-                                anchors.right: detailBtn.left
-                                anchors.rightMargin: 22
-                                anchors.verticalCenter: parent.verticalCenter
-                                spacing: 8
-                                Text {
-                                    width: parent.width
-                                    text: detailApp().name
-                                    color: "#fff"
-                                    font.pixelSize: 32
-                                    font.family: root.uiFontBold
-                                    elide: Text.ElideRight
-                                }
-                                Text {
-                                    width: parent.width
-                                    text: {
-                                        var bits = []
-                                        if (detailApp().pub) bits.push(detailApp().pub)
-                                        if (detailApp().cat) bits.push(detailApp().cat)
-                                        bits.push(root.storePlatformLabel(root.storePlatformOf(detailApp())))
-                                        return bits.join(" · ")
-                                    }
-                                    color: "#9aa7b2"
-                                    font.pixelSize: 14
-                                    font.family: root.uiFont
-                                    elide: Text.ElideRight
-                                }
-                                Text {
-                                    text: detailApp().price || "Бесплатно"
-                                    color: root.accentColor
-                                    font.pixelSize: 13
-                                    font.family: root.uiFontBold
-                                }
-                            }
-                            Rectangle {
-                                id: detailBtn
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 168; height: 48; radius: 12
-                                color: root.storeInstallingId === detailApp().id
-                                       ? "#252525"
-                                       : (isOwned(detailApp()) ? "#252525" : root.accentColor)
-                                clip: true
-                                Rectangle {
-                                    visible: root.storeInstallingId === detailApp().id
-                                    anchors.left: parent.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: parent.width * (root.storeInstallPct / 100.0)
-                                    color: root.accentColor
-                                    opacity: 0.35
-                                }
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: btnLabel(detailApp())
-                                    color: isOwned(detailApp()) || root.storeInstallingId === detailApp().id ? "#e8eef2" : "#06210f"
-                                    font.family: root.uiFontBold; font.pixelSize: 14
-                                }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === detailApp().id
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.installStoreApp(detailApp())
-                                }
-                            }
-                        }
-                    }
+                        height: parent.height
+                        contentWidth: width
+                        contentHeight: storeDetailCol.height + 8
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
 
-                    Rectangle {
-                        visible: root.storeInstallingId === detailApp().id
-                        width: parent.width
-                        height: storeProgCol.implicitHeight + 20
-                        radius: 12
-                        color: "#1a1a1a"
-                        border.width: 1
-                        border.color: root.storeInstallStalled ? "#c42b1c" : "#2a3a34"
                         Column {
-                            id: storeProgCol
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.margins: 12
-                            spacing: 8
-                            Text {
-                                width: parent.width
-                                text: root.storeProgressCaption()
-                                color: root.storeInstallStalled ? "#ff8a80" : "#e8eef2"
-                                font.pixelSize: 13
-                                font.family: root.uiFont
-                                wrapMode: Text.Wrap
-                            }
-                            Rectangle {
-                                width: parent.width
-                                height: 10
-                                radius: 5
-                                color: "#0e1412"
+                            id: storeDetailCol
+                            width: parent.width
+                            spacing: 16
+
+                            Row {
+                                spacing: 12
                                 Rectangle {
-                                    width: Math.max(4, parent.width * (root.storeInstallPct / 100.0))
-                                    height: parent.height
-                                    radius: 5
-                                    color: root.storeInstallStalled ? "#c42b1c" : root.accentColor
-                                    Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                                    width: detBackTxt.implicitWidth + 28
+                                    height: 34
+                                    radius: 17
+                                    color: detBackH.containsMouse ? "#1e2a28" : "#181d1c"
+                                    border.width: 1
+                                    border.color: detBackH.containsMouse ? root.accentColor : "#2a3a34"
+                                    Behavior on color { ColorAnimation { duration: 120 } }
+                                    Text {
+                                        id: detBackTxt
+                                        anchors.centerIn: parent
+                                        text: "←  Каталог"
+                                        color: "#e8eef2"
+                                        font.pixelSize: 13
+                                        font.family: root.uiFont
+                                    }
+                                    MouseArea {
+                                        id: detBackH
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: root.storeDetailId = ""
+                                    }
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Магазин GT  ›  " + (detailApp().cat || "Приложения") + "  ›  " + (detailApp().name || "")
+                                    color: "#6b7785"
+                                    font.pixelSize: 12
+                                    font.family: root.uiFont
                                 }
                             }
+
+                            // hero
+                            Rectangle {
+                                width: parent.width
+                                height: Math.max(212, detailHeroCol.height + 48)
+                                radius: 20
+                                clip: true
+                                gradient: Gradient {
+                                    orientation: Gradient.Horizontal
+                                    GradientStop { position: 0; color: "#123a2e" }
+                                    GradientStop { position: 0.6; color: "#0f2420" }
+                                    GradientStop { position: 1; color: "#131716" }
+                                }
+                                border.width: 1
+                                border.color: "#24453a"
+                                Rectangle {
+                                    width: 300; height: 300; radius: 150
+                                    x: parent.width - 200; y: -130
+                                    color: root.accentColor
+                                    opacity: 0.07
+                                }
+                                DeskIconArt {
+                                    width: 170; height: 170
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 230
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    kind: detailApp().iconKind || "store"
+                                    appId: detailApp().id || ""
+                                    opacity: 0.08
+                                }
+                                Row {
+                                    id: detailHeroCol
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.margins: 24
+                                    spacing: 22
+                                    Rectangle {
+                                        width: 112; height: 112; radius: 28
+                                        color: "#0e1816"
+                                        border.width: 1
+                                        border.color: "#2a4a3c"
+                                        DeskIconArt {
+                                            anchors.centerIn: parent
+                                            width: 72; height: 72
+                                            kind: detailApp().iconKind || "store"
+                                            appId: detailApp().id || ""
+                                        }
+                                    }
+                                    Column {
+                                        width: Math.max(160, parent.width - 112 - 200 - 44)
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 8
+                                        Text {
+                                            width: parent.width
+                                            text: detailApp().name || ""
+                                            color: "#fff"
+                                            font.pixelSize: 30
+                                            font.family: root.uiFontBold
+                                            wrapMode: Text.WordWrap
+                                        }
+                                        Text {
+                                            width: parent.width
+                                            text: {
+                                                var bits = []
+                                                if (detailApp().pub) bits.push(detailApp().pub)
+                                                if (detailApp().cat) bits.push(detailApp().cat)
+                                                bits.push(root.storePlatformLabel(root.storePlatformOf(detailApp())))
+                                                return bits.join(" · ")
+                                            }
+                                            color: "#9aa7b2"
+                                            font.pixelSize: 14
+                                            font.family: root.uiFont
+                                            wrapMode: Text.WordWrap
+                                        }
+                                        Row {
+                                            spacing: 8
+                                            Rectangle {
+                                                height: 26; radius: 13
+                                                width: detPrice.implicitWidth + 18
+                                                color: "#1e2a28"
+                                                border.width: 1; border.color: "#2a4a3c"
+                                                Text {
+                                                    id: detPrice
+                                                    anchors.centerIn: parent
+                                                    text: detailApp().price || "Бесплатно"
+                                                    color: root.accentColor
+                                                    font.pixelSize: 12
+                                                    font.family: root.uiFontBold
+                                                }
+                                            }
+                                            Rectangle {
+                                                visible: (detailApp().launchId || "") === "pkg" || detailApp().source === "alpine"
+                                                height: 26; radius: 13
+                                                width: detReal.implicitWidth + 18
+                                                color: "#16352e"
+                                                border.width: 1; border.color: root.accentColor
+                                                Text {
+                                                    id: detReal
+                                                    anchors.centerIn: parent
+                                                    text: "Настоящее приложение"
+                                                    color: root.accentColor
+                                                    font.pixelSize: 12
+                                                    font.family: root.uiFont
+                                                }
+                                            }
+                                            Rectangle {
+                                                visible: isOwned(detailApp())
+                                                height: 26; radius: 13
+                                                width: detOwned.implicitWidth + 18
+                                                color: "#1a2420"
+                                                border.width: 1; border.color: "#3a5a4e"
+                                                Text {
+                                                    id: detOwned
+                                                    anchors.centerIn: parent
+                                                    text: "✓ Установлено"
+                                                    color: "#c5e8d6"
+                                                    font.pixelSize: 12
+                                                    font.family: root.uiFont
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Column {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        spacing: 10
+                                        Rectangle {
+                                            width: 168; height: 48; radius: 12
+                                            color: root.storeInstallingId === detailApp().id
+                                                   ? "#252525"
+                                                   : (isOwned(detailApp()) ? "#252525" : root.accentColor)
+                                            clip: true
+                                            Rectangle {
+                                                visible: root.storeInstallingId === detailApp().id
+                                                anchors.left: parent.left
+                                                anchors.top: parent.top
+                                                anchors.bottom: parent.bottom
+                                                width: parent.width * (root.storeInstallPct / 100.0)
+                                                color: root.accentColor
+                                                opacity: 0.35
+                                            }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: btnLabel(detailApp())
+                                                color: isOwned(detailApp()) || root.storeInstallingId === detailApp().id ? "#e8eef2" : "#06210f"
+                                                font.family: root.uiFontBold; font.pixelSize: 14
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === detailApp().id
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.installStoreApp(detailApp())
+                                            }
+                                        }
+                                        Rectangle {
+                                            visible: isOwned(detailApp()) && root.storeInstallingId !== detailApp().id
+                                            width: 168; height: 40; radius: 12
+                                            color: detUninH.containsMouse ? "#3f1515" : "transparent"
+                                            border.width: 1
+                                            border.color: detUninH.containsMouse ? "#c42b1c" : "#4a3a3a"
+                                            Behavior on color { ColorAnimation { duration: 120 } }
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "Удалить"
+                                                color: detUninH.containsMouse ? "#fecaca" : "#d8b4b4"
+                                                font.pixelSize: 13
+                                                font.family: root.uiFont
+                                            }
+                                            MouseArea {
+                                                id: detUninH
+                                                anchors.fill: parent
+                                                hoverEnabled: true
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: root.uninstallStoreApp(detailApp())
+                                            }
+                                        }
+                                        Rectangle {
+                                            visible: !!(detailApp().homeUrl && String(detailApp().homeUrl).length)
+                                            width: 168; height: 40; radius: 12
+                                            color: "transparent"
+                                            border.width: 1
+                                            border.color: "#3a4a44"
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: "Сайт разработчика"
+                                                color: "#c5d0d8"
+                                                font.pixelSize: 13
+                                                font.family: root.uiFont
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: {
+                                                    root.launch("browser", "Браузер")
+                                                    root.browserUrl = detailApp().homeUrl
+                                                    root.browseGo(true)
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Rectangle {
+                                visible: root.storeInstallingId === detailApp().id
+                                width: parent.width
+                                height: storeProgCol.implicitHeight + 20
+                                radius: 12
+                                color: "#1a1a1a"
+                                border.width: 1
+                                border.color: root.storeInstallStalled ? "#c42b1c" : "#2a3a34"
+                                Column {
+                                    id: storeProgCol
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    anchors.margins: 12
+                                    spacing: 8
+                                    Text {
+                                        width: parent.width
+                                        text: root.storeProgressCaption()
+                                        color: root.storeInstallStalled ? "#ff8a80" : "#e8eef2"
+                                        font.pixelSize: 13
+                                        font.family: root.uiFont
+                                        wrapMode: Text.Wrap
+                                    }
+                                    Rectangle {
+                                        width: parent.width
+                                        height: 10
+                                        radius: 5
+                                        color: "#0e1412"
+                                        Rectangle {
+                                            width: Math.max(4, parent.width * (root.storeInstallPct / 100.0))
+                                            height: parent.height
+                                            radius: 5
+                                            color: root.storeInstallStalled ? "#c42b1c" : root.accentColor
+                                            Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                                        }
+                                    }
+                                    Text {
+                                        width: parent.width
+                                        text: root.storeInstallStalled
+                                              ? "Похоже, загрузка зависла — проверьте сеть. Можно подождать или закрыть Магазин и повторить."
+                                              : (root.storeExpectBytes > 1000
+                                                 ? ("Осталось ≈ " + root.formatStoreBytes(Math.max(0, root.storeExpectBytes - root.storeInstallBytes)))
+                                                 : "Считаем объём и скорость…")
+                                        color: "#8b98a3"
+                                        font.pixelSize: 12
+                                        font.family: root.uiFont
+                                        wrapMode: Text.Wrap
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: "О приложении"
+                                color: "#fff"
+                                font.pixelSize: 18
+                                font.family: root.uiFontBold
+                            }
                             Text {
                                 width: parent.width
-                                text: root.storeInstallStalled
-                                      ? "Похоже, загрузка зависла — проверьте сеть. Можно подождать или закрыть Магазин и повторить."
-                                      : (root.storeExpectBytes > 1000
-                                         ? ("Осталось ≈ " + root.formatStoreBytes(Math.max(0, root.storeExpectBytes - root.storeInstallBytes)))
-                                         : "Считаем объём и скорость…")
-                                color: "#8b98a3"
-                                font.pixelSize: 12
+                                text: detailApp().desc || "Описание скоро появится."
+                                color: "#c5d0d8"
+                                font.pixelSize: 15
                                 font.family: root.uiFont
                                 wrapMode: Text.Wrap
+                                lineHeight: 1.35
+                            }
+
+                            Row {
+                                width: parent.width
+                                spacing: 12
+                                Repeater {
+                                    model: {
+                                        var a = detailApp()
+                                        var real = (a.launchId || "") === "pkg" || a.source === "alpine" || a.source === "linux" || a.source === "windows"
+                                        return [
+                                            { t: real ? "Настоящая программа" : "Окно GT/OS",
+                                              s: real ? "Запускается отдельным процессом, как в обычном Linux" : "Работает внутри оболочки, без установки пакетов" },
+                                            { t: a.source === "windows" ? "Через Wine" : (a.source === "linux" ? "AppImage / пакет" : (a.source === "web" ? "Веб-приложение" : "Пакет Alpine")),
+                                              s: a.source === "windows" ? "Windows-программа в совместимом слое" : "Ставится из официального репозитория" },
+                                            { t: (a.price || "Бесплатно"),
+                                              s: "Без рекламы и подписок в Магазине GT" }
+                                        ]
+                                    }
+                                    delegate: Rectangle {
+                                        width: (storeDetailCol.width - 24) / 3
+                                        height: 86
+                                        radius: 14
+                                        color: "#161b1a"
+                                        border.width: 1
+                                        border.color: "#24302c"
+                                        Column {
+                                            anchors.fill: parent
+                                            anchors.margins: 14
+                                            spacing: 6
+                                            Rectangle { width: 22; height: 3; radius: 2; color: root.accentColor }
+                                            Text {
+                                                width: parent.width
+                                                text: modelData.t
+                                                color: "#ffffff"
+                                                font.pixelSize: 14
+                                                font.family: root.uiFontBold
+                                                elide: Text.ElideRight
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                text: modelData.s
+                                                color: "#8b98a3"
+                                                font.pixelSize: 11
+                                                font.family: root.uiFont
+                                                wrapMode: Text.WordWrap
+                                                maximumLineCount: 2
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: "Сведения"
+                                color: "#fff"
+                                font.pixelSize: 18
+                                font.family: root.uiFontBold
+                            }
+                            Grid {
+                                width: parent.width
+                                columns: 2
+                                columnSpacing: 12
+                                rowSpacing: 10
+                                Repeater {
+                                    model: [
+                                        { k: "Издатель", v: detailApp().pub || "—" },
+                                        { k: "Категория", v: detailApp().cat || "—" },
+                                        { k: "Платформа", v: root.storePlatformLabel(root.storePlatformOf(detailApp())) },
+                                        { k: "Версия", v: detailApp().version || "—" },
+                                        { k: "Размер", v: (Number(detailApp().size) > 1000 ? root.formatStoreBytes(detailApp().size) : "—") },
+                                        { k: "Запуск", v: ((detailApp().launchId || "") === "pkg" || detailApp().source === "alpine")
+                                                           ? "Настоящий бинарник"
+                                                           : "Встроенное окно GT/OS" }
+                                    ]
+                                    delegate: Rectangle {
+                                        width: (parent.width - 12) / 2
+                                        height: 64
+                                        radius: 12
+                                        color: "#1a1a1a"
+                                        border.width: 1
+                                        border.color: "#2a2a2a"
+                                        Column {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: 4
+                                            Text {
+                                                text: modelData.k
+                                                color: "#8b98a3"
+                                                font.pixelSize: 12
+                                                font.family: root.uiFont
+                                            }
+                                            Text {
+                                                width: parent.width
+                                                text: modelData.v
+                                                color: "#e8eef2"
+                                                font.pixelSize: 14
+                                                font.family: root.uiFont
+                                                elide: Text.ElideRight
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Text {
+                                visible: detSimilarRep.count > 0
+                                text: "Похожие приложения"
+                                color: "#ffffff"
+                                font.pixelSize: 18
+                                font.family: root.uiFontBold
+                            }
+                            Flow {
+                                width: parent.width
+                                spacing: 12
+                                Repeater {
+                                    id: detSimilarRep
+                                    model: {
+                                        var a = detailApp()
+                                        var out = []
+                                        if (!a.id)
+                                            return out
+                                        var all = catalog || []
+                                        for (var i = 0; i < all.length && out.length < 6; i++) {
+                                            var b = all[i]
+                                            if (b && b.id !== a.id && b.cat === a.cat)
+                                                out.push(b)
+                                        }
+                                        return out
+                                    }
+                                    delegate: Rectangle {
+                                        width: (storeDetailCol.width - 24) / 3
+                                        height: 72
+                                        radius: 14
+                                        color: detSimH.containsMouse ? "#1c2422" : "#161b1a"
+                                        border.width: 1
+                                        border.color: detSimH.containsMouse ? root.accentColor : "#24302c"
+                                        Behavior on color { ColorAnimation { duration: 120 } }
+                                        Row {
+                                            anchors.fill: parent
+                                            anchors.margins: 12
+                                            spacing: 12
+                                            DeskIconArt {
+                                                width: 44; height: 44
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                kind: modelData.iconKind || "store"
+                                                appId: modelData.id || ""
+                                            }
+                                            Column {
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: parent.width - 56
+                                                spacing: 3
+                                                Text {
+                                                    width: parent.width
+                                                    text: modelData.name || modelData.id
+                                                    color: "#ffffff"
+                                                    font.pixelSize: 14
+                                                    font.family: root.uiFont
+                                                    elide: Text.ElideRight
+                                                }
+                                                Text {
+                                                    width: parent.width
+                                                    text: isOwned(modelData) ? "Установлено" : (modelData.price || "Бесплатно")
+                                                    color: isOwned(modelData) ? root.accentColor : "#8b98a3"
+                                                    font.pixelSize: 11
+                                                    font.family: root.uiFont
+                                                    elide: Text.ElideRight
+                                                }
+                                            }
+                                        }
+                                        MouseArea {
+                                            id: detSimH
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: root.storeDetailId = modelData.id
+                                        }
+                                    }
+                                }
                             }
                         }
-                    }
-
-                    Text {
-                        width: parent.width
-                        text: detailApp().desc
-                        color: "#c5d0d8"
-                        font.pixelSize: 16
-                        font.family: root.uiFont
-                        wrapMode: Text.Wrap
                     }
                 }
 
@@ -20647,87 +21478,226 @@ Rectangle {
                         }
                     }
 
-                    Rectangle {
+                    Flickable {
+                        id: storeMainFlick
                         width: parent.width
-                        height: 148
-                        radius: 18
-                        color: "#1a2220"
-                        Item {
+                        height: parent.height - 44 - 16
+                        contentWidth: width
+                        contentHeight: storeMainCol.height + 12
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: storeMainCol
+                        width: parent.width
+                        spacing: 16
+
+                    // hero: витрина рекомендуемых приложений (прокручивается с каталогом)
+                    Rectangle {
+                        id: featHero
+                        width: parent.width
+                        height: 224
+                        radius: 20
+                        clip: true
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0.0; color: "#123a2e" }
+                            GradientStop { position: 0.55; color: "#0f2420" }
+                            GradientStop { position: 1.0; color: "#121616" }
+                        }
+                        border.width: 1
+                        border.color: "#24453a"
+
+                        // декоративные круги
+                        Rectangle {
+                            width: 320; height: 320; radius: 160
+                            x: parent.width - 220; y: -120
+                            color: root.accentColor
+                            opacity: 0.07
+                        }
+                        Rectangle {
+                            width: 200; height: 200; radius: 100
+                            x: parent.width - 360; y: 110
+                            color: root.accentColor
+                            opacity: 0.05
+                        }
+                        // крупная иконка-водяной знак справа
+                        DeskIconArt {
+                            width: 190; height: 190
+                            anchors.right: parent.right
+                            anchors.rightMargin: 36
+                            anchors.verticalCenter: parent.verticalCenter
+                            kind: featuredApp().iconKind || "store"
+                            appId: featuredApp().id || ""
+                            opacity: 0.16
+                        }
+
+                        MouseArea {
+                            id: featHeroH
                             anchors.fill: parent
-                            anchors.margins: 22
-                            DeskIconArt {
-                                id: featIco
-                                width: 88; height: 88
+                            hoverEnabled: true
+                            onClicked: if (featuredApp().id) root.storeDetailId = featuredApp().id
+                        }
+
+                        Item {
+                            id: featBody
+                            anchors.fill: parent
+                            anchors.margins: 28
+                            opacity: 1
+                            property int shown: featIndex
+                            onShownChanged: featSwap.restart()
+                            SequentialAnimation {
+                                id: featSwap
+                                NumberAnimation { target: featBody; property: "opacity"; from: 0.15; to: 1; duration: 380; easing.type: Easing.OutCubic }
+                            }
+
+                            Rectangle {
+                                id: featIcoBox
+                                width: 104; height: 104; radius: 26
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
-                                kind: featuredApp().iconKind || "browser"
-                                appId: featuredApp().id || ""
+                                color: "#0b1714"
+                                border.width: 1
+                                border.color: "#2a4a3c"
+                                DeskIconArt {
+                                    anchors.centerIn: parent
+                                    width: 68; height: 68
+                                    kind: featuredApp().iconKind || "store"
+                                    appId: featuredApp().id || ""
+                                }
                             }
                             Column {
-                                anchors.left: featIco.right
-                                anchors.leftMargin: 20
-                                anchors.right: featBtn.left
-                                anchors.rightMargin: 20
+                                anchors.left: featIcoBox.right
+                                anchors.leftMargin: 24
+                                anchors.right: parent.right
+                                anchors.rightMargin: 200
                                 anchors.verticalCenter: parent.verticalCenter
-                                spacing: 6
-                                Text {
-                                    text: "Подборка для вас"
-                                    color: root.accentColor
-                                    font.pixelSize: 12
-                                    font.family: root.uiFontBold
+                                spacing: 8
+                                Row {
+                                    spacing: 8
+                                    Rectangle {
+                                        height: 22; radius: 11
+                                        width: featTag.implicitWidth + 16
+                                        color: "#16352e"
+                                        border.width: 1; border.color: root.accentColor
+                                        Text {
+                                            id: featTag
+                                            anchors.centerIn: parent
+                                            text: "Выбор редакции"
+                                            color: root.accentColor
+                                            font.pixelSize: 11
+                                            font.family: root.uiFontBold
+                                        }
+                                    }
+                                    Text {
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        text: (featIndex % Math.max(1, featuredList().length) + 1) + " / " + featuredList().length
+                                        color: "#6b7f78"
+                                        font.pixelSize: 11
+                                        font.family: root.uiFont
+                                    }
                                 }
                                 Text {
                                     width: parent.width
-                                    text: featuredApp().name
+                                    text: featuredApp().name || ""
                                     color: "#ffffff"
-                                    font.pixelSize: 26
+                                    font.pixelSize: 30
                                     font.family: root.uiFontBold
                                     elide: Text.ElideRight
                                 }
                                 Text {
                                     width: parent.width
-                                    text: featuredApp().desc
-                                    color: "#9aa7b2"
+                                    text: featuredApp().desc || ""
+                                    color: "#a8b5bd"
                                     font.pixelSize: 13
                                     font.family: root.uiFont
                                     wrapMode: Text.WordWrap
                                     maximumLineCount: 2
                                     elide: Text.ElideRight
                                 }
+                                Row {
+                                    spacing: 10
+                                    topPadding: 4
+                                    Rectangle {
+                                        width: 140; height: 40; radius: 12
+                                        color: root.storeInstallingId === featuredApp().id
+                                               ? "#252525"
+                                               : (isOwned(featuredApp()) ? "#1e2a28" : (featH.containsMouse ? "#4af098" : root.accentColor))
+                                        border.width: isOwned(featuredApp()) ? 1 : 0
+                                        border.color: root.accentColor
+                                        clip: true
+                                        Behavior on color { ColorAnimation { duration: 120 } }
+                                        Rectangle {
+                                            visible: root.storeInstallingId === featuredApp().id
+                                            anchors.left: parent.left
+                                            anchors.top: parent.top
+                                            anchors.bottom: parent.bottom
+                                            width: parent.width * (root.storeInstallPct / 100.0)
+                                            color: root.accentColor
+                                            opacity: 0.35
+                                        }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: btnLabel(featuredApp())
+                                            color: isOwned(featuredApp()) ? root.accentColor
+                                                   : (root.storeInstallingId === featuredApp().id ? "#e8eef2" : "#06210f")
+                                            font.pixelSize: 13
+                                            font.family: root.uiFontBold
+                                        }
+                                        MouseArea {
+                                            id: featH
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === featuredApp().id
+                                            onClicked: root.installStoreApp(featuredApp())
+                                        }
+                                    }
+                                    Rectangle {
+                                        width: 120; height: 40; radius: 12
+                                        color: featMoreH.containsMouse ? "#ffffff14" : "transparent"
+                                        border.width: 1
+                                        border.color: "#3a5a4e"
+                                        Text {
+                                            anchors.centerIn: parent
+                                            text: "Подробнее"
+                                            color: "#e8eef2"
+                                            font.pixelSize: 13
+                                            font.family: root.uiFont
+                                        }
+                                        MouseArea {
+                                            id: featMoreH
+                                            anchors.fill: parent
+                                            hoverEnabled: true
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: if (featuredApp().id) root.storeDetailId = featuredApp().id
+                                        }
+                                    }
+                                }
                             }
-                            Rectangle {
-                                id: featBtn
-                                anchors.right: parent.right
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: 148; height: 44; radius: 12
-                                color: root.storeInstallingId === featuredApp().id
-                                       ? "#252525"
-                                       : (isOwned(featuredApp()) ? "#252525" : (featH.containsMouse ? Qt.lighter(root.accentColor, 1.1) : root.accentColor))
-                                clip: true
-                                Rectangle {
-                                    visible: root.storeInstallingId === featuredApp().id
-                                    anchors.left: parent.left
-                                    anchors.top: parent.top
-                                    anchors.bottom: parent.bottom
-                                    width: parent.width * (root.storeInstallPct / 100.0)
-                                    color: root.accentColor
-                                    opacity: 0.35
-                                }
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: btnLabel(featuredApp())
-                                    color: isOwned(featuredApp()) || root.storeInstallingId === featuredApp().id ? "#e8eef2" : "#06210f"
-                                    font.bold: true
-                                    font.pixelSize: 13
-                                    font.family: root.uiFont
-                                }
-                                MouseArea {
-                                    id: featH
-                                    anchors.fill: parent
-                                    hoverEnabled: true
-                                    cursorShape: Qt.PointingHandCursor
-                                    enabled: root.storeInstallingId.length === 0 || root.storeInstallingId === featuredApp().id
-                                    onClicked: root.installStoreApp(featuredApp())
+                        }
+
+                        // точки-переключатели
+                        Row {
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.margins: 18
+                            spacing: 6
+                            Repeater {
+                                model: featuredList().length
+                                delegate: Rectangle {
+                                    property bool cur: index === featIndex % Math.max(1, featuredList().length)
+                                    width: cur ? 22 : 8
+                                    height: 8
+                                    radius: 4
+                                    color: cur ? root.accentColor : "#ffffff40"
+                                    Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        anchors.margins: -4
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: featIndex = index
+                                    }
                                 }
                             }
                         }
@@ -20801,13 +21771,9 @@ Rectangle {
                         font.family: root.uiFontBold
                     }
 
-                    Flickable {
+                    Item {
                         width: parent.width
-                        height: parent.height - 56 - 148 - 36 - 28 - 28 - 40
-                        contentWidth: width
-                        contentHeight: storeGridCol.height
-                        clip: true
-                        boundsBehavior: Flickable.StopAtBounds
+                        height: storeGridCol.height
 
                         Column {
                             id: storeGridCol
@@ -20924,6 +21890,8 @@ Rectangle {
                                 }
                             }
                         }
+                    }
+                    }
                     }
                 }
             }
@@ -24107,8 +25075,14 @@ Rectangle {
                     id: rowH
                     anchors.fill: parent
                     hoverEnabled: true
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: root.taskMgrSelKey = row.key
+                    onClicked: function (mouse) {
+                        root.taskMgrSelKey = row.key
+                        if (mouse.button === Qt.RightButton)
+                            root.openTaskMgrCtx(rowH, mouse.x, mouse.y, row)
+                    }
+                    onPressAndHold: root.openTaskMgrCtx(rowH, width / 2, height / 2, row)
                 }
             }
 
@@ -27482,6 +28456,52 @@ Rectangle {
         onTriggered: root.refreshNetwork(false)
     }
 
+    Timer {
+        id: appIconFetchTimer
+        interval: 2500
+        repeat: true
+        running: root.appIconFetchPending
+        property int ticks: 0
+        onTriggered: {
+            ticks++
+            // только пересканируем локальный кэш, без нового fetch (pending уже true)
+            var prev = root.appIconFetchPending
+            root.appIconFetchPending = true
+            var c = root.storeCatalog()
+            var names = []
+            for (var i = 0; i < c.length; ++i)
+                if (c[i] && c[i].id)
+                    names.push(String(c[i].id))
+            if (names.length) {
+                var script = "for id in " + names.map(function (n) { return root.shQuote(n) }).join(" ")
+                    + "; do f=/usr/share/gtos/app-icons/$id.png; "
+                    + "[ -s \"$f\" ] && echo \"$id|$f\"; done"
+                var raw = (typeof sys.runTimeout === "function" ? sys.runTimeout(script, 2500) : sys.run(script)).trim()
+                if (raw.length) {
+                    var map = {}
+                    for (var key in root.appIconPaths)
+                        map[key] = root.appIconPaths[key]
+                    var lines = raw.split("\n")
+                    for (var j = 0; j < lines.length; ++j) {
+                        var line = lines[j].trim()
+                        var pipe = line.indexOf("|")
+                        if (pipe > 0)
+                            map[line.slice(0, pipe)] = line.slice(pipe + 1)
+                    }
+                    root.appIconPaths = map
+                }
+            }
+            var done = (sys.run("test -f /tmp/gtos-icons-done && echo yes || true").trim() === "yes")
+            if (done || ticks >= 16) {
+                root.appIconFetchPending = false
+                ticks = 0
+                sys.run("rm -f /tmp/gtos-icons-done >/dev/null 2>&1")
+            } else {
+                root.appIconFetchPending = prev
+            }
+        }
+    }
+
 
     // Invisible capture surface for screenshots
     Item {
@@ -27517,7 +28537,7 @@ Rectangle {
             if (kind === "file" || kind === "doc" || kind === "app") return "doc"
             if (kind === "drive" || kind === "disk") return "drive"
             if (kind === "bluetooth" || kind === "accounts" || kind === "about") return "settings"
-            if (kind === "network") return "globe"
+            // network остаётся network (Wi‑Fi дуги), не глобус
             if (kind === "personalize") return "draw"
             if (kind === "apps") return "store"
             if (kind === "notespro") return "notes"
@@ -27554,7 +28574,7 @@ Rectangle {
         height: 48
         clip: true
 
-        // Своя иконка стороннего приложения (из пакета / hicolor)
+        // Своя иконка стороннего приложения (локальный кэш или https)
         Image {
             id: realAppIcon
             anchors.fill: parent
@@ -27564,7 +28584,7 @@ Rectangle {
                 var p = deskArt.resolvedIconPath
                 if (!p.length)
                     return ""
-                if (p.indexOf("file:") === 0)
+                if (p.indexOf("file:") === 0 || p.indexOf("http://") === 0 || p.indexOf("https://") === 0)
                     return p
                 return "file://" + p
             }
@@ -27980,27 +29000,66 @@ Rectangle {
             }
         }
 
-        // Globe — сеть / карты (не путать с браузером GT)
+        // Globe / сеть — компас DeskIconArt (не сфера с меридианами)
         Item {
             visible: k === "globe"
             anchors.centerIn: parent
             width: 40; height: 40
-            Rectangle {
-                anchors.fill: parent; radius: 20
-                gradient: Gradient {
-                    GradientStop { position: 0.0; color: "#64b5f6" }
-                    GradientStop { position: 1.0; color: "#1565c0" }
+            Canvas {
+                id: globeArt
+                anchors.fill: parent
+                onPaint: {
+                    var ctx = getContext("2d")
+                    ctx.clearRect(0, 0, width, height)
+                    var cx = width / 2, cy = height / 2, r = 17.5
+                    // корпус
+                    var face = ctx.createRadialGradient(cx - 4, cy - 5, 2, cx, cy, r)
+                    face.addColorStop(0, "#f4f8fb")
+                    face.addColorStop(1, "#d5e2ee")
+                    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2)
+                    ctx.fillStyle = face; ctx.fill()
+                    ctx.strokeStyle = "#7a8fa3"
+                    ctx.lineWidth = 1.6
+                    ctx.stroke()
+                    // внутреннее кольцо
+                    ctx.beginPath(); ctx.arc(cx, cy, r - 3.2, 0, Math.PI * 2)
+                    ctx.strokeStyle = "#a8bbc9"
+                    ctx.lineWidth = 1.1
+                    ctx.stroke()
+                    // метки N/E/S/W
+                    ctx.strokeStyle = "#9aabba"
+                    ctx.lineWidth = 1.2
+                    ctx.lineCap = "round"
+                    var tick = 3.2
+                    ctx.beginPath(); ctx.moveTo(cx, cy - r + 4.5); ctx.lineTo(cx, cy - r + 4.5 + tick); ctx.stroke()
+                    ctx.beginPath(); ctx.moveTo(cx, cy + r - 4.5); ctx.lineTo(cx, cy + r - 4.5 - tick); ctx.stroke()
+                    ctx.beginPath(); ctx.moveTo(cx - r + 4.5, cy); ctx.lineTo(cx - r + 4.5 + tick, cy); ctx.stroke()
+                    ctx.beginPath(); ctx.moveTo(cx + r - 4.5, cy); ctx.lineTo(cx + r - 4.5 - tick, cy); ctx.stroke()
+                    // стрелка N (синяя) / S (коралл)
+                    ctx.beginPath()
+                    ctx.moveTo(cx, cy - 12.5)
+                    ctx.lineTo(cx + 4.2, cy)
+                    ctx.lineTo(cx, cy + 2.4)
+                    ctx.closePath()
+                    ctx.fillStyle = "#2f6fed"
+                    ctx.fill()
+                    ctx.beginPath()
+                    ctx.moveTo(cx, cy + 12.5)
+                    ctx.lineTo(cx - 4.2, cy)
+                    ctx.lineTo(cx, cy - 2.4)
+                    ctx.closePath()
+                    ctx.fillStyle = "#e35d5d"
+                    ctx.fill()
+                    // ось
+                    ctx.beginPath(); ctx.arc(cx, cy, 2.4, 0, Math.PI * 2)
+                    ctx.fillStyle = "#ffffff"
+                    ctx.fill()
+                    ctx.strokeStyle = "#5b7c99"
+                    ctx.lineWidth = 1.0
+                    ctx.stroke()
                 }
-            }
-            Rectangle {
-                anchors.centerIn: parent; width: 34; height: 34; radius: 17
-                color: "transparent"; border.color: "#ffffffcc"; border.width: 1.5
-            }
-            Rectangle { anchors.horizontalCenter: parent.horizontalCenter; anchors.verticalCenter: parent.verticalCenter; width: 34; height: 1.5; color: "#ffffffaa" }
-            Rectangle { anchors.horizontalCenter: parent.horizontalCenter; anchors.verticalCenter: parent.verticalCenter; width: 1.5; height: 34; color: "#ffffffaa" }
-            Rectangle {
-                anchors.centerIn: parent; width: 14; height: 34; radius: 7
-                color: "transparent"; border.color: "#ffffff99"; border.width: 1.4
+                Component.onCompleted: requestPaint()
+                onVisibleChanged: if (visible) requestPaint()
             }
         }
 
@@ -28605,10 +29664,15 @@ Rectangle {
                 onPaint: {
                     var ctx = getContext("2d")
                     ctx.reset()
-                    ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.lineCap = "round"
-                    ctx.beginPath(); ctx.arc(14, 20, 6, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke()
-                    ctx.beginPath(); ctx.arc(14, 20, 11, Math.PI * 1.15, Math.PI * 1.85); ctx.stroke()
-                    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(14, 20, 2.5, 0, Math.PI * 2); ctx.fill()
+                    ctx.strokeStyle = "#fff"
+                    ctx.lineWidth = 2.2
+                    ctx.lineCap = "round"
+                    // Wi‑Fi дуги + точка
+                    ctx.beginPath(); ctx.arc(14, 20, 5, Math.PI * 1.18, Math.PI * 1.82); ctx.stroke()
+                    ctx.beginPath(); ctx.arc(14, 20, 9.5, Math.PI * 1.18, Math.PI * 1.82); ctx.stroke()
+                    ctx.beginPath(); ctx.arc(14, 20, 14, Math.PI * 1.18, Math.PI * 1.82); ctx.stroke()
+                    ctx.fillStyle = "#fff"
+                    ctx.beginPath(); ctx.arc(14, 20, 2.4, 0, Math.PI * 2); ctx.fill()
                 }
                 Component.onCompleted: requestPaint()
             }
@@ -28965,7 +30029,11 @@ Rectangle {
     Shortcut { sequence: "Ctrl+Alt+Backspace"; onActivated: root.openSecureDesk() }
     Shortcut { sequence: "Meta+N"; onActivated: root.openQuickNote() }
     Shortcut { sequence: "Esc"; onActivated: {
-            if (root.secureDeskOpen) { root.closeSecureDesk(); return }
+            if (root.secureDeskOpen) {
+                if (root.secureDeskMode.length) { root.secureDeskMode = ""; return }
+                root.closeSecureDesk()
+                return
+            }
             if (root.quickNoteOpen) { root.quickNoteOpen = false; return }
             if (root.opsFlyoutOpen) { root.opsFlyoutOpen = false; return }
             root.altTabOpen = false
@@ -29482,6 +30550,78 @@ Rectangle {
                 width: parent.width; height: 36; radius: 8; color: "#1c262e"
                 Text { anchors.centerIn: parent; text: "Открыть календарь"; color: "#e8eef2"; font.pixelSize: 12 }
                 MouseArea { anchors.fill: parent; onClicked: { root.calendarOpen = false; root.launch("cal", "Календарь") } }
+            }
+        }
+    }
+
+    // Выпадающие списки персонализации панели задач
+    Item {
+        id: settingsDropLayer
+        anchors.fill: parent
+        z: 840
+        visible: root.settingsDropOpen
+        MouseArea {
+            anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
+            onPressed: root.settingsDropOpen = false
+        }
+        Rectangle {
+            id: settingsDropMenu
+            x: Math.min(Math.max(8, root.settingsDropX), parent.width - width - 8)
+            y: Math.min(Math.max(8, root.settingsDropY), parent.height - height - 8)
+            width: root.settingsDropW
+            height: Math.min(280, settingsDropCol.implicitHeight + 8)
+            radius: 6
+            color: "#2f2f2f"
+            border.width: 1
+            border.color: "#1f1f1f"
+            clip: true
+            MouseArea { anchors.fill: parent; onPressed: {} }
+            Column {
+                id: settingsDropCol
+                width: parent.width
+                anchors.top: parent.top
+                anchors.topMargin: 4
+                anchors.bottomMargin: 4
+                spacing: 0
+                Repeater {
+                    model: root.settingsDropOptions
+                    delegate: Rectangle {
+                        width: parent.width
+                        height: 32
+                        color: dropOptMa.containsMouse ? "#404040" : "transparent"
+                        Row {
+                            anchors.fill: parent
+                            anchors.leftMargin: 12
+                            anchors.rightMargin: 12
+                            spacing: 10
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 14
+                                text: modelData.id === root.settingsDropCurrent ? "✓" : ""
+                                color: root.accentColor
+                                font.pixelSize: 13
+                                font.bold: true
+                            }
+                            Text {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 30
+                                text: modelData.name
+                                color: "#ffffff"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                                elide: Text.ElideRight
+                            }
+                        }
+                        MouseArea {
+                            id: dropOptMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.applySettingsDrop(modelData.id)
+                        }
+                    }
+                }
             }
         }
     }
@@ -30999,147 +32139,124 @@ Rectangle {
         onTriggered: root.lockShake = false
     }
 
-    // Ctrl+Alt+Delete — безопасный стол поверх всех окон
+    // Ctrl+Alt+Delete — безопасный стол (CAD-стиль, чёрный фон)
     Item {
         id: secureDesk
         anchors.fill: parent
         z: 970
         visible: root.secureDeskOpen && !root.locked && !root.booting && !root.setupOpen
         opacity: root.secureDeskOpen ? 1 : 0
-        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+
+        onVisibleChanged: {
+            if (visible) {
+                root.secureDeskAppear = 0
+                secureAppearAnim.restart()
+            }
+        }
+
+        NumberAnimation {
+            id: secureAppearAnim
+            target: root
+            property: "secureDeskAppear"
+            from: 0
+            to: 1
+            duration: 520
+            easing.type: Easing.OutCubic
+        }
 
         Rectangle {
             anchors.fill: parent
-            color: "#e6080c10"
+            color: "#000000"
         }
         MouseArea {
             anchors.fill: parent
             onClicked: { /* блок кликов к приложениям */ }
         }
 
+        // основной список
         Column {
             anchors.centerIn: parent
-            spacing: 28
-            width: Math.min(720, parent.width - 80)
+            anchors.verticalCenterOffset: -24
+            spacing: 12
+            width: Math.min(420, parent.width - 64)
+            visible: root.secureDeskMode === ""
+            opacity: root.secureDeskAppear
+            transform: Translate { y: (1 - root.secureDeskAppear) * 18 }
 
-            Column {
-                anchors.horizontalCenter: parent.horizontalCenter
-                spacing: 8
-                width: parent.width
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "GT/OS"
-                    color: root.accentColor
-                    font.pixelSize: 14
-                    font.family: root.uiFontBold
-                    font.letterSpacing: 2
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
-                    text: "Безопасный стол"
-                    color: "#ffffff"
-                    font.pixelSize: 32
-                    font.family: root.uiFontBold
-                }
-                Text {
-                    anchors.horizontalCenter: parent.horizontalCenter
+            Repeater {
+                model: [
+                    { id: "lock", title: "Заблокировать" },
+                    { id: "switch", title: "Сменить пользователя" },
+                    { id: "signout", title: "Выйти" },
+                    { id: "password", title: "Сменить пароль" },
+                    { id: "tasks", title: "Диспетчер задач" },
+                    { id: "control", title: "Контрольный центр" },
+                    { id: "settings", title: "Параметры" },
+                    { id: "safeboot", title: "Безопасный режим" },
+                    { id: "reboot", title: "Перезагрузка" },
+                    { id: "power", title: "Питание" }
+                ]
+                delegate: Item {
                     width: parent.width
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.WordWrap
-                    text: "Сеанс «" + root.currentUser + "» · GT/OS " + root.osVersion
-                          + " · Ctrl+Alt+Delete перекрывает все окна"
-                    color: "#9aa7b2"
-                    font.pixelSize: 13
-                    font.family: root.uiFont
-                }
-            }
+                    height: 38
+                    opacity: Math.max(0, Math.min(1, (root.secureDeskAppear - index * 0.05) / 0.55))
+                    transform: Translate {
+                        y: (1 - Math.max(0, Math.min(1, (root.secureDeskAppear - index * 0.05) / 0.55))) * 10
+                    }
 
-            Flow {
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: parent.width
-                spacing: 14
-                Repeater {
-                    model: [
-                        { id: "lock", title: "Заблокировать", sub: "Win+L" },
-                        { id: "switch", title: "Сменить пользователя", sub: "Выбор учётки" },
-                        { id: "signout", title: "Выйти", sub: "Завершить сеанс" },
-                        { id: "tasks", title: "Диспетчер задач", sub: "Процессы" },
-                        { id: "safeboot", title: "Безопасный режим", sub: "Перезагрузка · минимум служб" },
-                        { id: "reboot", title: "Перезагрузка", sub: "С сохранением" },
-                        { id: "power", title: "Выключение", sub: "Питание" }
-                    ]
-                    delegate: Rectangle {
-                        width: 220
-                        height: 88
-                        radius: 16
-                        color: cadH.containsMouse ? "#1a2a24" : "#121a18"
-                        border.width: 1
-                        border.color: cadH.containsMouse ? root.accentColor : "#2a3a34"
-                        Behavior on color { ColorAnimation { duration: 120 } }
-                        Column {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.verticalCenter: parent.verticalCenter
-                            anchors.margins: 16
-                            spacing: 4
-                            Text {
-                                text: modelData.title
-                                color: "#ffffff"
-                                font.pixelSize: 15
-                                font.family: root.uiFontBold
-                            }
-                            Text {
-                                text: modelData.sub
-                                color: "#8b98a3"
-                                font.pixelSize: 12
-                                font.family: root.uiFont
-                            }
-                        }
-                        MouseArea {
-                            id: cadH
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                if (modelData.id === "lock") {
-                                    root.closeSecureDesk()
-                                    root.lockSession()
-                                } else if (modelData.id === "switch") {
-                                    root.switchUserFromSecure()
-                                } else if (modelData.id === "signout") {
-                                    root.signOutSession()
-                                } else if (modelData.id === "tasks") {
-                                    root.closeSecureDesk()
-                                    root.launch("monitor", "Диспетчер задач")
-                                } else if (modelData.id === "safeboot") {
-                                    root.rebootToSafeMode()
-                                } else if (modelData.id === "reboot") {
-                                    root.closeSecureDesk()
-                                    root.powerAction("reboot")
-                                } else if (modelData.id === "power") {
-                                    root.closeSecureDesk()
-                                    root.powerAction("poweroff")
-                                }
-                            }
-                        }
+                    Text {
+                        id: cadLabel
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.title
+                        color: cadItemH.containsMouse ? root.accentColor : "#e8eef2"
+                        font.pixelSize: 16
+                        font.family: root.uiFont
+                        font.weight: Font.Light
+                        transformOrigin: Item.Center
+                        Behavior on color { ColorAnimation { duration: 140 } }
+                        scale: cadItemH.containsMouse ? 1.03 : 1
+                        Behavior on scale { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                    }
+                    Rectangle {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.top: cadLabel.bottom
+                        anchors.topMargin: 2
+                        width: cadItemH.containsMouse ? Math.min(cadLabel.implicitWidth, parent.width) : 0
+                        height: 1
+                        color: root.accentColor
+                        opacity: cadItemH.containsMouse ? 0.85 : 0
+                        Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+                        Behavior on opacity { NumberAnimation { duration: 140 } }
+                    }
+                    MouseArea {
+                        id: cadItemH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.secureDeskAction(modelData.id)
                     }
                 }
             }
 
+            Item { width: 1; height: 22 }
+
             Rectangle {
                 anchors.horizontalCenter: parent.horizontalCenter
-                width: 160
-                height: 40
-                radius: 12
-                color: cancelCad.containsMouse ? "#243038" : "transparent"
-                border.width: 1
-                border.color: "#2a3a34"
+                width: 128
+                height: 36
+                radius: 10
+                color: cancelCad.containsMouse ? "#4af098" : root.accentColor
+                Behavior on color { ColorAnimation { duration: 120 } }
+                scale: cancelCad.pressed ? 0.97 : 1
+                Behavior on scale { NumberAnimation { duration: 90 } }
                 Text {
                     anchors.centerIn: parent
-                    text: "Отмена · Esc"
-                    color: "#c5d0d8"
+                    text: "Отмена"
+                    color: "#06210f"
                     font.pixelSize: 13
-                    font.family: root.uiFont
+                    font.family: root.uiFontBold
                 }
                 MouseArea {
                     id: cancelCad
@@ -31147,6 +32264,264 @@ Rectangle {
                     hoverEnabled: true
                     cursorShape: Qt.PointingHandCursor
                     onClicked: root.closeSecureDesk()
+                }
+            }
+        }
+
+        // смена пароля
+        Column {
+            anchors.centerIn: parent
+            spacing: 14
+            width: 360
+            visible: root.secureDeskMode === "pwd"
+            opacity: visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 180 } }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Сменить пароль"
+                color: "#ffffff"
+                font.pixelSize: 26
+                font.family: root.uiFont
+                font.weight: Font.Light
+            }
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Учётная запись «" + root.currentUser + "»"
+                color: "#8b98a3"
+                font.pixelSize: 13
+                font.family: root.uiFont
+            }
+            Rectangle {
+                width: parent.width; height: 42; radius: 10
+                color: "#121212"
+                border.width: 1
+                border.color: cadPwd1.activeFocus ? root.accentColor : "#2a2a2a"
+                TextInput {
+                    id: cadPwd1
+                    anchors.fill: parent; anchors.margins: 12
+                    color: "#fff"; font.pixelSize: 14; font.family: root.uiFont
+                    echoMode: TextInput.Password
+                    text: root.pwdDraft
+                    onTextChanged: root.pwdDraft = text
+                    Text {
+                        anchors.fill: parent; verticalAlignment: Text.AlignVCenter
+                        visible: !root.pwdDraft.length && !parent.activeFocus
+                        text: "Новый пароль"; color: "#666"; font.pixelSize: 14; font.family: root.uiFont
+                    }
+                }
+            }
+            Rectangle {
+                width: parent.width; height: 42; radius: 10
+                color: "#121212"
+                border.width: 1
+                border.color: cadPwd2.activeFocus ? root.accentColor : "#2a2a2a"
+                TextInput {
+                    id: cadPwd2
+                    anchors.fill: parent; anchors.margins: 12
+                    color: "#fff"; font.pixelSize: 14; font.family: root.uiFont
+                    echoMode: TextInput.Password
+                    text: root.pwdDraft2
+                    onTextChanged: root.pwdDraft2 = text
+                    Keys.onReturnPressed: {
+                        root.saveUserPassword()
+                        root.secureDeskMode = ""
+                    }
+                    Text {
+                        anchors.fill: parent; verticalAlignment: Text.AlignVCenter
+                        visible: !root.pwdDraft2.length && !parent.activeFocus
+                        text: "Повторите пароль"; color: "#666"; font.pixelSize: 14; font.family: root.uiFont
+                    }
+                }
+            }
+            Row {
+                anchors.horizontalCenter: parent.horizontalCenter
+                spacing: 12
+                Rectangle {
+                    width: 140; height: 40; radius: 10
+                    color: cadPwdSave.containsMouse ? "#4af098" : root.accentColor
+                    Text {
+                        anchors.centerIn: parent; text: "Сохранить"
+                        color: "#06210f"; font.pixelSize: 14; font.family: root.uiFontBold
+                    }
+                    MouseArea {
+                        id: cadPwdSave; anchors.fill: parent; hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            root.saveUserPassword()
+                            root.secureDeskMode = ""
+                        }
+                    }
+                }
+                Rectangle {
+                    width: 120; height: 40; radius: 10
+                    color: "transparent"
+                    border.width: 1
+                    border.color: "#3a3a3a"
+                    Text {
+                        anchors.centerIn: parent; text: "Назад"
+                        color: "#c5d0d8"; font.pixelSize: 14; font.family: root.uiFont
+                    }
+                    MouseArea {
+                        anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                        onClicked: root.secureDeskMode = ""
+                    }
+                }
+            }
+        }
+
+        // питание
+        Column {
+            anchors.centerIn: parent
+            spacing: 8
+            width: 360
+            visible: root.secureDeskMode === "power"
+            opacity: visible ? 1 : 0
+            Behavior on opacity { NumberAnimation { duration: 180 } }
+
+            Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "Питание"
+                color: "#ffffff"
+                font.pixelSize: 26
+                font.family: root.uiFont
+                font.weight: Font.Light
+            }
+            Item { width: 1; height: 8 }
+            Repeater {
+                model: [
+                    { id: "sleep", title: "Сон" },
+                    { id: "reboot", title: "Перезагрузка" },
+                    { id: "poweroff", title: "Выключение" }
+                ]
+                delegate: Item {
+                    width: parent.width
+                    height: 34
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.title
+                        color: powItemH.containsMouse ? root.accentColor : "#e8eef2"
+                        font.pixelSize: 16
+                        font.family: root.uiFont
+                        font.weight: Font.Light
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                    }
+                    MouseArea {
+                        id: powItemH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.secureDeskAction(modelData.id)
+                    }
+                }
+            }
+            Item { width: 1; height: 16 }
+            Rectangle {
+                anchors.horizontalCenter: parent.horizontalCenter
+                width: 120; height: 40; radius: 10
+                color: cadPowBack.containsMouse ? "#4af098" : root.accentColor
+                Text {
+                    anchors.centerIn: parent; text: "Назад"
+                    color: "#06210f"; font.pixelSize: 14; font.family: root.uiFontBold
+                }
+                MouseArea {
+                    id: cadPowBack; anchors.fill: parent; hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.secureDeskMode = ""
+                }
+            }
+        }
+
+        // минималистичные линейные иконки в правом нижнем углу
+        Row {
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 26
+            anchors.bottomMargin: 22
+            spacing: 6
+            opacity: root.secureDeskAppear
+            Repeater {
+                model: [
+                    { id: "network", tip: "Сеть" },
+                    { id: "a11y", tip: "Специальные возможности" },
+                    { id: "power", tip: "Питание" }
+                ]
+                delegate: Item {
+                    width: 34; height: 34
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 8
+                        color: footH.containsMouse ? "#1a1a1a" : "transparent"
+                        Behavior on color { ColorAnimation { duration: 120 } }
+                    }
+                    Canvas {
+                        id: footIcon
+                        anchors.centerIn: parent
+                        width: 18; height: 18
+                        property color ink: footH.containsMouse ? root.accentColor : "#c5ccd2"
+                        onInkChanged: requestPaint()
+                        onPaint: {
+                            var c = getContext("2d")
+                            c.reset()
+                            c.strokeStyle = ink
+                            c.lineWidth = 1.4
+                            c.lineCap = "round"
+                            c.lineJoin = "round"
+                            if (modelData.id === "network") {
+                                // Wi‑Fi: три дуги и точка
+                                for (var r = 1; r <= 3; ++r) {
+                                    c.beginPath()
+                                    c.arc(9, 14.5, r * 4, Math.PI * 1.25, Math.PI * 1.75)
+                                    c.stroke()
+                                }
+                                c.beginPath()
+                                c.arc(9, 14.5, 1, 0, Math.PI * 2)
+                                c.fillStyle = ink
+                                c.fill()
+                            } else if (modelData.id === "a11y") {
+                                // человек в круге
+                                c.beginPath(); c.arc(9, 9, 7.5, 0, Math.PI * 2); c.stroke()
+                                c.beginPath(); c.arc(9, 5.6, 1.1, 0, Math.PI * 2); c.stroke()
+                                c.beginPath(); c.moveTo(5, 7.8); c.lineTo(13, 7.8); c.stroke()
+                                c.beginPath(); c.moveTo(9, 7.8); c.lineTo(9, 10.8)
+                                c.lineTo(6.8, 14); c.moveTo(9, 10.8); c.lineTo(11.2, 14); c.stroke()
+                            } else {
+                                // питание
+                                c.beginPath()
+                                c.arc(9, 10, 6.5, Math.PI * 1.65, Math.PI * 1.35, false)
+                                c.stroke()
+                                c.beginPath(); c.moveTo(9, 1.8); c.lineTo(9, 8.6); c.stroke()
+                            }
+                        }
+                    }
+                    Rectangle {
+                        visible: footH.containsMouse
+                        anchors.bottom: parent.top
+                        anchors.bottomMargin: 6
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: footTip.implicitWidth + 14
+                        height: 22
+                        radius: 6
+                        color: "#141414"
+                        border.width: 1
+                        border.color: "#2a2a2a"
+                        Text {
+                            id: footTip
+                            anchors.centerIn: parent
+                            text: modelData.tip
+                            color: "#c5ccd2"
+                            font.pixelSize: 11
+                            font.family: root.uiFont
+                        }
+                    }
+                    MouseArea {
+                        id: footH
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.secureDeskAction(modelData.id)
+                    }
                 }
             }
         }

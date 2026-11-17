@@ -17,7 +17,8 @@ if [ -n "$REPAIR_ID" ]; then
     LOG="${GTOS_STORE_LOG:-/tmp/gtos-repair-$REPAIR_ID.log}"
 fi
 
-rm -f "$DONE_FILE" "$RC_FILE" /tmp/gtos-store-phase /tmp/gtos-store-expect /tmp/gtos-store-bytes \
+# /tmp/gtos-store-expect не трогаем: его пишет оболочка из каталога (размер для шкалы)
+rm -f "$DONE_FILE" "$RC_FILE" /tmp/gtos-store-phase /tmp/gtos-store-bytes \
     /tmp/gtos-store-speed /tmp/gtos-store-label /tmp/gtos-store-eta
 : >"$LOG"
 echo "GTOS_STORE_INSTALL start $(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$LOG"
@@ -168,7 +169,8 @@ probe_expect_size() {
     # короткий HEAD — длинный таймаут раньше выглядел как «залипло на 8%»
     exp=$(curl -fsSIL -A "$CURL_UA" --connect-timeout 8 --max-time 12 "$URL" 2>/dev/null \
         | awk 'BEGIN{IGNORECASE=1} /^content-length:/{print $2}' | tr -d '\r' | tail -n 1)
-    if [ -n "$exp" ] && [ "$exp" -gt 0 ] 2>/dev/null; then
+    # HEAD на редиректе иногда отдаёт размер HTML-страницы — не верим крошечным ответам
+    if [ -n "$exp" ] && [ "$exp" -gt 100000 ] 2>/dev/null; then
         echo "$exp" >/tmp/gtos-store-expect
         echo "expect bytes=$exp" >>"$LOG"
     fi
@@ -216,7 +218,7 @@ download() {
                         prev_t=$now
                     fi
                 else
-                    echo "Соединение…" >/tmp/gtos-store-label
+                    echo "Соединение с сервером…" >/tmp/gtos-store-label
                 fi
                 sleep 1
             done

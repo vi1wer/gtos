@@ -281,15 +281,16 @@
       "name": "VLC media player",
       "pub": "VideoLAN",
       "cat": "Медиа",
-      "desc": "Воспроизведение почти любого видео и аудио",
+      "desc": "Настоящий VideoLAN VLC: видео, аудио, субтитры и потоки — не оболочка GT",
       "iconKind": "video",
       "featured": true,
-      "launchId": "vlc",
+      "launchId": "pkg",
       "engineBins": [
         "vlc",
         "cvlc"
       ],
       "price": "Бесплатно",
+      "homeUrl": "https://www.videolan.org/vlc/",
       "source": "alpine",
       "platform": "alpine",
       "version": "3.0.23-r4",
