@@ -44,7 +44,8 @@ if [ ! -s /etc/machine-id ]; then
     printf 'gtos%024d\n' "$$" > /etc/machine-id 2>/dev/null || true
 fi
 
-mkdir -p "$PROF" "$HOME_DIR" "/tmp/runtime-$U" 2>/dev/null || true
+DL_DIR="$HOME_DIR/Загрузки"
+mkdir -p "$PROF" "$HOME_DIR" "$DL_DIR" "/tmp/runtime-$U" 2>/dev/null || true
 rm -f "$PROF"/lock "$PROF"/.parentlock "$PROF"/*.lock 2>/dev/null || true
 
 # profiles.ini обязателен — без него Firefox часто сразу выходит
@@ -109,9 +110,24 @@ user_pref("network.http.max-connections", 48);
 user_pref("network.http.max-persistent-connections-per-server", 8);
 EOF
 
+# Загрузки → ~/Загрузки (путь зависит от пользователя)
+cat >> "$PROF/prefs.js" <<EOF
+user_pref("browser.download.folderList", 2);
+user_pref("browser.download.dir", "$DL_DIR");
+user_pref("browser.download.useDownloadDir", true);
+user_pref("browser.download.alwaysOpenPanel", true);
+user_pref("browser.download.manager.showWhenStarting", true);
+user_pref("browser.download.improvements_to_download_panel", true);
+user_pref("browser.download.always_ask_before_handling_new_types", false);
+user_pref("browser.helperApps.deleteTempFileOnExit", false);
+user_pref("browser.helperApps.neverAsk.openFile", "");
+user_pref("browser.helperApps.neverAsk.saveToDisk", "application/octet-stream,application/x-msdownload,application/x-msdos-program,application/x-msi,application/vnd.microsoft.portable-executable,application/x-executable,application/x-elf,application/x-sharedlib,application/java-archive,application/x-java-archive,application/zip,application/x-zip-compressed,application/x-7z-compressed,application/gzip,application/x-gzip,application/x-tar,application/x-gtar,application/x-bzip2,application/x-xz,application/x-rar-compressed,application/vnd.rar,application/x-iso9660-image,application/x-apple-diskimage,application/x-debian-package,application/vnd.debian.binary-package,application/x-rpm,application/vnd.android.package-archive,application/x-cd-image,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.oasis.opendocument.text,application/vnd.oasis.opendocument.spreadsheet,application/x-shockwave-flash,binary/octet-stream");
+EOF
+
 # НЕ chown -R весь $HOME — на больших дисках это минуты и «Firefox не стартует»
 chown -R "$U:$U" "$PROF_DIR" "/tmp/runtime-$U" 2>/dev/null || true
-chown "$U:$U" "$HOME_DIR" 2>/dev/null || true
+chown "$U:$U" "$HOME_DIR" "$DL_DIR" 2>/dev/null || true
+chmod 755 "$DL_DIR" 2>/dev/null || true
 chmod 700 "/tmp/runtime-$U" 2>/dev/null || true
 chmod -R u+rwX "$PROF_DIR" 2>/dev/null || true
 

@@ -92,6 +92,10 @@ RUNTIME_PACKAGES = [
     "alsa-ucm-conf",
     # браузер для повседневной работы
     "firefox",
+    # движок GT Browser (Chromium через Qt WebEngine)
+    "qt6-qtwebengine",
+    "qt6-qtwebchannel",
+    "qt6-qtpositioning",
     # рамки/крестики у окон внешних приложений (Firefox и др.)
     "openbox",
     # медиа
@@ -108,6 +112,10 @@ RUNTIME_PACKAGES = [
     "dunst",
     "cups",
     "cups-filters",
+    # ежедневный ПК: экраны, VPN, камера
+    "xrandr",
+    "wireguard-tools",
+    "v4l-utils",
 ]
 
 BUILD_EXTRA = [
@@ -327,7 +335,7 @@ def resolve(by_name: dict[str, dict], providers: dict[str, list[dict]], roots: l
             return
         if real.endswith("-dev") and real not in DEV_OK:
             return
-        if "webengine" in real or "webview" in real or "qtweb" in real:
+        if "qtwebview" in real:
             return
         if real in seen:
             return
@@ -698,13 +706,32 @@ elif command -v mdev >/dev/null 2>&1; then
     mdev -s
 fi
 # Постоянный том: LABEL установки → разделы → целый диск → 9p
+try_mount_ext4() {
+    disk="$1"
+    [ -b "$disk" ] || return 1
+    # грязный journal после kill QEMU — чиним, а не форматируем
+    if command -v fsck.ext4 >/dev/null 2>&1; then
+        fsck.ext4 -p "$disk" >/tmp/fsck-persist.log 2>&1 || true
+    elif command -v e2fsck >/dev/null 2>&1; then
+        e2fsck -p "$disk" >/tmp/fsck-persist.log 2>&1 || true
+    fi
+    if mount -t ext4 "$disk" /data 2>/tmp/mnt.err; then
+        return 0
+    fi
+    # ещё одна попытка после принудительного fsck
+    if command -v e2fsck >/dev/null 2>&1; then
+        e2fsck -y "$disk" >/tmp/fsck-persist2.log 2>&1 || true
+        mount -t ext4 "$disk" /data 2>/tmp/mnt.err && return 0
+    fi
+    return 1
+}
 mount_persist() {
     mkdir -p /data
     if command -v blkid >/dev/null 2>&1; then
         for lab in GTOSROOT GTOSDATA; do
             dev=$(blkid -L "$lab" 2>/dev/null) || true
             if [ -n "$dev" ] && [ -b "$dev" ]; then
-                if mount -t ext4 "$dev" /data 2>/tmp/mnt.err; then
+                if try_mount_ext4 "$dev"; then
                     echo "GTOS_PERSIST label:$lab:$dev" > /dev/ttyS0
                     return 0
                 fi
@@ -719,14 +746,25 @@ mount_persist() {
     done
     for disk in /dev/vda2 /dev/vdb2 /dev/sda2 /dev/nvme0n1p2 /dev/vda /dev/vdb /dev/sda /dev/nvme0n1; do
         [ -b "$disk" ] || continue
-        if mount -t ext4 "$disk" /data 2>/tmp/mnt.err; then
+        if try_mount_ext4 "$disk"; then
             echo "GTOS_PERSIST ext4:$disk" > /dev/ttyS0
             return 0
         fi
     done
-    # только в QEMU: форматнуть пустой virtio-диск данных
+    # формат ТОЛЬКО действительно пустого диска (нет filesystem/разметки)
     for disk in /dev/vdb /dev/vda; do
         [ -b "$disk" ] || continue
+        if command -v blkid >/dev/null 2>&1; then
+            if blkid "$disk" >/dev/null 2>&1; then
+                echo "GTOS_PERSIST skip-format:$disk (has fs)" > /dev/ttyS0
+                continue
+            fi
+        fi
+        # защита: если на диске уже есть superblock ext*, не трогаем
+        if command -v dumpe2fs >/dev/null 2>&1 && dumpe2fs "$disk" >/dev/null 2>&1; then
+            echo "GTOS_PERSIST skip-format:$disk (ext)" > /dev/ttyS0
+            continue
+        fi
         if command -v mkfs.ext4 >/dev/null 2>&1; then
             mkfs.ext4 -F -L GTOSDATA "$disk" >/tmp/mkfs.err 2>&1
             if mount -t ext4 "$disk" /data 2>/tmp/mnt2.err; then
@@ -989,13 +1027,35 @@ if ! command -v bluetoothctl >/dev/null 2>&1; then
     apk add --no-progress --cache-dir /var/lib/gtos/apk-cache bluez bluez-openrc >>/tmp/apk-bluez.log 2>&1 || true
 fi
 # запасной apk, если пакеты не попали в образ
-for _need in pdftoppm:poppler-utils xclip:xclip dunst:dunst cupsd:cups; do
+for _need in pdftoppm:poppler-utils xclip:xclip dunst:dunst cupsd:cups xrandr:xrandr wg:wireguard-tools v4l2-ctl:v4l-utils; do
     _bin=${_need%%:*}; _pkg=${_need##*:}
-    if ! command -v "$_bin" >/dev/null 2>&1 && [ ! -x "/usr/sbin/$_bin" ]; then
+    if ! command -v "$_bin" >/dev/null 2>&1 && [ ! -x "/usr/sbin/$_bin" ] && [ ! -x "/usr/bin/$_bin" ]; then
         apk update --cache-dir /var/lib/gtos/apk-cache >/tmp/apk-extra.log 2>&1 || true
         apk add --no-progress --cache-dir /var/lib/gtos/apk-cache "$_pkg" >>/tmp/apk-extra.log 2>&1 || true
     fi
 done
+# Wine в фоне при первом запуске (LibreOffice — через магазин по умолчанию)
+if [ "$SAFEMODE" != 1 ] && [ -x /usr/bin/gtos-wine-run ]; then
+    ( /usr/bin/gtos-wine-run --setup >/tmp/gtos-wine-boot.log 2>&1
+      /usr/bin/gtos-wine-run --status 2>/dev/null | grep -q ready \
+        && echo GTOS_WINE_BOOT ok >/dev/ttyS0 || echo GTOS_WINE_BOOT fail >/dev/ttyS0
+    ) &
+elif [ "$SAFEMODE" != 1 ] && ! command -v wine >/dev/null 2>&1; then
+    ( apk update --cache-dir /var/lib/gtos/apk-cache >/tmp/apk-wine-boot.log 2>&1
+      apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine >>/tmp/apk-wine-boot.log 2>&1 \
+        || apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine-staging >>/tmp/apk-wine-boot.log 2>&1
+      command -v wine >/dev/null 2>&1 && echo GTOS_WINE_BOOT ok >/dev/ttyS0 || echo GTOS_WINE_BOOT fail >/dev/ttyS0
+    ) &
+fi
+# swapfile на постоянном томе — для гибернации / sleep
+if [ -d /data ] && [ ! -f /data/swapfile ] && [ -f /var/lib/gtos/persist-ready ]; then
+    ( dd if=/dev/zero of=/data/swapfile bs=1M count=2048 status=none 2>/tmp/swap-dd.log \
+        && chmod 600 /data/swapfile && mkswap /data/swapfile >/tmp/mkswap.log 2>&1 \
+        && echo GTOS_SWAP created >/dev/ttyS0 ) &
+fi
+if [ -f /data/swapfile ]; then
+    swapon /data/swapfile 2>/dev/null && echo GTOS_SWAP on >/dev/ttyS0 || true
+fi
 # D-Bus + невидимый dunst → inbox шторки GT/OS
 mkdir -p /var/lib/gtos /run/dbus /etc/dunst
 if [ -f /usr/share/gtos/dunst.conf ]; then

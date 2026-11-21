@@ -58,6 +58,10 @@ def main() -> None:
     wall = (ROOT / "assets" / "wallpaper.jpg").read_bytes()
     lock_wall = ROOT / "assets" / "lock-wallpaper.jpg"
     tree["usr/share/gtos/qml/Main.qml"] = FsNode("reg", 0o100644, qml)
+    for extra_qml in (ROOT / "qml").glob("*.qml"):
+        if extra_qml.name != "Main.qml":
+            tree[f"usr/share/gtos/qml/{extra_qml.name}"] = FsNode(
+                "reg", 0o100644, extra_qml.read_bytes().replace(b"\r\n", b"\n"))
     tree["usr/share/gtos/wallpaper.jpg"] = FsNode("reg", 0o100644, wall)
     gtos_clover = ROOT / "assets" / "gtos-clover-trans.png"
     if not gtos_clover.is_file():
@@ -132,6 +136,8 @@ def main() -> None:
     tree["usr/bin/gtos-notifyd"] = FsNode("reg", 0o100755, notifyd)
     store_inst = (ROOT / "scripts" / "gtos-store-install.sh").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/bin/gtos-store-install"] = FsNode("reg", 0o100755, store_inst)
+    wine_run = (ROOT / "scripts" / "gtos-wine-run.sh").read_bytes().replace(b"\r\n", b"\n")
+    tree["usr/bin/gtos-wine-run"] = FsNode("reg", 0o100755, wine_run)
     glibc_run = (ROOT / "scripts" / "gtos-glibc-run.sh").read_bytes().replace(b"\r\n", b"\n")
     tree["usr/bin/gtos-glibc-run"] = FsNode("reg", 0o100755, glibc_run)
     # статический proot — без apk в рантайме (иначе Permission denied / add failed)

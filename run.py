@@ -189,7 +189,8 @@ def main() -> int:
         "virtio-net-pci,netdev=net0,romfile=",
     ]
     if DATA_IMG.is_file():
-        args += ["-drive", f"file={DATA_IMG},if=virtio,format=qcow2,cache=writeback"]
+        # writethrough: настройки не теряются при kill окна QEMU (writeback откладывал fsync)
+        args += ["-drive", f"file={DATA_IMG},if=virtio,format=qcow2,cache=writethrough"]
     # ISO не монтируем в run.py: загрузка идёт через -kernel/-initrd
     args.append("-no-reboot")
     bios = bios_dir(qemu)

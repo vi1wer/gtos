@@ -129,17 +129,46 @@ QString Bridge::listDir(const QString &path) {
     return lines.join(QLatin1Char('\n'));
 }
 
-QString Bridge::readFile(const QString &path) { return readFileRaw(path, 65536); }
+QString Bridge::readFile(const QString &path) {
+    // desktop.conf и прочие конфиги могут быть больше 64 КБ
+    return readFileRaw(path, 1024 * 1024);
+}
 
 bool Bridge::writeFile(const QString &path, const QString &content) {
     QFileInfo info(path);
     QDir().mkpath(info.absolutePath());
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        return false;
-    }
     const QByteArray data = content.toUtf8();
-    return file.write(data) == data.size();
+    // атомарно: сначала .tmp, потом rename — иначе Truncate при сбое оставляет пустой файл
+    const QString tmp = path + QStringLiteral(".tmp");
+    {
+        QFile file(tmp);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            return false;
+        }
+        if (file.write(data) != data.size()) {
+            file.close();
+            QFile::remove(tmp);
+            return false;
+        }
+        file.flush();
+        file.close();
+    }
+    if (QFile::exists(path) && !QFile::remove(path)) {
+        // на некоторых FS rename поверх существующего надёжнее
+    }
+    if (!QFile::rename(tmp, path)) {
+        // fallback: прямая запись, если rename между устройствами не вышел
+        QFile file(path);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            QFile::remove(tmp);
+            return false;
+        }
+        const bool ok = file.write(data) == data.size();
+        file.flush();
+        QFile::remove(tmp);
+        return ok;
+    }
+    return true;
 }
 
 QString Bridge::processList() {

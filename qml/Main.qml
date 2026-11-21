@@ -90,6 +90,7 @@ Window {
     property string storeInstallLabel: ""
     property bool storeInstallStalled: false
     property int storeStallTicks: 0
+    property int storePhaseTicks: 0
     property int storeDlBase: -1
     property var storePendingApp: null
     property var storeLaunchCheckApp: null
@@ -161,6 +162,12 @@ Window {
     property bool btBusy: false
     property var btDevices: []
     property var btPaired: []
+    property bool btDiscoverable: false
+    property string btAdapterName: ""
+    property string btAdapterMac: ""
+    property string btConnectingMac: ""
+    property int btScanTicks: 0
+    property int btConnTicks: 0
     property real mediaVolume: 0.8
     property int mediaDurationSec: 0
     property int mediaElapsedSec: 0
@@ -218,6 +225,19 @@ Window {
     property string noteMenuOpen: ""   // "" | file | edit | view
     property int noteZoom: 100
     property string noteStyle: "Обычный текст"
+    property bool noteWrap: true
+    property bool notePreview: false
+    property bool noteFindOpen: false
+    property bool noteReplaceOpen: false
+    property string noteFindText: ""
+    property string noteReplaceText: ""
+    property int noteFindHit: -1
+    property bool notePickerOpen: false
+    property var notePickerFiles: []
+    property bool noteSaveAsOpen: false
+    property string noteSaveAsName: ""
+    property string noteSaveAsDir: ""
+    property var noteRecent: []
     property string clipPath: ""
     property bool clipIsDir: false
     property bool clipCut: false
@@ -261,6 +281,13 @@ Window {
     property string openWithHint: ""
     property bool openWithRemember: true
     property var fileAssoc: ({})
+    property string runFilePending: ""
+    property string runFilePendingName: ""
+    property string runFilePendingKind: ""
+    property bool runFileBusy: false
+    property string wineWatchName: ""
+    property int wineWatchTicks: 0
+    property int runFileTicks: 0
     property var osUsers: []
     property string newUserName: ""
     property string newUserPass: ""
@@ -376,8 +403,17 @@ Window {
     property bool dockSuggestVisible: false
     property int lockWallpaperIndex: 1
     property string ctxMenuSource: "desktop"
-    property var browserTabs: [{ title: "Новая вкладка", url: "https://example.com", body: "", busy: false }]
+    property var browserTabs: [{ uid: "t1", title: "Новая вкладка", url: "gtos:newtab", body: "", busy: false, icon: "" }]
+    property bool browserMenuOpen: false
+    property bool browserShowBookmarks: true
+    property real browserZoom: 1.0
     property int browserTab: 0
+    property int browserTabSeq: 1
+    property var browserEngine: null
+    property bool browserEngineFailed: false
+    readonly property bool browserCanBack: browserEngine ? browserEngine.canGoBack : browserHistIndex > 0
+    readonly property bool browserCanForward: browserEngine ? browserEngine.canGoForward
+                                                            : (browserHistIndex >= 0 && browserHistIndex < browserHistory.length - 1)
 
     // GT/OS 1.6
     property string osVersion: "1.6.2"
@@ -403,10 +439,10 @@ Window {
     property bool updateNeedsReboot: false
     property bool resumePending: false
     // Cursor AppImage = glibc/Electron — на musl GT/OS не запускается; автоустановку отключили
-    property var defaultDownloadIds: []
+    property var defaultDownloadIds: ["libreoffice"]
     property bool defaultDownloadBusy: false
     property real sessionStartedAt: Date.now()
-    property string browserUrl: "https://example.com"
+    property string browserUrl: "gtos:newtab"
     property string browserBody: "Введите адрес сайта и нажмите «Открыть»."
     property bool browserBusy: false
     property string browserSearch: ""
@@ -416,6 +452,16 @@ Window {
         { title: "Wikipedia", url: "https://ru.wikipedia.org" },
         { title: "GitHub", url: "https://github.com" }
     ]
+    property var browserDownloads: []
+    property bool browserDlPanelOpen: false
+    property int browserDlSeq: 0
+    readonly property int browserDlActiveCount: {
+        var n = 0
+        for (var i = 0; i < browserDownloads.length; ++i)
+            if (browserDownloads[i].state === "downloading")
+                n++
+        return n
+    }
     property var fileFavorites: []
     property var cpuHistory: []
     property var memHistory: []
@@ -461,12 +507,14 @@ Window {
     property bool updateRollingBack: false
     property string updateRollbackStatus: ""
     property var privacyPerms: [
+        { app: "Камера", cam: true, mic: false, loc: false, files: true },
         { app: "Браузер", cam: false, mic: false, loc: false, files: true },
         { app: "Почта", cam: false, mic: false, loc: false, files: true },
         { app: "Магазин GT", cam: false, mic: false, loc: false, files: false },
         { app: "Терминал", cam: false, mic: false, loc: false, files: true },
         { app: "Firefox", cam: false, mic: false, loc: false, files: true }
     ]
+    property bool privacyCamera: true
     property string controlTab: "devices"
     property bool controlDevicesRootOpen: true
     property var controlDevices: []
@@ -529,8 +577,17 @@ Window {
     property string netStatus: "проверка…"
     property string netIp: "—"
     property bool persistOk: false
-    property string drawTool: "кисть"
-    property var drawStrokes: []
+    property string drawTool: "brush"   // brush | marker | line | rect | ellipse | eraser
+    property color drawColor: "#1f2937"
+    property int drawSize: 6
+    property bool drawFill: false
+    property var drawShapes: []
+    property var drawRedoStack: []
+    property string drawBgPath: ""
+    property string drawPaper: "#ffffff"
+    property bool drawPickerOpen: false
+    property var drawPickerFiles: []
+    property string drawLastSaved: ""
     property real musicPos: 0
     property bool musicPlaying: false
     property string musicTrack: "Нет трека"
@@ -767,6 +824,7 @@ Window {
         else if (appId === "browser" || appId === "orbit") { ww = 980; hh = 640 }
         else if (appId === "mail") { ww = 820; hh = 560 }
         else if (appId === "calc") { ww = 340; hh = 460 }
+        else if (appId === "camera") { ww = 720; hh = 560; refreshCamera() }
         else if (appId === "cal") { ww = 720; hh = 560 }
         else if (appId === "draw") { ww = 900; hh = 600 }
         else if (appId === "music") { ww = 980; hh = 640 }
@@ -906,6 +964,7 @@ Window {
         noteTabIndex = tabs.length - 1
         notePath = p
         noteText = body
+        noteAddRecent(p)
     }
 
     function newNoteTab() {
@@ -959,6 +1018,9 @@ Window {
     function saveNote() {
         if (!notePath.length)
             notePath = "/home/" + currentUser + "/Документы/заметка.txt"
+        var noteDir = notePath.slice(0, notePath.lastIndexOf("/"))
+        if (noteDir.length)
+            sys.run("mkdir -p " + shQuote(noteDir))
         if (sys.writeFile(notePath, noteText)) {
             var tabs = noteTabs.slice()
             if (noteTabIndex >= 0 && noteTabIndex < tabs.length) {
@@ -969,6 +1031,7 @@ Window {
                 }
                 noteTabs = tabs
             }
+            noteAddRecent(notePath)
             notify("Блокнот", "Сохранено: " + noteBaseName(notePath), "ok")
         } else {
             notify("Блокнот", "Не удалось сохранить", "info")
@@ -976,9 +1039,101 @@ Window {
     }
 
     function saveNoteAs() {
-        var stamp = Qt.formatDateTime(new Date(), "yyyyMMdd_HHmm")
-        notePath = "/home/" + currentUser + "/Документы/документ_" + stamp + ".txt"
+        noteMenuOpen = ""
+        var base = noteBaseName(notePath)
+        noteSaveAsName = base.length ? base : ("документ_" + Qt.formatDateTime(new Date(), "yyyyMMdd_HHmm") + ".txt")
+        var slash = notePath.lastIndexOf("/")
+        noteSaveAsDir = slash > 0 ? notePath.slice(0, slash) : ("/home/" + currentUser + "/Документы")
+        noteSaveAsOpen = true
+    }
+
+    function noteSaveAsCommit() {
+        var name = String(noteSaveAsName || "").trim().replace(/[\/\\]/g, "_")
+        if (!name.length)
+            return
+        if (name.indexOf(".") < 0)
+            name += ".txt"
+        var dir = noteSaveAsDir.length ? noteSaveAsDir : ("/home/" + currentUser + "/Документы")
+        sys.run("mkdir -p " + shQuote(dir))
+        notePath = dir + "/" + name
+        noteSaveAsOpen = false
         saveNote()
+    }
+
+    function noteAddRecent(p) {
+        if (!p || !p.length)
+            return
+        var out = [p]
+        for (var i = 0; i < noteRecent.length && out.length < 6; ++i)
+            if (noteRecent[i] !== p)
+                out.push(noteRecent[i])
+        noteRecent = out
+    }
+
+    function noteIsMarkdown() {
+        return /\.(md|markdown)$/i.test(notePath)
+    }
+
+    function noteFindMatches() {
+        var q = noteFindText
+        if (!q.length)
+            return []
+        var hay = noteText.toLowerCase()
+        var needle = q.toLowerCase()
+        var out = []
+        var from = 0
+        while (out.length < 5000) {
+            var i = hay.indexOf(needle, from)
+            if (i < 0)
+                break
+            out.push(i)
+            from = i + needle.length
+        }
+        return out
+    }
+
+    function noteReplaceAll() {
+        var q = noteFindText
+        if (!q.length)
+            return 0
+        var n = noteFindMatches().length
+        if (!n)
+            return 0
+        var re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")
+        var r = noteReplaceText
+        noteText = noteText.replace(re, function () { return r })
+        markNoteDirty()
+        noteFindHit = -1
+        return n
+    }
+
+    function refreshNotePicker() {
+        var home = "/home/" + currentUser
+        var raw = sys.run(
+            "find " + shQuote(home) + " -maxdepth 3 -type f \\( -iname '*.txt' -o -iname '*.md' -o -iname '*.log'"
+            + " -o -iname '*.json' -o -iname '*.conf' -o -iname '*.ini' -o -iname '*.sh' -o -iname '*.py'"
+            + " -o -iname '*.csv' -o -iname '*.xml' -o -iname '*.qml' \\) -not -path '*/.*' 2>/dev/null | head -n 300"
+        ).trim()
+        var out = []
+        if (raw.length) {
+            var lines = raw.split("\n")
+            for (var i = 0; i < lines.length; ++i) {
+                var p = lines[i].trim()
+                if (!p.length)
+                    continue
+                var slash = p.lastIndexOf("/")
+                var dir = p.slice(0, slash)
+                out.push({ path: p, name: p.slice(slash + 1), dir: dir.indexOf(home) === 0 ? ("~" + dir.slice(home.length)) : dir })
+            }
+        }
+        out.sort(function (a, b) { return a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1 })
+        notePickerFiles = out
+    }
+
+    function openNotePicker() {
+        noteMenuOpen = ""
+        refreshNotePicker()
+        notePickerOpen = true
     }
 
     function storeCatToLauncher(cat) {
@@ -1419,6 +1574,14 @@ Window {
         if (kind === "pdf") return "pdf"
         if (kind === "unknown") return "unknown"
         if (kind === "link") return "link"
+        if (kind === "app") {
+            if (isWindowsAppName(name)) return "store"
+            if (isLinuxAppName(name)) return "store"
+            if (isPackageName(name)) return "zip"
+            return "term"
+        }
+        if (kind === "web") return "browser"
+        if (kind === "office") return "docs"
         return "doc"
     }
 
@@ -1485,30 +1648,8 @@ Window {
         if (item.dir) {
             launch("files", "Файлы"); loadFiles(item.path); return
         }
-        var lower = String(item.label || "").toLowerCase()
-        if (openByAssocOrAsk(item.path, item.label))
+        if (item.path && openPathFromExplorer(item.path, item.label))
             return
-        if (isPdfName(item.label) && item.path) {
-            openDocumentViewer(item.path)
-            return
-        }
-        if (isImageName(item.label)) {
-            openImageViewer(item.path)
-            return
-        }
-        if (lower.indexOf(".txt") > 0 || lower.indexOf(".md") > 0 || lower.indexOf(".log") > 0) {
-            launch("notes", "Блокнот")
-            openNote(item.path)
-            return
-        }
-        if (isMediaName(item.label) && item.path) {
-            openMediaFile(item.path)
-            return
-        }
-        if (fileEntryKind(item.label, false) === "unknown") {
-            openOpenWithDialog(item.path, item.label, "Этот тип файла системе неизвестен. Выберите программу:")
-            return
-        }
         launch("files", "Файлы")
         loadFiles(deskPath())
         selectedName = item.label
@@ -1705,6 +1846,19 @@ Window {
         if (kind === "archive") return "Архив"
         if (kind === "pdf") return "Документ PDF"
         if (kind === "link") return "Ярлык"
+        if (kind === "web") return "Веб-страница"
+        if (kind === "office") return "Документ Office"
+        if (kind === "app") {
+            if (/\.exe$/i.test(name)) return "Приложение Windows (.exe)"
+            if (/\.msi$/i.test(name)) return "Установщик Windows (.msi)"
+            if (/\.(bat|cmd)$/i.test(name)) return "Сценарий Windows"
+            if (/\.appimage$/i.test(name)) return "Приложение Linux (AppImage)"
+            if (/\.jar$/i.test(name)) return "Java-приложение"
+            if (/\.deb$/i.test(name)) return "Пакет Debian (.deb)"
+            if (/\.rpm$/i.test(name)) return "Пакет RPM"
+            if (/\.(sh|bash)$/i.test(name)) return "Сценарий оболочки"
+            return "Приложение"
+        }
         if (kind === "unknown") return "Неизвестный тип файла"
         var n = String(name || "")
         var dot = n.lastIndexOf(".")
@@ -1779,6 +1933,17 @@ Window {
         openWithOpen = false
     }
 
+    function openWithAppList() {
+        var out = [
+            { id: "run", name: "Запустить как приложение", kind: "store" },
+            { id: "wine", name: "Wine (программы Windows)", kind: "store" }
+        ]
+        var apps = allLauncherApps()
+        for (var i = 0; i < apps.length; ++i)
+            out.push(apps[i])
+        return out
+    }
+
     function openWithChosenApp(appId) {
         var op = openWithPath
         var name = openWithName
@@ -1786,7 +1951,7 @@ Window {
         closeOpenWithDialog()
         if (!appId || !appId.length)
             return
-        if (remember) {
+        if (remember && appId !== "run") {
             var ext = fileExtOf(name)
             if (ext.length)
                 setFileAssoc(ext, appId)
@@ -1836,6 +2001,14 @@ Window {
         }
         if (ow === "archive" && op.length) { openArchiveManager(op); return }
         if (ow === "fonts" && op.length) { openFontManager(op); return }
+        if (ow === "wine" && op.length) { launchWindowsFile(op, name); return }
+        if (ow === "run" && op.length) { openPathFromExplorer(op, name); return }
+        if (ow === "term-run" && op.length) {
+            launch("term", "Терминал")
+            // просто открыть терминал рядом; файл пользователь может запустить сам
+            notify("Терминал", "Файл: " + name, "ok")
+            return
+        }
         if (ow === "calc") { launch("calc", "Калькулятор"); return }
         if (ow === "cal") { launch("cal", "Календарь"); return }
         if (ow === "mail") { launch("mail", "Почта"); return }
@@ -2115,6 +2288,7 @@ Window {
         return buildEntryCtxMenu({
             kind: fileEntryKind(item.label || item.name || "", !!item.dir),
             path: item.path || "",
+            name: item.label || item.name || "",
             id: item.id || "",
             source: "desk"
         })
@@ -2431,7 +2605,9 @@ Window {
             "mpv": "https://www.google.com/s2/favicons?domain=mpv.io&sz=128",
             "obs": "https://www.google.com/s2/favicons?domain=obsproject.com&sz=128",
             "inkscape": "https://www.google.com/s2/favicons?domain=inkscape.org&sz=128",
-            "cursor-linux": "https://www.google.com/s2/favicons?domain=cursor.com&sz=128"
+            "cursor-linux": "https://www.google.com/s2/favicons?domain=cursor.com&sz=128",
+            // wine.png нет в dashboard-icons (404) — берём с WineHQ
+            "wine": "https://www.google.com/s2/favicons?domain=winehq.org&sz=128"
         }
         if (known[id])
             return known[id]
@@ -2440,7 +2616,8 @@ Window {
             if (m && m[1])
                 return "https://www.google.com/s2/favicons?domain=" + m[1] + "&sz=128"
         }
-        return "https://cdn.jsdelivr.net/gh/homarr-labs/dashboard-icons/png/" + id + ".png"
+        // Не угадывать png/{id}.png на CDN — там часто 404 (как у wine)
+        return "https://www.google.com/s2/favicons?domain=" + encodeURIComponent(id) + ".org&sz=128"
     }
 
     function fetchMissingAppIcons() {
@@ -2693,6 +2870,7 @@ Window {
         if (appId === "cal") return "cal"
         if (appId === "draw") return "draw"
         if (appId === "calc") return "calc"
+        if (appId === "camera") return "photos"
         if (appId === "monitor") return "monitor"
         if (appId === "control") return "control"
         if (appId === "recovery") return "system"
@@ -3173,7 +3351,6 @@ Window {
         browserUrl = "https://www.google.com/search?q=" + encodeURIComponent(q)
         browseGo()
     }
-
     function browserActiveTab() {
         if (browserTab < 0 || browserTab >= browserTabs.length)
             return { title: "Новая вкладка", url: browserUrl, body: browserBody, busy: browserBusy }
@@ -3191,26 +3368,186 @@ Window {
         var tabs = browserTabs.slice()
         if (browserTab < 0 || browserTab >= tabs.length)
             return
-        var title = browserUrl.replace(/^https?:\/\//, "").split("/")[0] || "Вкладка"
-        tabs[browserTab] = { title: title, url: browserUrl, body: browserBody, busy: browserBusy }
+        var prev = tabs[browserTab] || {}
+        var title = browserEngine && prev.title ? prev.title
+                    : (browserUrl.replace(/^https?:\/\//, "").split("/")[0] || "Вкладка")
+        tabs[browserTab] = { uid: prev.uid || nextBrowserTabUid(), title: title, url: browserUrl,
+                             body: browserBody, busy: browserBusy, icon: prev.icon || "" }
         browserTabs = tabs
+    }
+
+    function nextBrowserTabUid() {
+        browserTabSeq += 1
+        return "t" + browserTabSeq
+    }
+
+    function currentBrowserUid() {
+        var t = browserActiveTab()
+        return String(t.uid || "")
+    }
+
+    // Адресная строка: URL, домен без схемы или поисковый запрос
+    function normalizeBrowserInput(text) {
+        var s = String(text || "").trim()
+        if (!s.length)
+            return ""
+        if (/^(https?|file|about|data|view-source):/i.test(s))
+            return s
+        if (s.indexOf(" ") < 0 && (/^[^\s\/]+\.[a-z]{2,}(:\d+)?(\/.*)?$/i.test(s) || /^localhost(:\d+)?(\/.*)?$/i.test(s)
+                                    || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?(\/.*)?$/.test(s)))
+            return "https://" + s
+        return "https://www.google.com/search?q=" + encodeURIComponent(s)
+    }
+
+    function isBrowserNewTab(url) {
+        var u = String(url || "").trim()
+        return !u.length || u === "gtos:newtab" || u === "about:blank"
+    }
+
+    function browserEngineUrl(url) {
+        return isBrowserNewTab(url) ? "" : normalizeBrowserInput(url)
+    }
+
+    function browserHostOf(url) {
+        var u = String(url || "")
+        var m = u.match(/^[a-z]+:\/\/([^\/?#]+)/i)
+        return m ? m[1].replace(/^www\./, "") : ""
+    }
+
+    function browserFaviconFor(url) {
+        var h = browserHostOf(url)
+        return h.length ? ("https://www.google.com/s2/favicons?domain=" + h + "&sz=64") : ""
+    }
+
+    function browserTileColor(seed) {
+        var palette = ["#2563eb", "#16a34a", "#dc2626", "#9333ea", "#ea580c", "#0891b2", "#db2777", "#65a30d"]
+        var s = String(seed || "")
+        var h = 0
+        for (var i = 0; i < s.length; ++i)
+            h = (h * 31 + s.charCodeAt(i)) & 0xffff
+        return palette[h % palette.length]
+    }
+
+    function browserShortcuts() {
+        var out = []
+        var seen = {}
+        var defaults = [
+            { title: "Google", url: "https://www.google.com" },
+            { title: "YouTube", url: "https://www.youtube.com" },
+            { title: "Яндекс", url: "https://ya.ru" },
+            { title: "Wikipedia", url: "https://ru.wikipedia.org" },
+            { title: "GitHub", url: "https://github.com" },
+            { title: "GT/OS", url: "https://vi1wer.github.io/gtos/" }
+        ]
+        var all = browserBookmarks.concat(defaults)
+        for (var i = 0; i < all.length && out.length < 8; ++i) {
+            var h = browserHostOf(all[i].url) || all[i].url
+            if (seen[h])
+                continue
+            seen[h] = true
+            out.push(all[i])
+        }
+        return out
+    }
+
+    function browserPrettyUrl(url) {
+        var u = String(url || "")
+        var esc = function (s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") }
+        var m = u.match(/^([a-z]+:\/\/)(www\.)?([^\/?#]+)(.*)$/i)
+        if (!m)
+            return "<span style='color:#f4f7f8'>" + esc(u) + "</span>"
+        var rest = m[4] === "/" ? "" : m[4]
+        return "<span style='color:#f4f7f8'>" + esc(m[3]) + "</span><span style='color:#7d8b95'>" + esc(rest) + "</span>"
+    }
+
+    function browserGoHome() {
+        browserMenuOpen = false
+        browserUrl = "gtos:newtab"
+        browserBusy = false
+        browserProgress = 0
+        var tabs = browserTabs.slice()
+        if (browserTab >= 0 && browserTab < tabs.length) {
+            var t = tabs[browserTab]
+            tabs[browserTab] = { uid: t.uid, title: "Новая вкладка", url: "gtos:newtab", body: "", busy: false, icon: "" }
+            browserTabs = tabs
+        }
+        if (browserEngine)
+            browserEngine.load(currentBrowserUid(), "about:blank")
+    }
+
+    function browserSetZoom(z) {
+        browserZoom = Math.max(0.3, Math.min(3.0, Math.round(z * 10) / 10))
+    }
+
+    function attachBrowserEngine(engine) {
+        if (!engine)
+            return
+        var tabs = browserTabs.slice()
+        for (var i = 0; i < tabs.length; ++i) {
+            if (!tabs[i].uid) {
+                var t = {}
+                for (var k in tabs[i])
+                    t[k] = tabs[i][k]
+                t.uid = nextBrowserTabUid()
+                tabs[i] = t
+            }
+        }
+        browserTabs = tabs
+        browserEngine = engine
+        browserEngineFailed = false
+        var cur = browserActiveTab()
+        engine.show(String(cur.uid), browserEngineUrl(cur.url))
+    }
+
+    function browserEngineReport(uid, url, title, loading, progress, icon) {
+        var tabs = browserTabs.slice()
+        for (var i = 0; i < tabs.length; ++i) {
+            if (tabs[i].uid !== uid)
+                continue
+            // пустая вьюха новой вкладки не должна затирать «Новую вкладку»
+            if (isBrowserNewTab(url) && isBrowserNewTab(tabs[i].url))
+                return
+            tabs[i] = { uid: uid, title: title || browserHostOf(url) || "Вкладка",
+                        url: url, body: "", busy: loading, icon: icon || "" }
+            browserTabs = tabs
+            if (i === browserTab) {
+                if (url.length)
+                    browserUrl = url
+                browserBusy = loading
+                browserProgress = loading ? Math.max(0.05, progress) : 0
+            }
+            return
+        }
     }
 
     function browserNewTab(url) {
         commitBrowserTab()
+        browserMenuOpen = false
         var tabs = browserTabs.slice()
-        var u = url || "https://www.google.com"
-        tabs.push({ title: "Новая вкладка", url: u, body: "<p style='color:#666'>Новая вкладка — введите адрес.</p>", busy: false })
+        var u = url || "gtos:newtab"
+        var uid = nextBrowserTabUid()
+        tabs.push({ uid: uid, title: isBrowserNewTab(u) ? "Новая вкладка" : (browserHostOf(u) || "Вкладка"),
+                    url: u, body: "", busy: false, icon: "" })
         browserTabs = tabs
         browserTab = tabs.length - 1
         syncBrowserFromTab()
+        if (browserEngine)
+            browserEngine.show(uid, browserEngineUrl(u))
     }
 
     function browserCloseTab(idx) {
+        var closing = browserTabs[idx]
+        if (browserEngine && closing && closing.uid)
+            browserEngine.closeView(String(closing.uid))
         if (browserTabs.length <= 1) {
-            browserTabs = [{ title: "Новая вкладка", url: "https://example.com", body: "<p style='color:#666'>Новая вкладка.</p>", busy: false }]
+            var uid = nextBrowserTabUid()
+            browserTabs = [{ uid: uid, title: "Новая вкладка", url: "gtos:newtab", body: "", busy: false, icon: "" }]
             browserTab = 0
             syncBrowserFromTab()
+            browserBusy = false
+            browserProgress = 0
+            if (browserEngine)
+                browserEngine.show(uid, "")
             return
         }
         var tabs = browserTabs.slice()
@@ -3218,13 +3555,23 @@ Window {
         browserTabs = tabs
         if (browserTab >= tabs.length)
             browserTab = tabs.length - 1
+        else if (idx < browserTab)
+            browserTab -= 1
         syncBrowserFromTab()
+        if (browserEngine) {
+            var cur = browserActiveTab()
+            browserEngine.show(String(cur.uid), browserEngineUrl(cur.url))
+        }
     }
 
     function browserSelectTab(idx) {
         commitBrowserTab()
         browserTab = idx
         syncBrowserFromTab()
+        if (browserEngine) {
+            var cur = browserActiveTab()
+            browserEngine.show(String(cur.uid), browserEngineUrl(cur.url))
+        }
     }
 
     property bool hasCustomWallpaper: false
@@ -3266,14 +3613,45 @@ Window {
         var known = {
             png:1, jpg:1, jpeg:1, webp:1, gif:1, bmp:1, svg:1,
             txt:1, md:1, log:1, conf:1, cfg:1, json:1, xml:1, csv:1, ini:1,
-            qml:1, js:1, ts:1, py:1, sh:1, c:1, cpp:1, h:1, hpp:1, css:1, html:1, htm:1, rtf:1,
+            qml:1, js:1, ts:1, py:1, sh:1, bash:1, c:1, cpp:1, h:1, hpp:1, css:1, html:1, htm:1, rtf:1,
             mp4:1, mkv:1, avi:1, webm:1, mov:1, m4v:1,
             mp3:1, flac:1, ogg:1, wav:1, m4a:1, aac:1,
             ttf:1, otf:1, woff:1, woff2:1,
             zip:1, tar:1, gz:1, tgz:1, "7z":1, rar:1,
-            pdf:1, desktop:1, lnk:1
+            pdf:1, desktop:1, lnk:1,
+            exe:1, msi:1, bat:1, cmd:1, com:1, scr:1, ps1:1,
+            appimage:1, run:1, bin:1, deb:1, rpm:1, jar:1,
+            doc:1, docx:1, xls:1, xlsx:1, ppt:1, pptx:1, odt:1, ods:1, odp:1, rtf:1
         }
         return !!known[ext]
+    }
+
+    function isWindowsAppName(name) {
+        return /\.(exe|msi|bat|cmd|com|scr)$/i.test(String(name || ""))
+    }
+
+    function isLinuxAppName(name) {
+        return /\.(appimage|run)$/i.test(String(name || ""))
+    }
+
+    function isScriptAppName(name) {
+        return /\.(sh|bash)$/i.test(String(name || ""))
+    }
+
+    function isWebPageName(name) {
+        return /\.(html?|xhtml)$/i.test(String(name || ""))
+    }
+
+    function isOfficeName(name) {
+        return /\.(docx?|xlsx?|pptx?|odt|ods|odp|rtf)$/i.test(String(name || ""))
+    }
+
+    function isPackageName(name) {
+        return /\.(deb|rpm)$/i.test(String(name || ""))
+    }
+
+    function isJarName(name) {
+        return /\.jar$/i.test(String(name || ""))
     }
 
     function fileEntryKind(name, isDir) {
@@ -3282,11 +3660,17 @@ Window {
         var n = String(name || "").toLowerCase()
         if (n.indexOf(".desktop") > 0 || n.indexOf(".lnk") > 0)
             return "link"
+        if (isWindowsAppName(n) || isLinuxAppName(n) || isScriptAppName(n) || isJarName(n) || isPackageName(n))
+            return "app"
+        if (isWebPageName(n))
+            return "web"
+        if (isOfficeName(n))
+            return "office"
         if (isPdfName(n))
             return "pdf"
         if (isImageName(n))
             return "image"
-        if (/\.(txt|md|log|conf|cfg|json|xml|csv|ini|qml|js|ts|py|sh|c|cpp|h|hpp|css|html|htm|svg|rtf)$/.test(n))
+        if (/\.(txt|md|log|conf|cfg|json|xml|csv|ini|qml|js|ts|py|c|cpp|h|hpp|css|svg)$/.test(n))
             return "text"
         if (/\.(mp4|mkv|avi|webm|mov|m4v)$/.test(n))
             return "video"
@@ -3325,6 +3709,7 @@ Window {
         var path = cfg.path || ""
         var id = cfg.id || ""
         var src = cfg.source || "files"
+        var fname = cfg.name || (path.length ? path.slice(path.lastIndexOf("/") + 1) : "")
         var items = []
         var openAct = "open"
         if (src === "desk")
@@ -3332,7 +3717,24 @@ Window {
         else if (kind === "image")
             openAct = "imgopenfile:" + path
 
-        items.push({ label: "Открыть", action: openAct, icon: "open", bold: true })
+        items.push({
+            label: (kind === "app" || kind === "link") ? "Запустить" : "Открыть",
+            action: openAct,
+            icon: "open",
+            bold: true
+        })
+
+        if (kind === "app") {
+            if (isWindowsAppName(fname))
+                items.push({ label: "Запустить через Wine", action: "run:wine", icon: "store" })
+            items.push({ label: "Открыть в Блокноте", action: src === "desk" ? ("editnotes:" + id) : "editnotesfile", icon: "notes" })
+        }
+        if (kind === "web")
+            items.push({ label: "Открыть в браузере", action: "openwith:browser", icon: "globe" })
+        if (kind === "office")
+            items.push({ label: "Открыть в LibreOffice", action: "run:office", icon: "docs" })
+        if (kind === "link")
+            items.push({ label: "Изменить ярлык", action: src === "desk" ? ("editnotes:" + id) : "editnotesfile", icon: "edit" })
 
         if (kind === "text") {
             items.push({
@@ -3387,9 +3789,11 @@ Window {
         }
         if (kind === "font")
             items.push({ label: "Просмотр в Font Manager", action: "font:open", icon: "font" })
-        if (kind === "unknown")
-            items.push({ label: "Выбрать программу…", action: "openwith:choose", icon: "open", bold: true })
-        if (kind === "dir" || kind === "file" || kind === "text" || kind === "image" || kind === "unknown" || kind === "pdf")
+        if (kind === "unknown") {
+            items.push({ label: "Попробовать запустить", action: "run:auto", icon: "open", bold: true })
+            items.push({ label: "Выбрать программу…", action: "openwith:choose", icon: "open" })
+        }
+        if (kind === "dir" || kind === "file" || kind === "text" || kind === "image" || kind === "unknown" || kind === "pdf" || kind === "app" || kind === "office")
             items.push({ label: "Сжать в архив…", action: "archive:pack", icon: "zip" })
 
         items.push({
@@ -4884,6 +5288,7 @@ Window {
         if (host === "browser" || host === "orbit") return browserPage
         if (host === "mail") return mailPage
         if (host === "calc") return calcPage
+        if (host === "camera") return cameraPage
         if (host === "cal") return calPage
         if (host === "draw") return drawPage
         if (host === "music") return musicPage
@@ -4953,6 +5358,7 @@ Window {
         storeInstallLabel = "Подготовка…"
         storeInstallStalled = false
         storeStallTicks = 0
+        storePhaseTicks = 0
         storeDlBase = -1
         var plat = storePlatformOf(app)
         var src = String(app.source || (app.apk ? "alpine" : "linux"))
@@ -5600,7 +6006,8 @@ Window {
             "focusHoursOn=" + (focusHoursOn ? "1" : "0"),
             "focusStartHour=" + focusStartHour,
             "focusEndHour=" + focusEndHour,
-            "uiScale=" + uiScale
+            "uiScale=" + uiScale,
+            "privacyCamera=" + (privacyCamera ? "1" : "0")
         ].join("\n")
         // автозагрузка
         var st = []
@@ -5612,12 +6019,25 @@ Window {
         for (var ak in appLaunchLog)
             al.push(ak + ":" + appLaunchLog[ak])
         cfg += "\nlaunchLog=" + al.join(",")
-        sys.writeFile("/var/lib/gtos/desktop.conf", cfg + "\n")
-        // без sync на каждый сейв — иначе soft-GL мигает (иконки стола пропадают)
+        var body = cfg + "\n"
+        // атомарная запись через Bridge (tmp+rename); копия на пользователя
+        if (!sys.writeFile("/var/lib/gtos/desktop.conf", body)) {
+            console.log("GTOS_DESKTOP_SAVE_FAIL")
+            return
+        }
+        if (currentUser && currentUser.length) {
+            sys.run("mkdir -p /var/lib/gtos/users/" + currentUser)
+            sys.writeFile("/var/lib/gtos/users/" + currentUser + "/desktop.conf", body)
+        }
+        // fsync только самого conf — полный sync() мигает soft-GL
+        sys.run("sync /var/lib/gtos/desktop.conf 2>/dev/null || true")
     }
 
     function loadDesktop() {
         var raw = sys.readFile("/var/lib/gtos/desktop.conf")
+        // если основной conf пуст — восстановить из профиля пользователя
+        if (!raw.length && currentUser && currentUser.length)
+            raw = sys.readFile("/var/lib/gtos/users/" + currentUser + "/desktop.conf")
         if (!raw.length)
             return
         var migratedPwd = false
@@ -5630,6 +6050,14 @@ Window {
             var k = line.slice(0, eq)
             var v = line.slice(eq + 1)
             if (k === "theme") themeName = v
+            else if (k === "accent" && v.length) {
+                // Qt может сохранить #aarrggbb — берём последние 6 hex
+                var hx = v.replace(/^#/, "")
+                if (hx.length === 8)
+                    hx = hx.slice(2)
+                if (hx.length === 6)
+                    accentColor = "#" + hx
+            }
             else if (k === "opacity") windowOpacity = Math.max(0.55, Math.min(1, parseFloat(v) || 0.92))
             else if (k === "dockSize") dockSize = parseInt(v, 10) || 72
             else if (k === "dockEdge") dockEdge = v
@@ -5771,7 +6199,8 @@ Window {
                 var us = parseFloat(v)
                 if (us === 1 || us === 1.25 || us === 1.5 || us === 2)
                     uiScale = us
-            }
+            } else if (k === "privacyCamera")
+                privacyCamera = v !== "0"
         }
         var scaleFile = sys.readFile("/var/lib/gtos/ui-scale").trim()
         if (scaleFile.length) {
@@ -5868,6 +6297,9 @@ Window {
             ]
         if (kind === "openwith")
             return [
+                { label: "Запустить", action: "run:auto", icon: "open", bold: true },
+                { label: "Wine (Windows)", action: "run:wine", icon: "store" },
+                { label: "-", action: "sep" },
                 { label: "Галерея", action: "openwith:photos", icon: "photos" },
                 { label: "GT Document Viewer", action: "openwith:docs", icon: "pdf" },
                 { label: "Графика", action: "openwith:draw", icon: "paint" },
@@ -6009,6 +6441,23 @@ Window {
                 showPropsFor(pfPath, pfName, ctxTargetDir)
             else
                 notify("Свойства", "Не выбран файл или папка", "info")
+        }
+        else if (action.indexOf("run:") === 0) {
+            var rk = action.slice(4)
+            var rp = ctxTargetPath
+            var rn = selectedName
+            if (!rp.length && ctxTargetId.length) {
+                var ri = deskFindById(ctxTargetId)
+                if (ri) { rp = ri.path; rn = ri.label || rn }
+            }
+            if (!rp.length)
+                return
+            if (rk === "wine")
+                launchWindowsFile(rp, rn)
+            else if (rk === "office")
+                openOfficeFile(rp, rn)
+            else
+                openPathFromExplorer(rp, rn)
         }
         else if (action.indexOf("openwith:") === 0) {
             var ow = action.slice(9)
@@ -6205,6 +6654,7 @@ Window {
         else if (action === "clip") { clipHistOpen = true }
         else if (action === "nextwall") {
             wallpaperIndex = (wallpaperIndex + 1) % wallpaperCount
+            sys.run("rm -f /var/lib/gtos/user-wallpaper.jpg 2>/dev/null; true")
             hasCustomWallpaper = false
             refreshDeskWallpaper()
             saveDesktop()
@@ -6339,8 +6789,12 @@ Window {
             parts.push(formatStoreBytes(storeInstallSpeed) + "/с")
         if (storeInstallEta >= 0 && storeInstallEta < 7200 && storeInstallSpeed > 0)
             parts.push("~" + storeInstallEta + " с")
-        if (storeInstallStalled)
-            parts.push("нет прогресса " + Math.floor(storeStallTicks * 0.5) + " с")
+        if (storeInstallStalled) {
+            var sec = Math.floor(storeStallTicks * 0.5)
+            if (sec > 120)
+                sec = 120
+            parts.push("нет прогресса " + sec + " с")
+        }
         if (!parts.length)
             return storeInstallPct + "%"
         return parts.join(" · ")
@@ -6500,6 +6954,7 @@ Window {
         return buildEntryCtxMenu({
             kind: fileEntryKind(selectedName, isDir),
             path: path,
+            name: selectedName,
             id: "",
             source: "files"
         })
@@ -6919,13 +7374,612 @@ Window {
         lidLastState = now
     }
 
-    function browseGo(addHist) {
-        var url = browserUrl.trim()
+    // ── ежедневный ПК: экраны / принтеры / VPN / камера / гибернация ──
+    property var displayOutputs: []
+    property string displayStatus: ""
+    property var printerList: []
+    property string printerStatus: ""
+    property string printerSelected: ""
+    property string vpnStatus: "выкл."
+    property string vpnConfText: ""
+    property bool vpnUp: false
+    property string cameraDevice: ""
+    property string cameraPreview: ""
+    property string cameraLastShot: ""
+    property bool cameraBusy: false
+    property bool hibernateReady: false
+    property string hibernateStatus: ""
+
+    function refreshDisplays() {
+        var raw = sys.run("command -v xrandr >/dev/null 2>&1 && xrandr --query 2>/dev/null || true").trim()
+        var out = []
+        if (!raw.length) {
+            displayOutputs = []
+            displayStatus = "xrandr недоступен — поставьте пакет или пересоберите образ"
+            return
+        }
+        var lines = raw.split("\n")
+        var cur = null
+        for (var i = 0; i < lines.length; ++i) {
+            var line = lines[i]
+            var m = line.match(/^(\S+)\s+(connected|disconnected)(.*)$/)
+            if (m) {
+                if (cur)
+                    out.push(cur)
+                cur = {
+                    name: m[1],
+                    connected: m[2] === "connected",
+                    primary: line.indexOf("primary") >= 0,
+                    active: /\d+x\d+\+/.test(line),
+                    geom: "",
+                    modes: []
+                }
+                var g = line.match(/(\d+x\d+\+\d+\+\d+)/)
+                if (g)
+                    cur.geom = g[1]
+                continue
+            }
+            if (cur && cur.connected) {
+                var mm = line.match(/^\s+(\d+x\d+)\s+/)
+                if (mm && cur.modes.length < 8)
+                    cur.modes.push(mm[1])
+            }
+        }
+        if (cur)
+            out.push(cur)
+        displayOutputs = out
+        var nOn = 0
+        for (var j = 0; j < out.length; ++j)
+            if (out[j].connected)
+                nOn++
+        displayStatus = nOn ? (nOn + " подключённых · " + out.length + " выходов") : "Нет подключённых мониторов"
+    }
+
+    function displaySetMode(name, mode) {
+        if (!name || !mode)
+            return
+        sys.run("xrandr --output " + shQuote(name) + " --mode " + shQuote(mode) + " 2>/tmp/gtos-xrandr.log")
+        refreshDisplays()
+        notify("Экраны", name + " → " + mode, "ok")
+    }
+
+    function displayArrange(name, where) {
+        if (!name)
+            return
+        var primary = ""
+        for (var i = 0; i < displayOutputs.length; ++i) {
+            if (displayOutputs[i].primary || (displayOutputs[i].connected && displayOutputs[i].active && !primary))
+                primary = displayOutputs[i].name
+        }
+        if (!primary.length) {
+            for (var j = 0; j < displayOutputs.length; ++j)
+                if (displayOutputs[j].name !== name && displayOutputs[j].connected) {
+                    primary = displayOutputs[j].name
+                    break
+                }
+        }
+        var cmd = "xrandr --output " + shQuote(name)
+        if (where === "off")
+            cmd += " --off"
+        else if (where === "same" && primary.length)
+            cmd += " --auto --same-as " + shQuote(primary)
+        else if (where === "left" && primary.length)
+            cmd += " --auto --left-of " + shQuote(primary)
+        else if (where === "right" && primary.length)
+            cmd += " --auto --right-of " + shQuote(primary)
+        else if (where === "above" && primary.length)
+            cmd += " --auto --above " + shQuote(primary)
+        else if (where === "below" && primary.length)
+            cmd += " --auto --below " + shQuote(primary)
+        else
+            cmd += " --auto"
+        sys.run(cmd + " 2>/tmp/gtos-xrandr.log")
+        refreshDisplays()
+        notify("Экраны", name + ": " + where, "ok")
+    }
+
+    function refreshPrinters() {
+        sys.run("mkdir -p /var/run/cups /var/spool/cups; "
+                + "(command -v cupsd >/dev/null || [ -x /usr/sbin/cupsd ]) && "
+                + "pgrep -x cupsd >/dev/null || /usr/sbin/cupsd >/tmp/cupsd.log 2>&1; true")
+        var raw = sys.run("lpstat -a 2>/dev/null; echo '---'; lpstat -p 2>/dev/null; echo '---'; lpinfo -v 2>/dev/null | head -n 20").trim()
+        var parts = raw.split("---")
+        var names = {}
+        var list = []
+        var a = (parts[0] || "").trim()
+        if (a.length) {
+            var al = a.split("\n")
+            for (var i = 0; i < al.length; ++i) {
+                var nm = al[i].replace(/\s+accepting.*$/, "").trim()
+                if (nm.length && !names[nm]) {
+                    names[nm] = true
+                    list.push({ name: nm, state: "готов", uri: "" })
+                }
+            }
+        }
+        var p = (parts[1] || "").trim()
+        if (p.length) {
+            var pl = p.split("\n")
+            for (var j = 0; j < pl.length; ++j) {
+                var m = pl[j].match(/^printer\s+(\S+)\s+(.*)$/i)
+                if (m && names[m[1]]) {
+                    for (var k = 0; k < list.length; ++k)
+                        if (list[k].name === m[1])
+                            list[k].state = m[2].trim()
+                } else if (m && !names[m[1]]) {
+                    names[m[1]] = true
+                    list.push({ name: m[1], state: m[2].trim(), uri: "" })
+                }
+            }
+        }
+        var u = (parts[2] || "").trim()
+        var discovered = []
+        if (u.length) {
+            var ul = u.split("\n")
+            for (var x = 0; x < ul.length; ++x) {
+                var uri = ul[x].replace(/^\S+\s+/, "").trim()
+                if (uri.indexOf("://") > 0)
+                    discovered.push(uri)
+            }
+        }
+        printerList = list
+        printerStatus = list.length
+            ? (list.length + " принтер(ов)")
+            : (discovered.length ? ("Найдено устройств: " + discovered.length + " — добавьте через «Обнаружить»") : "Принтеров нет")
+        if (!printerSelected.length && list.length)
+            printerSelected = list[0].name
+        return discovered
+    }
+
+    function printerDiscoverAdd() {
+        var found = refreshPrinters()
+        if (!found || !found.length) {
+            notify("Печать", "Устройства не найдены. Подключите USB или IPP-принтер", "info")
+            return
+        }
+        var uri = found[0]
+        var name = "GTPrinter"
+        var m = uri.match(/:\/\/([^\/\?]+)/)
+        if (m)
+            name = m[1].replace(/[^A-Za-z0-9_-]/g, "").slice(0, 24) || "GTPrinter"
+        sys.run("lpadmin -p " + shQuote(name) + " -E -v " + shQuote(uri)
+                + " -m everywhere 2>/tmp/gtos-lpadmin.log || "
+                + "lpadmin -p " + shQuote(name) + " -E -v " + shQuote(uri) + " 2>>/tmp/gtos-lpadmin.log; true")
+        refreshPrinters()
+        printerSelected = name
+        notify("Печать", "Добавлен «" + name + "»", "ok")
+    }
+
+    function printerSetDefault(name) {
+        if (!name.length)
+            return
+        sys.run("lpoptions -d " + shQuote(name) + " 2>/dev/null; true")
+        printerSelected = name
+        notify("Печать", "По умолчанию: " + name, "ok")
+    }
+
+    function printerTestPage(name) {
+        name = name || printerSelected
+        if (!name.length) {
+            notify("Печать", "Сначала выберите принтер", "info")
+            return
+        }
+        sys.run("printf '%s\\n' 'GT/OS — пробная страница' 'Принтер: " + name.replace(/'/g, "")
+                + "' \"$(date)\" | lp -d " + shQuote(name) + " 2>/tmp/gtos-lp-test.log")
+        notify("Печать", "Пробная страница отправлена на «" + name + "»", "ok")
+    }
+
+    function refreshVpn() {
+        var confPath = "/var/lib/gtos/wireguard/wg0.conf"
+        vpnConfText = sys.readFile(confPath)
+        var show = sys.run("command -v wg >/dev/null 2>&1 && wg show 2>/dev/null | head -n 20 || true").trim()
+        vpnUp = show.length > 0 && show.indexOf("interface") >= 0
+        if (!sys.run("command -v wg >/dev/null 2>&1 && echo yes").trim().length) {
+            vpnStatus = "wireguard-tools не установлен"
+            vpnUp = false
+            return
+        }
+        vpnStatus = vpnUp ? "подключено" : (vpnConfText.length ? "конфиг есть · выкл." : "нет конфига")
+    }
+
+    function vpnSaveConf(text) {
+        sys.run("mkdir -p /var/lib/gtos/wireguard; chmod 700 /var/lib/gtos/wireguard")
+        sys.writeFile("/var/lib/gtos/wireguard/wg0.conf", String(text || ""))
+        sys.run("chmod 600 /var/lib/gtos/wireguard/wg0.conf 2>/dev/null; true")
+        vpnConfText = String(text || "")
+        notify("VPN", "Конфиг WireGuard сохранён", "ok")
+        refreshVpn()
+    }
+
+    function vpnToggle() {
+        sys.run("mkdir -p /var/lib/gtos/wireguard")
+        if (!vpnConfText.length)
+            vpnConfText = sys.readFile("/var/lib/gtos/wireguard/wg0.conf")
+        if (!vpnConfText.length) {
+            notify("VPN", "Вставьте конфиг wg0 (из приложения WireGuard)", "info")
+            return
+        }
+        sys.writeFile("/var/lib/gtos/wireguard/wg0.conf", vpnConfText)
+        sys.run("chmod 600 /var/lib/gtos/wireguard/wg0.conf")
+        if (vpnUp) {
+            sys.run("wg-quick down /var/lib/gtos/wireguard/wg0.conf >/tmp/gtos-wg.log 2>&1 || wg-quick down wg0 >/tmp/gtos-wg.log 2>&1; true")
+            notify("VPN", "WireGuard отключён", "ok")
+        } else {
+            sys.run("wg-quick up /var/lib/gtos/wireguard/wg0.conf >/tmp/gtos-wg.log 2>&1 "
+                    + "|| (cp -f /var/lib/gtos/wireguard/wg0.conf /etc/wireguard/wg0.conf 2>/dev/null; "
+                    + "wg-quick up wg0 >/tmp/gtos-wg.log 2>&1); true")
+            notify("VPN", "WireGuard включён", "ok")
+        }
+        refreshVpn()
+    }
+
+    function refreshCamera() {
+        var raw = sys.run("ls -1 /dev/video* 2>/dev/null | head -n 8").trim()
+        var dev = ""
+        if (raw.length) {
+            var lines = raw.split("\n")
+            for (var i = 0; i < lines.length; ++i) {
+                if (lines[i].indexOf("/dev/video") === 0) {
+                    dev = lines[i].trim()
+                    break
+                }
+            }
+        }
+        cameraDevice = dev
+        if (!dev.length)
+            cameraPreview = ""
+    }
+
+    function cameraSnap() {
+        if (!root.privacyCamera) {
+            notify("Камера", "Доступ к камере выключен в Конфиденциальности", "info")
+            return
+        }
+        refreshCamera()
+        if (!cameraDevice.length) {
+            notify("Камера", "Камера не найдена (/dev/video*)", "info")
+            return
+        }
+        cameraBusy = true
+        var dir = "/home/" + currentUser + "/Изображения"
+        var name = "Камера-" + Qt.formatDateTime(new Date(), "yyyyMMdd-HHmmss") + ".jpg"
+        var path = dir + "/" + name
+        var preview = "/tmp/gtos-cam-preview.jpg"
+        sys.run("mkdir -p " + shQuote(dir)
+                + "; ffmpeg -y -f v4l2 -i " + shQuote(cameraDevice)
+                + " -frames:v 1 -q:v 2 " + shQuote(path)
+                + " >/tmp/gtos-cam.log 2>&1 "
+                + "|| fswebcam -d " + shQuote(cameraDevice) + " -r 1280x720 --jpeg 85 -q "
+                + shQuote(path) + " >>/tmp/gtos-cam.log 2>&1 "
+                + "; cp -f " + shQuote(path) + " " + preview + " 2>/dev/null; "
+                + "chown " + currentUser + ":" + currentUser + " " + shQuote(path) + " 2>/dev/null; true")
+        cameraBusy = false
+        if (sys.run("test -s " + shQuote(path) + " && echo yes").trim() === "yes") {
+            cameraLastShot = path
+            cameraPreview = "file://" + preview + "?" + Date.now()
+            notify("Камера", "Снимок сохранён в «Изображения»", "ok")
+        } else {
+            notify("Камера", "Не удалось снять кадр — смотрите /tmp/gtos-cam.log", "info")
+        }
+    }
+
+    function refreshHibernate() {
+        var swap = sys.run("swapon --show=NAME --noheadings 2>/dev/null; test -f /data/swapfile && echo /data/swapfile").trim()
+        hibernateReady = swap.length > 0
+        var disk = sys.run("grep -w disk /sys/power/state 2>/dev/null").trim()
+        if (!hibernateReady)
+            hibernateStatus = "Нет swap — создайте на диске данных"
+        else if (!disk.length)
+            hibernateStatus = "Ядро без hibernate (disk) — доступен только сон"
+        else
+            hibernateStatus = "Готово к гибернации"
+    }
+
+    function ensureSwapfile() {
+        sys.run("mkdir -p /data /var/lib/gtos; "
+                + "if [ ! -f /data/swapfile ]; then "
+                + "dd if=/dev/zero of=/data/swapfile bs=1M count=2048 status=none && chmod 600 /data/swapfile "
+                + "&& mkswap /data/swapfile; fi; "
+                + "swapon /data/swapfile 2>/dev/null; true")
+        refreshHibernate()
+        notify("Питание", hibernateReady ? "Swap включён" : "Не удалось включить swap", hibernateReady ? "ok" : "info")
+    }
+
+    function enterHibernate() {
+        refreshHibernate()
+        if (!hibernateReady)
+            ensureSwapfile()
+        refreshHibernate()
+        lockSession()
+        resumePending = true
+        sys.run("mkdir -p /tmp; rm -f /tmp/gtos-resume; touch /tmp/gtos-was-asleep; sync")
+        notify("Питание", "Гибернация…", "info")
+        sys.run(
+            "( sleep 0.6; "
+            + "echo disk >/sys/power/state 2>/tmp/gtos-hibernate.log "
+            + "|| echo mem >/sys/power/state 2>>/tmp/gtos-hibernate.log "
+            + "|| echo freeze >/sys/power/state 2>>/tmp/gtos-hibernate.log || true; "
+            + "echo done >/tmp/gtos-resume; sync ) &"
+        )
+        resumePollTimer.restart()
+    }
+
+    function browserDownloadsDir() {
+        return "/home/" + desktopUserName() + "/Загрузки"
+    }
+
+    function ensureBrowserDownloadsDir() {
+        var dir = browserDownloadsDir()
+        var u = desktopUserName()
+        sys.run("mkdir -p " + shQuote(dir)
+                + "; chmod 755 " + shQuote(dir) + " 2>/dev/null"
+                + "; chown " + shQuote(u) + ":" + shQuote(u) + " " + shQuote(dir) + " 2>/dev/null; true")
+        return dir
+    }
+
+    function isBrowserDownloadUrl(url) {
+        // только файл в пути URL (/setup.exe). Голый домен google.com — не загрузка
+        // (.com намеренно нет: это TLD, а не установщик)
+        var u = String(url || "").trim().split("?")[0].split("#")[0]
+        if (!u.length)
+            return false
+        var path = u.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+        var slash = path.indexOf("/")
+        if (slash < 0)
+            return false
+        var segs = path.slice(slash + 1).split("/")
+        var name = String(segs[segs.length - 1] || "").toLowerCase()
+        if (!name.length)
+            return false
+        return /\.(exe|msi|msix|appx|bat|cmd|scr|ps1|dmg|pkg|appimage|run|deb|rpm|apk|jar|zip|7z|rar|tar|tgz|gz|xz|bz2|iso|img|bin|dll|sys|cab|nupkg)$/i.test(name)
+    }
+
+    function browserSuggestedName(url) {
+        var clean = String(url || "").trim().split("?")[0].split("#")[0]
+        var slash = clean.lastIndexOf("/")
+        var name = slash >= 0 ? clean.slice(slash + 1) : clean
+        try { name = decodeURIComponent(name) } catch (e) {}
+        name = name.replace(/[\/\\<>:"|?*]/g, "_")
+        if (!name.length || name === "." || name === "..")
+            name = "download.bin"
+        return name
+    }
+
+    function browserUniqueDownloadName(dir, name) {
+        var base = name
+        var stem = name
+        var ext = ""
+        var dot = name.lastIndexOf(".")
+        if (dot > 0) {
+            stem = name.slice(0, dot)
+            ext = name.slice(dot)
+        }
+        var n = 1
+        while (sys.run("test -e " + shQuote(dir + "/" + base) + " && echo yes").trim() === "yes") {
+            base = stem + " (" + n + ")" + ext
+            n++
+            if (n > 200)
+                break
+        }
+        return base
+    }
+
+    function browserDownloadStarted(info) {
+        info = info || {}
+        var list = browserDownloads.slice()
+        var id = info.id || ("wget-" + (++browserDlSeq))
+        // обновить, если уже есть
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i].id === id) {
+                list[i] = {
+                    id: id, name: info.name || list[i].name, path: info.path || list[i].path,
+                    url: info.url || list[i].url, state: "downloading",
+                    received: Number(info.received) || 0, total: Number(info.total) || 0,
+                    pct: 0, finishedAt: 0
+                }
+                browserDownloads = list
+                browserDlPanelOpen = true
+                return
+            }
+        }
+        list.unshift({
+            id: id,
+            name: info.name || "файл",
+            path: info.path || "",
+            url: info.url || "",
+            state: "downloading",
+            received: Number(info.received) || 0,
+            total: Number(info.total) || 0,
+            pct: 0,
+            finishedAt: 0
+        })
+        if (list.length > 40)
+            list = list.slice(0, 40)
+        browserDownloads = list
+        browserDlPanelOpen = true
+    }
+
+    function browserDownloadProgress(info) {
+        info = info || {}
+        var list = browserDownloads.slice()
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i].id !== info.id)
+                continue
+            var received = Number(info.received) || list[i].received || 0
+            var total = Number(info.total) || list[i].total || 0
+            var pct = total > 0 ? Math.min(99, Math.floor(100 * received / total)) : list[i].pct
+            list[i] = {
+                id: list[i].id, name: info.name || list[i].name, path: info.path || list[i].path,
+                url: list[i].url, state: "downloading", received: received, total: total,
+                pct: pct, finishedAt: 0
+            }
+            browserDownloads = list
+            return
+        }
+    }
+
+    function browserDownloadFinished(info) {
+        info = info || {}
+        var list = browserDownloads.slice()
+        var found = false
+        for (var i = 0; i < list.length; ++i) {
+            if (info.id && list[i].id !== info.id)
+                continue
+            if (!info.id && info.path && list[i].path !== info.path)
+                continue
+            list[i] = {
+                id: list[i].id,
+                name: info.name || list[i].name,
+                path: info.path || list[i].path,
+                url: info.url || list[i].url,
+                state: info.ok === false ? "error" : "done",
+                received: list[i].total || list[i].received,
+                total: list[i].total,
+                pct: info.ok === false ? list[i].pct : 100,
+                finishedAt: Date.now()
+            }
+            found = true
+            break
+        }
+        if (!found && info.path) {
+            list.unshift({
+                id: info.id || ("done-" + (++browserDlSeq)),
+                name: info.name || browserSuggestedName(info.path),
+                path: info.path, url: info.url || "", state: info.ok === false ? "error" : "done",
+                received: 0, total: 0, pct: 100, finishedAt: Date.now()
+            })
+        }
+        browserDownloads = list
+        // приложения — предложить открыть
+        if (info.ok !== false && info.path && isBrowserDownloadUrl(info.path)) {
+            notify("Загрузка", "«" + (info.name || "файл") + "» готов. Откройте из панели загрузок или проводника.", "ok")
+        }
+    }
+
+    function refreshBrowserDownloadProgress() {
+        if (!browserDownloads.length)
+            return
+        var list = browserDownloads.slice()
+        var changed = false
+        for (var i = 0; i < list.length; ++i) {
+            if (list[i].state !== "downloading" || !list[i].path)
+                continue
+            var sz = parseInt(sys.run("stat -c%s " + shQuote(list[i].path) + " 2>/dev/null || echo 0").trim(), 10) || 0
+            if (sz > (list[i].received || 0)) {
+                var total = list[i].total || 0
+                list[i] = {
+                    id: list[i].id, name: list[i].name, path: list[i].path, url: list[i].url,
+                    state: "downloading", received: sz, total: total,
+                    pct: total > 0 ? Math.min(99, Math.floor(100 * sz / total)) : list[i].pct,
+                    finishedAt: 0
+                }
+                changed = true
+            }
+        }
+        // фоновые wget
+        for (var j = 0; j < list.length; ++j) {
+            if (list[j].state !== "downloading" || String(list[j].id).indexOf("wget-") !== 0)
+                continue
+            var done = sys.readFile("/tmp/gtos-bdl-" + list[j].id + ".done").trim()
+            if (!done.length)
+                continue
+            var rc = sys.readFile("/tmp/gtos-bdl-" + list[j].id + ".rc").trim()
+            list[j] = {
+                id: list[j].id, name: list[j].name, path: list[j].path, url: list[j].url,
+                state: rc === "0" ? "done" : "error",
+                received: list[j].received, total: list[j].total,
+                pct: rc === "0" ? 100 : list[j].pct, finishedAt: Date.now()
+            }
+            changed = true
+            if (rc === "0")
+                notify("Загрузка завершена", "«" + list[j].name + "» — в папке «Загрузки»", "ok")
+            else
+                notify("Загрузка не удалась", list[j].name, "info")
+        }
+        if (changed)
+            browserDownloads = list
+    }
+
+    function browserStartUrlDownload(url) {
+        url = String(url || "").trim()
         if (!url.length)
             return
-        if (url.indexOf("http://") !== 0 && url.indexOf("https://") !== 0)
+        if (url.indexOf("http://") !== 0 && url.indexOf("https://") !== 0 && url.indexOf("ftp://") !== 0)
             url = "https://" + url
+        var dir = ensureBrowserDownloadsDir()
+        var name = browserUniqueDownloadName(dir, browserSuggestedName(url))
+        var dest = dir + "/" + name
+        var id = "wget-" + (++browserDlSeq)
+        browserDownloadStarted({ id: id, name: name, path: dest, url: url, total: 0, received: 0 })
+        sys.run("rm -f " + shQuote("/tmp/gtos-bdl-" + id + ".done") + " " + shQuote("/tmp/gtos-bdl-" + id + ".rc"))
+        bootKick(
+            "DEST=" + shQuote(dest) + "; URL=" + shQuote(url) + "; "
+            + "if command -v curl >/dev/null 2>&1; then "
+            + "curl -L --fail --retry 2 -o \"$DEST\" \"$URL\"; rc=$?; "
+            + "elif command -v wget >/dev/null 2>&1; then "
+            + "wget -O \"$DEST\" \"$URL\"; rc=$?; "
+            + "else rc=127; fi; "
+            + "echo $rc > " + shQuote("/tmp/gtos-bdl-" + id + ".rc") + "; "
+            + "echo done > " + shQuote("/tmp/gtos-bdl-" + id + ".done")
+        )
+        notify("Загрузка", "Скачиваю «" + name + "» в «Загрузки»", "ok")
+    }
+
+    function openBrowserDownload(item) {
+        if (!item || !item.path)
+            return
+        if (item.state === "downloading") {
+            notify("Загрузка", "Ещё скачивается…", "info")
+            return
+        }
+        if (sys.run("test -f " + shQuote(item.path) + " && echo yes").trim() !== "yes") {
+            notify("Загрузка", "Файл не найден", "info")
+            return
+        }
+        openPathFromExplorer(item.path, item.name)
+    }
+
+    function openDownloadsFolder() {
+        ensureBrowserDownloadsDir()
+        launch("files", "Файлы")
+        loadFiles(browserDownloadsDir())
+        browserDlPanelOpen = false
+    }
+
+    function clearFinishedBrowserDownloads() {
+        var out = []
+        for (var i = 0; i < browserDownloads.length; ++i)
+            if (browserDownloads[i].state === "downloading")
+                out.push(browserDownloads[i])
+        browserDownloads = out
+    }
+
+    function browseGo(addHist) {
+        browserMenuOpen = false
+        if (isBrowserNewTab(browserUrl))
+            return
+        if (browserEngine) {
+            var target = normalizeBrowserInput(browserUrl)
+            if (!target.length)
+                return
+            browserUrl = target
+            if (isBrowserDownloadUrl(target)) {
+                browserStartUrlDownload(target)
+                return
+            }
+            browserBusy = true
+            browserProgress = 0.05
+            browserEngine.load(currentBrowserUid(), target)
+            return
+        }
+        var url = normalizeBrowserInput(browserUrl)
+        if (!url.length)
+            return
         browserUrl = url
+        if (isBrowserDownloadUrl(url)) {
+            browserStartUrlDownload(url)
+            return
+        }
         browserBusy = true
         browserProgress = 0.18
         browserBody = "<p style='color:#666;font-family:Sora,Montserrat,sans-serif;'>Загрузка <b style='color:#0b57d0;'>" + url + "</b>…</p>"
@@ -6936,6 +7990,10 @@ Window {
     }
 
     function browseBack() {
+        if (browserEngine) {
+            browserEngine.goBack()
+            return
+        }
         if (browserHistIndex <= 0)
             return
         browserHistIndex--
@@ -6944,6 +8002,10 @@ Window {
     }
 
     function browseForward() {
+        if (browserEngine) {
+            browserEngine.goForward()
+            return
+        }
         if (browserHistIndex < 0 || browserHistIndex >= browserHistory.length - 1)
             return
         browserHistIndex++
@@ -6952,6 +8014,13 @@ Window {
     }
 
     function browseReload() {
+        if (browserEngine) {
+            if (browserBusy)
+                browserEngine.stop()
+            else
+                browserEngine.reload()
+            return
+        }
         if (browserUrl.trim().length)
             browseGo(false)
     }
@@ -6969,7 +8038,7 @@ Window {
         var map = {
             files: "Файлы", browser: "Браузер", mail: "Почта", notes: "Блокнот",
             term: "Терминал", settings: "Параметры", store: "Магазин", monitor: "Диспетчер задач",
-            calc: "Калькулятор", cal: "Календарь", draw: "Графика", music: "Медиаплеер",
+            calc: "Калькулятор", camera: "Камера", cal: "Календарь", draw: "Графика", music: "Медиаплеер",
             video: "Медиаплеер", photos: "Галерея", weather: "Погода", docs: "GT Document Viewer",
             install: "Установка GT/OS", updates: "Центр обновлений",
             storage: "GT Storage", privacy: "Конфиденциальность",
@@ -7374,6 +8443,521 @@ Window {
         return false
     }
 
+    function fileMagicKind(path) {
+        path = String(path || "")
+        if (!path.length)
+            return ""
+        var head = sys.run("head -c 8 " + shQuote(path) + " 2>/dev/null | od -An -tx1").trim().replace(/\s+/g, " ")
+        if (head.indexOf("4d 5a") === 0 || head.indexOf("4D 5A") === 0)
+            return "pe"
+        if (head.indexOf("7f 45 4c 46") === 0 || head.indexOf("7F 45 4C 46") === 0)
+            return "elf"
+        if (head.indexOf("23 21") === 0) // #!
+            return "script"
+        return ""
+    }
+
+    function winePrefixPath() {
+        return "/var/lib/gtos/wine-user"
+    }
+
+    function wineRunner() {
+        if (sys.run("test -x /usr/bin/gtos-wine-run && echo yes").trim() === "yes")
+            return "/usr/bin/gtos-wine-run"
+        return ""
+    }
+
+    function wineReady() {
+        if (wineRunner().length) {
+            var st = sys.run("/usr/bin/gtos-wine-run --status 2>/dev/null").trim()
+            if (st.indexOf("ready") >= 0)
+                return true
+        }
+        return sys.run(
+            "if command -v wine >/dev/null 2>&1 || command -v wine64 >/dev/null 2>&1; then echo yes; fi"
+        ).trim() === "yes"
+    }
+
+    function wineShowFailLog() {
+        var tail = sys.readFile("/tmp/gtos-wine-tail.txt").trim()
+        if (!tail.length)
+            tail = sys.readFile("/tmp/gtos-wine-last.log").trim()
+        if (!tail.length)
+            tail = sys.readFile("/tmp/gtos-wine-setup.log").trim()
+        if (tail.length > 900)
+            tail = tail.slice(-900)
+        if (tail.length) {
+            sys.writeFile("/tmp/gtos-wine-tail.txt", tail + "\n")
+            notePath = "/tmp/gtos-wine-tail.txt"
+            noteText = tail
+            launch("notes", "Лог Wine")
+        }
+    }
+
+    function runUserScript(body, logFile) {
+        var script = "/tmp/gtos-user-launch.sh"
+        sys.writeFile(script, "#!/bin/sh\n" + String(body || "") + "\n")
+        sys.run("chmod 755 " + shQuote(script) + "; tr -d '\\r' < " + shQuote(script)
+                + " > " + shQuote(script + ".lf") + " && mv -f " + shQuote(script + ".lf") + " " + shQuote(script)
+                + " && chmod 755 " + shQuote(script))
+        return runAsDesktopUser(script, logFile || "/tmp/gtos-user-launch.log")
+    }
+
+    function appImageWorkDir(path) {
+        var h = sys.run("printf '%s' " + shQuote(path) + " | md5sum 2>/dev/null | awk '{print $1}'").trim()
+        if (!h.length)
+            h = String(path).replace(/[^a-zA-Z0-9]/g, "").slice(-20)
+        return "/tmp/gtos-appimg-" + h.slice(0, 12)
+    }
+
+    function ensureWineAsync(path, name) {
+        runFilePending = path
+        runFilePendingName = name || path.slice(path.lastIndexOf("/") + 1)
+        runFilePendingKind = "wine"
+        runFileBusy = true
+        runFileTicks = 0
+        if (wineReady()) {
+            finishPendingRunnable()
+            return
+        }
+        notify("Wine", "Готовим среду Windows (Wine) — первый раз может занять несколько минут…", "ok")
+        sys.run(
+            "rm -f /tmp/gtos-wine-ready /tmp/gtos-wine-fail; "
+            + "( "
+            + "if [ -x /usr/bin/gtos-wine-run ]; then "
+            + "/usr/bin/gtos-wine-run --setup; "
+            + "else "
+            + "mkdir -p /var/lib/gtos/apk-cache; "
+            + "apk update --cache-dir /var/lib/gtos/apk-cache >/tmp/gtos-wine-last.log 2>&1; "
+            + "apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine >>/tmp/gtos-wine-last.log 2>&1 "
+            + "|| apk add --no-progress --cache-dir /var/lib/gtos/apk-cache wine-staging >>/tmp/gtos-wine-last.log 2>&1; "
+            + "if command -v wine >/dev/null 2>&1 || command -v wine64 >/dev/null 2>&1; then "
+            + "echo ok >/tmp/gtos-wine-ready; else echo fail >/tmp/gtos-wine-fail; fi; "
+            + "fi "
+            + ") </dev/null >/tmp/gtos-wine-setup.log 2>&1 &"
+        )
+        runFileTimer.restart()
+    }
+
+    Timer {
+        id: runFileTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            root.runFileTicks++
+            var ready = sys.readFile("/tmp/gtos-wine-ready").trim().length > 0
+                       || (root.runFilePendingKind === "wine" && root.wineReady())
+            var fail = sys.readFile("/tmp/gtos-wine-fail").trim().length > 0
+            // Wine + apt в glibc может идти долго
+            if (ready || fail || root.runFileTicks >= 600) {
+                stop()
+                if (!ready) {
+                    root.runFileBusy = false
+                    root.runFilePending = ""
+                    root.notify("Wine", "Не удалось подготовить Wine. Открываю лог.", "info")
+                    root.wineShowFailLog()
+                    return
+                }
+                root.finishPendingRunnable()
+            } else if (root.runFileTicks === 30 || root.runFileTicks === 90 || root.runFileTicks === 180) {
+                root.notify("Wine", "Всё ещё готовим среду… (" + root.runFileTicks + " с)", "info")
+            }
+        }
+    }
+
+    function finishPendingRunnable() {
+        var path = runFilePending
+        var name = runFilePendingName
+        var kind = runFilePendingKind
+        runFilePending = ""
+        runFilePendingName = ""
+        runFilePendingKind = ""
+        runFileBusy = false
+        if (!path.length)
+            return
+        if (kind === "wine")
+            launchWindowsFile(path, name)
+        else if (kind === "appimage")
+            launchAppImageFile(path, name)
+        else
+            launchNativeBinary(path, name)
+    }
+
+    function launchWindowsFile(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        if (!path.length)
+            return
+        if (!wineReady()) {
+            ensureWineAsync(path, name)
+            return
+        }
+        var runner = wineRunner()
+        sys.run("mkdir -p " + shQuote(winePrefixPath())
+                + "; rm -f /tmp/gtos-wine-run.done /tmp/gtos-wine-run.rc")
+        if (runner.length) {
+            // root-лаунчер: умеет apk/glibc wine, логи и start /unix
+            bootKick(
+                "( /usr/bin/gtos-wine-run " + shQuote(path)
+                + " >/tmp/gtos-wine-run.log 2>&1; echo $? >/tmp/gtos-wine-run.rc; "
+                + "echo done >/tmp/gtos-wine-run.done ) &"
+            )
+        } else {
+            var pref = winePrefixPath()
+            var lower = name.toLowerCase()
+            var dir = path.slice(0, path.lastIndexOf("/")) || "/"
+            var inner = ""
+            if (/\.msi$/i.test(lower))
+                inner = "wine msiexec /i " + shQuote(path)
+            else if (/\.(bat|cmd)$/i.test(lower))
+                inner = "wine cmd /c " + shQuote(path)
+            else
+                inner = "wine start /unix " + shQuote(path) + " || wine " + shQuote(path)
+            runUserScript(
+                "export WINEPREFIX=" + shQuote(pref) + "\n"
+                + "export WINEDEBUG=-all\n"
+                + "export DISPLAY=${DISPLAY:-:0}\n"
+                + "export LIBGL_ALWAYS_SOFTWARE=${LIBGL_ALWAYS_SOFTWARE:-1}\n"
+                + "cd " + shQuote(dir) + " || true\n"
+                + inner + "\n"
+                + "echo $? >/tmp/gtos-wine-run.rc\n"
+                + "echo done >/tmp/gtos-wine-run.done\n",
+                "/tmp/gtos-wine-run.log"
+            )
+        }
+        notify("Запуск", "Запускаю «" + name + "» через Wine…", "ok")
+        setFileAssoc(fileExtOf(name), "wine")
+        wineWatchName = name
+        wineWatchTicks = 0
+        wineWatchTimer.restart()
+    }
+
+    Timer {
+        id: wineWatchTimer
+        interval: 1500
+        repeat: true
+        onTriggered: {
+            root.wineWatchTicks++
+            var done = sys.readFile("/tmp/gtos-wine-run.done").trim().length > 0
+            if (!done && root.wineWatchTicks < 20)
+                return
+            stop()
+            if (!done)
+                return
+            var rc = sys.readFile("/tmp/gtos-wine-run.rc").trim()
+            if (rc === "0" || rc === "") {
+                root.notify("Wine", "«" + root.wineWatchName + "» запущено", "ok")
+                return
+            }
+            root.notify("Wine", "«" + root.wineWatchName + "» завершилось с кодом " + rc + " — открываю лог", "info")
+            root.wineShowFailLog()
+        }
+    }
+
+    function launchNativeBinary(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        if (!path.length)
+            return
+        sys.run("chmod +x " + shQuote(path) + " 2>/dev/null; true")
+        var dir = path.slice(0, path.lastIndexOf("/")) || "/"
+        runUserScript(
+            "cd " + shQuote(dir) + " || true\n"
+            + "exec " + shQuote(path) + " \"$@\"\n",
+            "/tmp/gtos-run-bin.log"
+        )
+        notify("Запуск", "Запускаю «" + name + "»", "ok")
+    }
+
+    function launchAppImageFile(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        if (!path.length)
+            return
+        sys.run("chmod +x " + shQuote(path) + " 2>/dev/null; true")
+        var work = appImageWorkDir(path)
+        // уже распаковано
+        if (sys.run("test -e " + shQuote(work + "/squashfs-root/AppRun") + " && echo yes").trim() === "yes") {
+            if (sys.run("test -x /usr/bin/gtos-glibc-run && echo yes").trim() === "yes") {
+                if (!glibcReady()) {
+                    runFilePending = path
+                    runFilePendingName = name
+                    runFilePendingKind = "appimage"
+                    notify("AppImage", "Готовим среду glibc для «" + name + "»…", "ok")
+                    ensureGlibcRootAsync()
+                    appImageWaitTimer.restart()
+                    return
+                }
+                runUserScript(
+                    "export DISPLAY=${DISPLAY:-:0}\n"
+                    + "exec /usr/bin/gtos-glibc-run " + shQuote(work + "/squashfs-root") + " \"$@\"\n",
+                    "/tmp/gtos-appimg-run.log"
+                )
+                notify("Запуск", "Открываю «" + name + "»", "ok")
+                return
+            }
+            // нет glibc-run — пробуем AppRun напрямую
+            runUserScript(
+                "cd " + shQuote(work + "/squashfs-root") + "\n"
+                + "export DISPLAY=${DISPLAY:-:0}\n"
+                + "exec ./AppRun \"$@\"\n",
+                "/tmp/gtos-appimg-run.log"
+            )
+            notify("Запуск", "Открываю «" + name + "»", "ok")
+            return
+        }
+        notify("AppImage", "Распаковываю «" + name + "»… это может занять минуту", "ok")
+        runFileBusy = true
+        runFilePending = path
+        runFilePendingName = name
+        runFilePendingKind = "appimage"
+        sys.run("rm -f /tmp/gtos-appimg-ready")
+        bootKick(
+            "rm -rf " + shQuote(work) + "; mkdir -p " + shQuote(work) + "; cd " + shQuote(work) + "; "
+            + "chmod +x " + shQuote(path) + "; "
+            + "if " + shQuote(path) + " --appimage-extract >/tmp/gtos-appimg-extract.log 2>&1; then "
+            + "chmod -R a+rX squashfs-root 2>/dev/null; echo ok >/tmp/gtos-appimg-ready; "
+            + "else "
+            + "OFF=$(grep -aobm1 hsqs " + shQuote(path) + " | head -n1 | cut -d: -f1); "
+            + "if [ -n \"$OFF\" ]; then dd if=" + shQuote(path) + " bs=1 skip=$OFF of=img.squash 2>/dev/null; "
+            + "mkdir -p squashfs-root; (unsquashfs -f -d squashfs-root img.squash || unsquashfs -d squashfs-root img.squash) "
+            + ">/tmp/gtos-appimg-extract.log 2>&1 && chmod -R a+rX squashfs-root 2>/dev/null && echo ok >/tmp/gtos-appimg-ready; "
+            + "else echo fail >/tmp/gtos-appimg-ready; fi; fi"
+        )
+        appImageExtractTimer.restart()
+    }
+
+    Timer {
+        id: appImageExtractTimer
+        interval: 1500
+        repeat: true
+        property int ticks: 0
+        onTriggered: {
+            ticks++
+            var st = sys.readFile("/tmp/gtos-appimg-ready").trim()
+            if (st === "ok" || st === "fail" || ticks >= 120) {
+                stop()
+                ticks = 0
+                root.runFileBusy = false
+                if (st !== "ok") {
+                    // fallback: try direct run
+                    root.launchNativeBinary(root.runFilePending, root.runFilePendingName)
+                    root.runFilePending = ""
+                    return
+                }
+                var p = root.runFilePending
+                var n = root.runFilePendingName
+                root.runFilePending = ""
+                root.runFilePendingName = ""
+                root.launchAppImageFile(p, n)
+            }
+        }
+    }
+
+    Timer {
+        id: appImageWaitTimer
+        interval: 2000
+        repeat: true
+        property int ticks: 0
+        onTriggered: {
+            ticks++
+            if (root.glibcReady() || ticks >= 90) {
+                stop()
+                ticks = 0
+                if (root.glibcReady() && root.runFilePendingKind === "appimage" && root.runFilePending.length)
+                    root.launchAppImageFile(root.runFilePending, root.runFilePendingName)
+                else if (!root.glibcReady())
+                    root.notify("AppImage", "Среда glibc не готова", "info")
+            }
+        }
+    }
+
+    function launchShellScript(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        sys.run("chmod +x " + shQuote(path) + " 2>/dev/null; true")
+        var dir = path.slice(0, path.lastIndexOf("/")) || "/"
+        runUserScript(
+            "cd " + shQuote(dir) + " || true\n"
+            + "exec /bin/sh " + shQuote(path) + " \"$@\"\n",
+            "/tmp/gtos-run-sh.log"
+        )
+        notify("Сценарий", "Запускаю «" + name + "»", "ok")
+    }
+
+    function launchJarFile(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        var java = sys.run("command -v java 2>/dev/null").trim()
+        if (!java.length) {
+            notify("Java", "Для «" + name + "» нужен Java Runtime. Установите openjdk из Магазина или apk.", "info")
+            openOpenWithDialog(path, name, "Java не найдена. Выберите другую программу:")
+            return
+        }
+        runUserScript(
+            "exec " + shQuote(java) + " -jar " + shQuote(path) + " \"$@\"\n",
+            "/tmp/gtos-run-jar.log"
+        )
+        notify("Java", "Запускаю «" + name + "»", "ok")
+    }
+
+    function openDesktopShortcut(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        var body = sys.readFile(path)
+        if (!body.length) {
+            notify("Ярлык", "Пустой ярлык", "info")
+            return
+        }
+        var url = ""
+        var execLine = ""
+        var type = ""
+        var lines = body.split("\n")
+        for (var i = 0; i < lines.length; ++i) {
+            var l = lines[i].replace(/\r$/, "")
+            if (l.indexOf("URL=") === 0) url = l.slice(4).trim()
+            else if (l.indexOf("Exec=") === 0) execLine = l.slice(5).trim()
+            else if (l.indexOf("Type=") === 0) type = l.slice(5).trim()
+        }
+        if (url.length) {
+            if (url.indexOf("file://") === 0) {
+                var local = decodeURIComponent(url.slice(7))
+                // recursive open of target
+                var slash = local.lastIndexOf("/")
+                var nm = slash >= 0 ? local.slice(slash + 1) : local
+                openPathFromExplorer(local, nm)
+                return
+            }
+            launch("browser", "Браузер")
+            browserUrl = url
+            browseGo(true)
+            return
+        }
+        if (execLine.length) {
+            // strip field codes %f %F %u %U
+            var cleaned = execLine.replace(/%[fFuUdDnNickvm]/g, "").replace(/\s+/g, " ").trim()
+            if (!cleaned.length) {
+                notify("Ярлык", "Пустая команда Exec", "info")
+                return
+            }
+            runUserScript("exec " + cleaned + "\n", "/tmp/gtos-desktop-exec.log")
+            notify("Ярлык", "Запускаю «" + name + "»", "ok")
+            return
+        }
+        notify("Ярлык", "В «" + name + "» нет Exec или URL", "info")
+    }
+
+    function openHtmlFile(path, name) {
+        launch("browser", "Браузер")
+        browserUrl = "file://" + path
+        browseGo(true)
+        notify("Браузер", "Открываю «" + (name || path.slice(path.lastIndexOf("/") + 1)) + "»", "ok")
+    }
+
+    function openOfficeFile(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        var lo = sys.run("command -v libreoffice 2>/dev/null || command -v soffice 2>/dev/null").trim()
+        if (lo.length) {
+            runUserScript("exec " + shQuote(lo) + " " + shQuote(path) + "\n", "/tmp/gtos-office.log")
+            notify("Документ", "Открываю «" + name + "» в LibreOffice", "ok")
+            return true
+        }
+        // fallback: PDF viewer won't help for docx; ask
+        openOpenWithDialog(path, name, "LibreOffice не установлен. Выберите программу или поставьте его из Магазина:")
+        return true
+    }
+
+    function openDebPackage(path, name) {
+        path = String(path || "")
+        name = String(name || path.slice(path.lastIndexOf("/") + 1))
+        notify("Пакет", "«" + name + "»: пакеты .deb ставятся через Магазин или вручную в терминале. Открываю как архив.", "info")
+        openArchiveManager(path)
+        return true
+    }
+
+    function openPathFromExplorer(path, name) {
+        path = String(path || "")
+        name = String(name || (path.length ? path.slice(path.lastIndexOf("/") + 1) : ""))
+        if (!path.length)
+            return false
+        if (sys.run("test -d " + shQuote(path) + " && echo yes").trim() === "yes") {
+            launch("files", "Файлы")
+            loadFiles(path)
+            return true
+        }
+        if (openByAssocOrAsk(path, name))
+            return true
+        // runnable / special formats
+        if (/\.desktop$/i.test(name)) {
+            openDesktopShortcut(path, name)
+            return true
+        }
+        if (isWindowsAppName(name)) {
+            launchWindowsFile(path, name)
+            return true
+        }
+        if (isLinuxAppName(name)) {
+            launchAppImageFile(path, name)
+            return true
+        }
+        if (isScriptAppName(name)) {
+            launchShellScript(path, name)
+            return true
+        }
+        if (isJarName(name)) {
+            launchJarFile(path, name)
+            return true
+        }
+        if (isWebPageName(name)) {
+            openHtmlFile(path, name)
+            return true
+        }
+        if (isOfficeName(name)) {
+            openOfficeFile(path, name)
+            return true
+        }
+        if (isPackageName(name)) {
+            openDebPackage(path, name)
+            return true
+        }
+        if (isPdfName(name)) { openDocumentViewer(path); return true }
+        if (isImageName(name)) { openImageViewer(path); return true }
+        if (isFontName(name)) { openFontManager(path); return true }
+        if (isArchiveName(name)) { openArchiveManager(path); return true }
+        if (isMediaName(name)) { openMediaFile(path); return true }
+        // magic: PE without .exe, ELF binary, shebang-скрипт с +x
+        var magic = fileMagicKind(path)
+        var isExec = sys.run("test -x " + shQuote(path) + " && echo yes").trim() === "yes"
+        if (magic === "pe") {
+            launchWindowsFile(path, name)
+            return true
+        }
+        if (magic === "elf") {
+            launchNativeBinary(path, name)
+            return true
+        }
+        if (magic === "script" && isExec) {
+            launchShellScript(path, name)
+            return true
+        }
+        if (isExec && !fileEntryKind(name, false).match(/text|image|video|audio|pdf|archive|font|web|office/)) {
+            launchNativeBinary(path, name)
+            return true
+        }
+        // text-like → notepad
+        if (fileEntryKind(name, false) === "text") {
+            launch("notes", "Блокнот")
+            openNote(path)
+            return true
+        }
+        if (fileEntryKind(name, false) === "unknown") {
+            openOpenWithDialog(path, name, "Этот тип файла системе неизвестен. Выберите программу или запустите, если это приложение:")
+            return true
+        }
+        return false
+    }
+
     function printFile(path) {
         path = String(path || "")
         if (!path.length) {
@@ -7667,14 +9251,18 @@ Window {
             { id: "weather", name: "Погода", kind: "app" },
             { id: "docs", name: "GT Document Viewer", kind: "app" },
             { id: "calc", name: "Калькулятор", kind: "app" },
-            { id: "cal", name: "Календарь", kind: "app" }
+            { id: "cal", name: "Календарь", kind: "app" },
+            { id: "camera", name: "Камера", kind: "app" }
         ]
     }
 
     function catalogSettings() {
         return [
             { id: "system", name: "Система", kind: "settings" },
+            { id: "displays", name: "Экраны", kind: "settings" },
             { id: "network", name: "Сеть и Интернет", kind: "settings" },
+            { id: "vpn", name: "VPN", kind: "settings" },
+            { id: "printers", name: "Принтеры", kind: "settings" },
             { id: "personalize", name: "Персонализация", kind: "settings" },
             { id: "apps", name: "Приложения", kind: "settings" },
             { id: "accounts", name: "Учётные записи", kind: "settings" },
@@ -8824,12 +10412,81 @@ Window {
         )
     }
 
+    function btSafeMac(mac) {
+        return String(mac || "").replace(/[^0-9A-Fa-f:]/g, "")
+    }
+
+    function btDeviceGlyph(icon, name) {
+        var i = String(icon || "")
+        var n = String(name || "").toLowerCase()
+        if (i.indexOf("headset") >= 0 || i.indexOf("headphone") >= 0 || /buds|airpods|наушник|headphone|wh-|wf-/.test(n)) return "🎧"
+        if (i.indexOf("audio") >= 0 || /speaker|колонк|jbl|sound/.test(n)) return "🔊"
+        if (i.indexOf("mouse") >= 0 || /mouse|мыш/.test(n)) return "🖱️"
+        if (i.indexOf("keyboard") >= 0 || /keyboard|клавиат/.test(n)) return "⌨️"
+        if (i.indexOf("gaming") >= 0 || /controller|gamepad|dualsense|xbox|joy/.test(n)) return "🎮"
+        if (i.indexOf("phone") >= 0 || /phone|iphone|galaxy|pixel|redmi|телефон/.test(n)) return "📱"
+        if (i.indexOf("computer") >= 0 || /laptop|desktop|pc|macbook|ноутбук/.test(n)) return "💻"
+        if (/watch|band|часы/.test(n)) return "⌚"
+        if (i.indexOf("printer") >= 0) return "🖨️"
+        if (i.indexOf("camera") >= 0) return "📷"
+        return "📶"
+    }
+
+    function btDeviceKind(icon, name) {
+        var g = btDeviceGlyph(icon, name)
+        if (g === "🎧") return "Наушники"
+        if (g === "🔊") return "Аудио"
+        if (g === "🖱️") return "Мышь"
+        if (g === "⌨️") return "Клавиатура"
+        if (g === "🎮") return "Геймпад"
+        if (g === "📱") return "Телефон"
+        if (g === "💻") return "Компьютер"
+        if (g === "⌚") return "Часы"
+        if (g === "🖨️") return "Принтер"
+        if (g === "📷") return "Камера"
+        return "Устройство"
+    }
+
+    function btParseInfo(mac) {
+        var raw = sys.run("bluetoothctl info " + btSafeMac(mac) + " 2>/dev/null | grep -E 'Connected:|Icon:|Battery Percentage:|Trusted:'")
+        var out = { connected: false, icon: "", battery: -1, trusted: false }
+        var lines = raw.split("\n")
+        for (var i = 0; i < lines.length; ++i) {
+            var l = lines[i].trim()
+            if (l.indexOf("Connected:") === 0) out.connected = l.indexOf("yes") > 0
+            else if (l.indexOf("Trusted:") === 0) out.trusted = l.indexOf("yes") > 0
+            else if (l.indexOf("Icon:") === 0) out.icon = l.slice(5).trim()
+            else if (l.indexOf("Battery Percentage:") === 0) {
+                var m = l.match(/\((\d+)\)/)
+                if (m) out.battery = parseInt(m[1])
+            }
+        }
+        return out
+    }
+
+    function btParseDeviceLines(raw) {
+        var out = []
+        if (!raw.length)
+            return out
+        var lines = raw.split("\n")
+        for (var i = 0; i < lines.length; ++i) {
+            var l = lines[i].trim()
+            if (l.indexOf("Device ") !== 0) continue
+            var parts = l.split(" ")
+            if (parts.length < 3) continue
+            out.push({ mac: parts[1], name: parts.slice(2).join(" ") })
+        }
+        return out
+    }
+
     function refreshBluetooth() {
-        btError = ""
+        if (!btScanning)
+            btError = ""
         if (!bluetoothOn) {
             btStatus = "Выключен"
             btDevices = []
             btPaired = []
+            btDiscoverable = false
             sys.run("rfkill block bluetooth 2>/dev/null; bluetoothctl power off >/dev/null 2>&1; true")
             return
         }
@@ -8839,12 +10496,25 @@ Window {
             btError = "Утилита bluetoothctl не найдена. Подключите адаптер или установите bluez."
             btDevices = []
             btPaired = []
+            btAdapterName = ""
+            btAdapterMac = ""
             return
         }
         sys.run("rfkill unblock bluetooth 2>/dev/null; bluetoothctl power on >/dev/null 2>&1; true")
-        var adapter = sys.run("bluetoothctl show 2>/dev/null | awk '/Powered:/{print $2; exit}'").trim()
-        if (adapter !== "yes") {
-            // no controller in QEMU is common
+        var show = sys.run("bluetoothctl show 2>/dev/null")
+        var powered = false
+        btAdapterName = ""
+        btAdapterMac = ""
+        var sl = show.split("\n")
+        for (var s = 0; s < sl.length; ++s) {
+            var ln = sl[s].trim()
+            if (ln.indexOf("Controller ") === 0) btAdapterMac = (ln.split(" ")[1] || "")
+            else if (ln.indexOf("Alias:") === 0) btAdapterName = ln.slice(6).trim()
+            else if (ln.indexOf("Name:") === 0 && !btAdapterName.length) btAdapterName = ln.slice(5).trim()
+            else if (ln.indexOf("Powered:") === 0) powered = ln.indexOf("yes") > 0
+            else if (ln.indexOf("Discoverable:") === 0) btDiscoverable = ln.indexOf("yes") > 0
+        }
+        if (!powered) {
             var ctrl = sys.run("bluetoothctl list 2>/dev/null").trim()
             if (!ctrl.length) {
                 btStatus = "Адаптер не найден"
@@ -8854,49 +10524,44 @@ Window {
                 return
             }
             btStatus = "Включён, ожидание адаптера"
-        } else {
-            btStatus = "Включён"
         }
-        // paired
         var pairedRaw = sys.run("bluetoothctl devices Paired 2>/dev/null").trim()
         if (!pairedRaw.length)
             pairedRaw = sys.run("bluetoothctl paired-devices 2>/dev/null").trim()
         var pl = []
-        if (pairedRaw.length) {
-            var plines = pairedRaw.split("\n")
-            for (var pi = 0; pi < plines.length; ++pi) {
-                var pline = plines[pi].trim()
-                if (pline.indexOf("Device ") !== 0) continue
-                var parts = pline.split(" ")
-                if (parts.length < 3) continue
-                var mac = parts[1]
-                var nm = parts.slice(2).join(" ")
-                var conn = sys.run("bluetoothctl info " + mac + " 2>/dev/null | awk '/Connected:/{print $2; exit}'").trim()
-                pl.push({ mac: mac, name: nm, connected: conn === "yes", paired: true })
-            }
+        var pdev = btParseDeviceLines(pairedRaw)
+        for (var pi = 0; pi < pdev.length; ++pi) {
+            var info = btParseInfo(pdev[pi].mac)
+            pl.push({
+                mac: pdev[pi].mac, name: pdev[pi].name, paired: true,
+                connected: info.connected, icon: info.icon, battery: info.battery,
+                glyph: btDeviceGlyph(info.icon, pdev[pi].name), kind: btDeviceKind(info.icon, pdev[pi].name)
+            })
         }
+        pl.sort(function (a, b) { return (b.connected ? 1 : 0) - (a.connected ? 1 : 0) })
         btPaired = pl
-        // discovered (from last scan cache)
-        var discRaw = sys.run("bluetoothctl devices 2>/dev/null").trim()
         var dl = []
-        if (discRaw.length) {
-            var dlines = discRaw.split("\n")
-            for (var di = 0; di < dlines.length; ++di) {
-                var dline = dlines[di].trim()
-                if (dline.indexOf("Device ") !== 0) continue
-                var dp = dline.split(" ")
-                if (dp.length < 3) continue
-                var dmac = dp[1]
-                var dnm = dp.slice(2).join(" ")
-                var already = false
-                for (var a = 0; a < pl.length; ++a) if (pl[a].mac === dmac) { already = true; break }
-                if (!already)
-                    dl.push({ mac: dmac, name: dnm, connected: false, paired: false })
-            }
+        var ddev = btParseDeviceLines(sys.run("bluetoothctl devices 2>/dev/null").trim())
+        for (var di = 0; di < ddev.length && dl.length < 40; ++di) {
+            var already = false
+            for (var a = 0; a < pl.length; ++a) if (pl[a].mac === ddev[di].mac) { already = true; break }
+            if (already) continue
+            var unnamed = ddev[di].name.replace(/-/g, ":") === ddev[di].mac
+            dl.push({
+                mac: ddev[di].mac, name: unnamed ? "Неизвестное устройство" : ddev[di].name,
+                paired: false, connected: false, icon: "", battery: -1, unnamed: unnamed,
+                glyph: btDeviceGlyph("", ddev[di].name), kind: btDeviceKind("", ddev[di].name)
+            })
         }
+        dl.sort(function (a, b) { return (a.unnamed ? 1 : 0) - (b.unnamed ? 1 : 0) })
         btDevices = dl
-        if (!btError.length)
-            btStatus = "Включён · сопряжено " + btPaired.length + " · найдено " + btDevices.length
+        if (btScanning)
+            btStatus = "Поиск устройств… найдено " + btDevices.length
+        else if (!btError.length) {
+            var conn = 0
+            for (var c = 0; c < pl.length; ++c) if (pl[c].connected) conn++
+            btStatus = conn > 0 ? ("Подключено устройств: " + conn) : "Включён · готов к подключению"
+        }
     }
 
     function btStartScan() {
@@ -8906,58 +10571,114 @@ Window {
         }
         if (btScanning) return
         btScanning = true
+        btScanTicks = 0
         btError = ""
         btStatus = "Поиск устройств…"
         sys.run(
-            "command -v bluetoothctl >/dev/null 2>&1 || exit 0; "
-            + "rfkill unblock bluetooth 2>/dev/null; bluetoothctl power on >/dev/null 2>&1; "
-            + "bluetoothctl --timeout 8 scan on >/tmp/gtos-bt-scan.log 2>&1; "
-            + "bluetoothctl scan off >/dev/null 2>&1; true"
+            "rm -f /tmp/gtos-bt-scan.done; "
+            + "( if command -v bluetoothctl >/dev/null 2>&1; then "
+            + "rfkill unblock bluetooth 2>/dev/null; bluetoothctl power on; "
+            + "bluetoothctl --timeout 12 scan on; bluetoothctl scan off; fi "
+            + ">/tmp/gtos-bt-scan.log 2>&1; echo done >/tmp/gtos-bt-scan.done ) </dev/null >/dev/null 2>&1 &"
         )
+        btScanTimer.restart()
+    }
+
+    function btFinishScan() {
+        btScanTimer.stop()
         btScanning = false
         refreshBluetooth()
         if (btDevices.length === 0 && btPaired.length === 0 && btError.length === 0)
-            notify("Bluetooth", "Устройства не найдены", "info")
-        else
-            notify("Bluetooth", "Найдено: " + (btDevices.length + btPaired.length), "ok")
+            notify("Bluetooth", "Устройства рядом не найдены", "info")
+        else if (btError.length === 0)
+            notify("Bluetooth", "Найдено устройств: " + (btDevices.length + btPaired.length), "ok")
+    }
+
+    Timer {
+        id: btScanTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            root.btScanTicks++
+            var done = sys.readFile("/tmp/gtos-bt-scan.done").trim().length > 0
+            if (done || root.btScanTicks >= 20) {
+                root.btFinishScan()
+                return
+            }
+            if (root.btScanTicks % 3 === 0)
+                root.refreshBluetooth()
+        }
     }
 
     function btConnectDevice(mac) {
-        if (!mac || !mac.length) return
+        var m = btSafeMac(mac)
+        if (!m.length || btBusy) return
         btBusy = true
+        btConnectingMac = m
+        btConnTicks = 0
         btError = ""
-        var out = sys.run(
-            "bluetoothctl power on >/dev/null 2>&1; "
-            + "bluetoothctl pair " + mac + " >/tmp/gtos-bt-pair.log 2>&1; "
-            + "bluetoothctl trust " + mac + " >/dev/null 2>&1; "
-            + "bluetoothctl connect " + mac + " >/tmp/gtos-bt-conn.log 2>&1; "
-            + "echo $?; "
-            + "tail -n 3 /tmp/gtos-bt-conn.log 2>/dev/null"
-        ).trim()
-        btBusy = false
-        refreshBluetooth()
-        if (out.indexOf("0") === 0 || out.toLowerCase().indexOf("connected") >= 0) {
-            notify("Bluetooth", "Подключено " + mac, "ok")
-        } else {
-            btError = "Не удалось подключить " + mac + (out.length ? (": " + out.slice(0, 160)) : "")
-            notify("Bluetooth", btError, "info")
+        sys.run(
+            "rm -f /tmp/gtos-bt-conn.done /tmp/gtos-bt-conn.rc; "
+            + "( ( bluetoothctl power on; "
+            + "bluetoothctl --timeout 15 pair " + m + "; "
+            + "bluetoothctl trust " + m + "; "
+            + "bluetoothctl --timeout 15 connect " + m + "; echo $? >/tmp/gtos-bt-conn.rc "
+            + ") >/tmp/gtos-bt-conn.log 2>&1 </dev/null; echo done >/tmp/gtos-bt-conn.done ) >/dev/null 2>&1 &"
+        )
+        btConnTimer.restart()
+    }
+
+    Timer {
+        id: btConnTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            root.btConnTicks++
+            var done = sys.readFile("/tmp/gtos-bt-conn.done").trim().length > 0
+            if (!done && root.btConnTicks < 40)
+                return
+            stop()
+            var m = root.btConnectingMac
+            var info = root.btParseInfo(m)
+            root.btBusy = false
+            root.btConnectingMac = ""
+            root.refreshBluetooth()
+            var name = m
+            for (var i = 0; i < root.btPaired.length; ++i)
+                if (root.btPaired[i].mac === m) name = root.btPaired[i].name
+            if (info.connected) {
+                root.notify("Bluetooth", "Подключено: " + name, "ok")
+            } else {
+                var tail = sys.run("tail -n 2 /tmp/gtos-bt-conn.log 2>/dev/null").trim()
+                root.btError = "Не удалось подключить " + name + (tail.length ? (" — " + tail.slice(0, 160)) : "")
+                    + ". Переведите устройство в режим сопряжения и попробуйте ещё раз."
+                root.notify("Bluetooth", "Не удалось подключить " + name, "info")
+            }
         }
     }
 
     function btDisconnectDevice(mac) {
-        if (!mac || !mac.length) return
+        var m = btSafeMac(mac)
+        if (!m.length) return
         btBusy = true
-        sys.run("bluetoothctl disconnect " + mac + " >/dev/null 2>&1; true")
+        sys.run("bluetoothctl disconnect " + m + " >/dev/null 2>&1; true")
         btBusy = false
         refreshBluetooth()
-        notify("Bluetooth", "Отключено " + mac, "ok")
+        notify("Bluetooth", "Устройство отключено", "ok")
     }
 
     function btRemoveDevice(mac) {
-        if (!mac || !mac.length) return
-        sys.run("bluetoothctl remove " + mac + " >/dev/null 2>&1; true")
+        var m = btSafeMac(mac)
+        if (!m.length) return
+        sys.run("bluetoothctl remove " + m + " >/dev/null 2>&1; true")
         refreshBluetooth()
-        notify("Bluetooth", "Устройство удалено", "ok")
+        notify("Bluetooth", "Устройство забыто", "ok")
+    }
+
+    function btSetDiscoverable(on) {
+        sys.run("bluetoothctl discoverable " + (on ? "on" : "off") + " >/dev/null 2>&1; true")
+        btDiscoverable = on
+        refreshBluetooth()
     }
 
     function restoreUserBackup(id) {
@@ -10053,32 +11774,8 @@ Window {
             navigateTo(entry.path, false)
             return
         }
-        if (openByAssocOrAsk(entry.path, entry.name))
+        if (openPathFromExplorer(entry.path, entry.name))
             return
-        if (isPdfName(entry.name) && entry.path) {
-            openDocumentViewer(entry.path)
-            return
-        }
-        if (isImageName(entry.name) && entry.path) {
-            openImageViewer(entry.path)
-            return
-        }
-        if (isFontName(entry.name) && entry.path) {
-            openFontManager(entry.path)
-            return
-        }
-        if (isArchiveName(entry.name) && entry.path) {
-            openArchiveManager(entry.path)
-            return
-        }
-        if (isMediaName(entry.name) && entry.path) {
-            openMediaFile(entry.path)
-            return
-        }
-        if (fileEntryKind(entry.name, false) === "unknown") {
-            openOpenWithDialog(entry.path, entry.name, "Этот тип файла системе неизвестен. Выберите программу:")
-            return
-        }
         fileView = sys.readFile(entry.path)
         filesMode = "preview"
     }
@@ -10866,20 +12563,29 @@ Window {
                 root.storeInstallLabel = label
             root.storeInstallPct = pct
 
-            if (bytes <= root.storeLastBytes && phase !== "extract" && phase !== "apk")
+            root.storePhaseTicks += 1
+            // prepare/apk часто «тихие» минутами — не красим UI в «зависло»
+            var quietPhase = (phase === "prepare" || phase === "init" || phase === "apk" || phase === "extract")
+            if (bytes <= root.storeLastBytes && !quietPhase)
                 root.storeStallTicks += 1
-            else {
+            else if (bytes > root.storeLastBytes) {
                 root.storeStallTicks = 0
                 root.storeLastBytes = bytes
+            } else if (quietPhase) {
+                root.storeStallTicks = 0
+                if (bytes > 0)
+                    root.storeLastBytes = bytes
             }
-            root.storeInstallStalled = root.storeStallTicks >= 10
+            root.storeInstallStalled = !quietPhase && root.storeStallTicks >= 20
 
             // apk может идти минутами без curl — не убивать рано
             var alive = sys.run("ps 2>/dev/null | grep -E '[g]tos-store-install|[c]url|[u]nsquashfs|[a]pk|[t]imeout|[w]ine|[w]ineboot|[u]nzip|[d]d' | head -n 1").trim()
             if (!alive.length)
                 alive = sys.run("ps w 2>/dev/null | grep -E '[g]tos-store-install|[c]url|[a]pk|[w]ine' | head -n 1").trim()
-            var stallLimit = (phase === "apk") ? 720 : ((phase === "prepare" || phase === "init") ? 180 : 64)
-            if (!alive.length && root.storeStallTicks >= stallLimit) {
+            // тихие фазы: смотрим wall-time (phaseTicks), а не «байты не растут»
+            var quietDead = quietPhase && !alive.length && root.storePhaseTicks >= ((phase === "apk") ? 900 : 360)
+            var dlDead = !quietPhase && !alive.length && root.storeStallTicks >= 80
+            if (quietDead || dlDead) {
                 sys.run("echo 1 >/tmp/gtos-store-rc; echo 1 >/tmp/gtos-apk-rc; echo done >/tmp/gtos-store-done; echo done >/tmp/gtos-apk-done; echo error >/tmp/gtos-store-phase; echo 'Установщик не отвечает' >/tmp/gtos-store-label")
                 root.storeInstallPct = 100
                 root.finishStoreInstall()
@@ -13659,27 +15365,25 @@ Rectangle {
         // линия: панель во всю ширину/высоту экрана, прижата к краю
         property bool isLine: root.dockStyle === "line"
         property real edgeGap: isLine ? 0 : 16
-        // Горизонтальная панель: только x (не якоря left/center — иначе left↔center раздувает ширину)
-        anchors.left: root.dockEdge === "left" ? parent.left : undefined
-        anchors.right: root.dockEdge === "right" ? parent.right : undefined
-        anchors.verticalCenter: isVertical ? parent.verticalCenter : undefined
+        // Якоря только через states — иначе bottom→top на мгновение держит оба якоря и панель растягивается на весь экран
+        anchors.leftMargin: edgeGap
+        anchors.rightMargin: edgeGap
+        anchors.topMargin: isLine ? 48 : 54
+        anchors.bottomMargin: root.dockAutoHide && !root.dockHoverReveal && !dock.containsMouse ? -root.dockSize + 4 : edgeGap
         anchors.verticalCenterOffset: isVertical && isLine ? 24 : 0
-        anchors.bottom: root.dockEdge === "bottom" ? parent.bottom : undefined
-        anchors.top: root.dockEdge === "top" ? parent.top : undefined
-        anchors.bottomMargin: root.dockEdge === "bottom" ? (root.dockAutoHide && !root.dockHoverReveal && !dock.containsMouse ? -root.dockSize + 4 : edgeGap) : 0
-        anchors.topMargin: root.dockEdge === "top" ? (isLine ? 48 : 54) : 0
-        anchors.leftMargin: root.dockEdge === "left" ? edgeGap : 0
-        anchors.rightMargin: root.dockEdge === "right" ? edgeGap : 0
         x: isHorizontal
            ? (isLine ? 0 : (root.dockAlign === "left" ? 16 : Math.round((root.width - width) / 2)))
            : 0
-        width: isVertical ? root.dockSize : (isLine ? root.width : dockRow.width + 28)
-        height: isVertical ? (isLine ? root.height - 48 : dockRow.height + 28) : (isLine ? root.dockSize - 8 : root.dockSize)
+        width: isVertical ? root.dockSize : (isLine ? root.width : Math.max(120, dockRow.width + 28))
+        height: isVertical ? (isLine ? Math.max(120, root.height - 48) : Math.max(120, dockRow.height + 28))
+                           : (isLine ? root.dockSize - 8 : root.dockSize)
         radius: isLine ? 0 : 20
         color: isLine ? "#ee11171b" : "#1a2126"
         border.width: root.dockDropHot ? 2 : (isLine ? 0 : 1)
         border.color: root.dockDropHot ? root.accentColor : "#2c3840"
         Behavior on radius { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+        Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+        Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
         // тонкая граница со стороны рабочего стола в режиме «линия»
         Rectangle {
             visible: dock.isLine
@@ -13696,6 +15400,63 @@ Rectangle {
         transform: Translate {
             y: root.dockReady || root.dockEdge !== "bottom" ? 0 : 120
             Behavior on y { NumberAnimation { duration: 560; easing.type: Easing.OutCubic } }
+        }
+        states: [
+            State {
+                name: "bottom"
+                when: root.dockEdge === "bottom"
+                AnchorChanges {
+                    target: dock
+                    anchors.left: undefined
+                    anchors.right: undefined
+                    anchors.top: undefined
+                    anchors.bottom: dock.parent.bottom
+                    anchors.verticalCenter: undefined
+                    anchors.horizontalCenter: undefined
+                }
+            },
+            State {
+                name: "top"
+                when: root.dockEdge === "top"
+                AnchorChanges {
+                    target: dock
+                    anchors.left: undefined
+                    anchors.right: undefined
+                    anchors.top: dock.parent.top
+                    anchors.bottom: undefined
+                    anchors.verticalCenter: undefined
+                    anchors.horizontalCenter: undefined
+                }
+            },
+            State {
+                name: "left"
+                when: root.dockEdge === "left"
+                AnchorChanges {
+                    target: dock
+                    anchors.left: dock.parent.left
+                    anchors.right: undefined
+                    anchors.top: undefined
+                    anchors.bottom: undefined
+                    anchors.verticalCenter: dock.parent.verticalCenter
+                    anchors.horizontalCenter: undefined
+                }
+            },
+            State {
+                name: "right"
+                when: root.dockEdge === "right"
+                AnchorChanges {
+                    target: dock
+                    anchors.left: undefined
+                    anchors.right: dock.parent.right
+                    anchors.top: undefined
+                    anchors.bottom: undefined
+                    anchors.verticalCenter: dock.parent.verticalCenter
+                    anchors.horizontalCenter: undefined
+                }
+            }
+        ]
+        transitions: Transition {
+            AnchorAnimation { duration: 220; easing.type: Easing.OutCubic }
         }
         MouseArea {
             id: dockHoverMa
@@ -13969,21 +15730,27 @@ Rectangle {
                     Behavior on scale { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
                     property bool previewOn: root.dockPreviewOpen && root.dockPreviewApp === modelData && root.dockDragApp.length === 0 && root.windowsForApp(modelData).length > 0
 
-                    // Предпросмотр окон над значком (Fluent peek)
+                    // Предпросмотр окон над значком (Fluent peek) — только после 1 с наведения
                     Item {
                         id: dockPreviewFly
-                        visible: opacity > 0.02
-                        anchors.bottom: parent.top
-                        anchors.bottomMargin: 12
+                        visible: opacity > 0.01
+                        anchors.bottom: root.dockEdge === "bottom" || root.dockEdge === "left" || root.dockEdge === "right" ? parent.top : undefined
+                        anchors.top: root.dockEdge === "top" ? parent.bottom : undefined
+                        anchors.bottomMargin: root.dockEdge === "bottom" || root.dockEdge === "left" || root.dockEdge === "right" ? 12 : 0
+                        anchors.topMargin: root.dockEdge === "top" ? 12 : 0
                         anchors.horizontalCenter: parent.horizontalCenter
                         z: 200
                         width: peekShell.width
                         height: peekShell.height
                         opacity: dockSlot.previewOn ? 1 : 0
-                        scale: dockSlot.previewOn ? 1 : 0.94
-                        transformOrigin: Item.Bottom
-                        Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
-                        Behavior on scale { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+                        scale: dockSlot.previewOn ? 1 : 0.92
+                        transformOrigin: root.dockEdge === "top" ? Item.Top : Item.Bottom
+                        transform: Translate {
+                            y: dockSlot.previewOn ? 0 : (root.dockEdge === "top" ? -14 : 14)
+                            Behavior on y { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
+                        }
+                        Behavior on opacity { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
+                        Behavior on scale { NumberAnimation { duration: 280; easing.type: Easing.OutBack } }
 
                         Rectangle {
                             id: peekShell
@@ -14252,10 +16019,13 @@ Rectangle {
                         property real pressY: 0
                         onEntered: {
                             previewHideTimer.stop()
+                            previewShowTimer.stop()
                             root.dockPreviewApp = modelData
-                            root.dockPreviewOpen = root.windowsForApp(modelData).length > 0
+                            if (root.windowsForApp(modelData).length > 0)
+                                previewShowTimer.start()
                         }
                         onExited: {
+                            previewShowTimer.stop()
                             if (!dragging)
                                 previewHideTimer.restart()
                         }
@@ -14276,6 +16046,7 @@ Rectangle {
                                 root.dockDragApp = modelData
                                 root.dockDragFrom = root.pinnedApps.indexOf(modelData)
                                 root.dockPreviewOpen = false
+                                previewShowTimer.stop()
                                 previewHideTimer.stop()
                             }
                             if (dragging) {
@@ -14306,6 +16077,15 @@ Rectangle {
                         onCanceled: {
                             dragging = false
                             root.clearDockDrag()
+                        }
+                    }
+                    Timer {
+                        id: previewShowTimer
+                        interval: 1000
+                        onTriggered: {
+                            if (dockSlotMa.containsMouse && root.dockPreviewApp === modelData
+                                    && root.windowsForApp(modelData).length > 0 && root.dockDragApp.length === 0)
+                                root.dockPreviewOpen = true
                         }
                     }
                     Timer {
@@ -17822,9 +19602,12 @@ Rectangle {
             property string appsFilter: "all"
             property var sections: [
                 { id: "system", name: "Система", desc: "Экран, звук, уведомления и сведения о ПК", iconKind: "pc" },
-                { id: "power", name: "Питание", desc: "GT Power Manager: режимы, крышка и батарея", iconKind: "monitor" },
+                { id: "displays", name: "Экраны", desc: "Мониторы, разрешение и расположение", iconKind: "monitor" },
+                { id: "power", name: "Питание", desc: "GT Power Manager: режимы, крышка, сон и гибернация", iconKind: "monitor" },
                 { id: "bluetooth", name: "Bluetooth и устройства", desc: "Мышь, клавиатура и беспроводные устройства", iconKind: "settings" },
+                { id: "printers", name: "Принтеры", desc: "CUPS: добавление, тест и принтер по умолчанию", iconKind: "files" },
                 { id: "network", name: "Сеть и Интернет", desc: "Wi‑Fi, кабель и состояние подключения", iconKind: "network" },
+                { id: "vpn", name: "VPN", desc: "WireGuard: конфиг и подключение", iconKind: "network" },
                 { id: "personalize", name: "Персонализация", desc: "Фон, цвета, панель задач и окна", iconKind: "draw" },
                 { id: "apps", name: "Приложения", desc: "Установленные программы и панель задач", iconKind: "store" },
                 { id: "accounts", name: "Учётные записи", desc: "Ваш профиль и вход в систему", iconKind: "mail" },
@@ -18110,6 +19893,24 @@ Rectangle {
                             onActivated: { root.powerTab = "lid"; root.settingsSection = "power" }
                         }
                         SettingCard {
+                            title: "Экраны и мониторы"
+                            subtitle: root.displayStatus.length ? root.displayStatus : "Разрешение и расположение"
+                            showChevron: true
+                            onActivated: root.settingsSection = "displays"
+                        }
+                        SettingCard {
+                            title: "Принтеры"
+                            subtitle: "CUPS · пробная страница и устройство по умолчанию"
+                            showChevron: true
+                            onActivated: root.settingsSection = "printers"
+                        }
+                        SettingCard {
+                            title: "VPN (WireGuard)"
+                            subtitle: root.vpnStatus
+                            showChevron: true
+                            onActivated: root.settingsSection = "vpn"
+                        }
+                        SettingCard {
                             title: "Экран"
                             subtitle: "Яркость: " + Math.round(root.brightness * 100) + "%"
                         }
@@ -18333,6 +20134,41 @@ Rectangle {
                         }
                     }
 
+                    Text { text: "Сон и гибернация"; color: "#a0a0a0"; font.pixelSize: 12; font.family: root.uiFont }
+                    Rectangle {
+                        width: parent.width; height: hibCol.height + 28; radius: 10; color: "#2c2c2c"
+                        Component.onCompleted: root.refreshHibernate()
+                        Column {
+                            id: hibCol
+                            anchors.left: parent.left; anchors.right: parent.right
+                            anchors.margins: 16; anchors.verticalCenter: parent.verticalCenter
+                            spacing: 10
+                            Text {
+                                width: parent.width
+                                text: root.hibernateStatus.length ? root.hibernateStatus : "Проверка swap…"
+                                color: "#a0a0a0"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                            }
+                            Row {
+                                spacing: 8
+                                Rectangle {
+                                    width: 100; height: 34; radius: 8; color: root.accentColor
+                                    Text { anchors.centerIn: parent; text: "Сон"; color: "#06210f"; font.pixelSize: 12; font.bold: true }
+                                    MouseArea { anchors.fill: parent; onClicked: root.enterSleep() }
+                                }
+                                Rectangle {
+                                    width: 120; height: 34; radius: 8; color: "#3a3a3a"
+                                    Text { anchors.centerIn: parent; text: "Гибернация"; color: "#fff"; font.pixelSize: 12 }
+                                    MouseArea { anchors.fill: parent; onClicked: root.enterHibernate() }
+                                }
+                                Rectangle {
+                                    width: 130; height: 34; radius: 8; color: "#3a3a3a"
+                                    Text { anchors.centerIn: parent; text: "Создать swap"; color: "#fff"; font.pixelSize: 12 }
+                                    MouseArea { anchors.fill: parent; onClicked: root.ensureSwapfile() }
+                                }
+                            }
+                        }
+                    }
+
                     Text { text: "Автоблокировка при бездействии"; color: "#a0a0a0"; font.pixelSize: 12; font.family: root.uiFont }
                     Row {
                         spacing: 8
@@ -18446,159 +20282,538 @@ Rectangle {
             Component {
                 id: settingsSec_bluetooth
                 Column {
+                    id: btSec
                     width: parent.width
-                    spacing: 10
+                    spacing: 12
                     Component.onCompleted: root.refreshBluetooth()
+                    readonly property bool noAdapter: root.btStatus === "Адаптер не найден" || root.btStatus === "Стек Bluetooth недоступен"
 
-                    Rectangle {
-                        width: parent.width; height: 72; radius: 8; color: "#2c2c2c"
-                        Column {
-                            anchors.left: parent.left; anchors.leftMargin: 16
-                            anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                            Text { text: "Bluetooth"; color: "#ffffff"; font.pixelSize: 14; font.family: root.uiFont }
+                    component BtRune: Canvas {
+                        property color ink: "#ffffff"
+                        width: 30; height: 30
+                        onInkChanged: requestPaint()
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.reset()
+                            var k = width / 30
+                            ctx.scale(k, k)
+                            ctx.strokeStyle = ink
+                            ctx.lineWidth = 2.4
+                            ctx.lineCap = "round"
+                            ctx.lineJoin = "round"
+                            ctx.beginPath()
+                            ctx.moveTo(8, 9.5); ctx.lineTo(21, 20.5); ctx.lineTo(15, 26); ctx.lineTo(15, 4)
+                            ctx.lineTo(21, 9.5); ctx.lineTo(8, 20.5)
+                            ctx.stroke()
+                        }
+                    }
+
+                    component BtButton: Rectangle {
+                        id: bbtn
+                        property string label: ""
+                        property bool primary: false
+                        property bool danger: false
+                        property bool busy: false
+                        property bool enabledBtn: true
+                        signal clicked()
+                        width: Math.max(96, bbLab.implicitWidth + (busy ? 46 : 28))
+                        height: 34
+                        radius: 8
+                        opacity: enabledBtn ? 1 : 0.45
+                        color: primary ? (bbMa.containsMouse && enabledBtn ? "#4af098" : root.accentColor)
+                                       : (danger ? (bbMa.containsMouse ? "#4a1d1d" : "#331616")
+                                                 : (bbMa.containsMouse && enabledBtn ? "#3a3a3a" : "#333333"))
+                        border.width: primary ? 0 : 1
+                        border.color: danger ? "#5b2323" : "#444444"
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Rectangle {
+                                visible: bbtn.busy
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 14; height: 14; radius: 7
+                                color: "transparent"
+                                border.width: 2
+                                border.color: bbtn.primary ? "#06210f" : root.accentColor
+                                Rectangle {
+                                    width: 6; height: 6; radius: 3
+                                    color: bbtn.primary ? root.accentColor : "#2c2c2c"
+                                    x: -1; y: -1
+                                }
+                                RotationAnimator on rotation { from: 0; to: 360; duration: 900; loops: Animation.Infinite; running: bbtn.busy }
+                            }
                             Text {
-                                text: root.btStatus
-                                color: "#a0a0a0"; font.pixelSize: 12; font.family: root.uiFont
+                                id: bbLab
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: bbtn.label
+                                color: bbtn.primary ? "#06210f" : (bbtn.danger ? "#fca5a5" : "#ececec")
+                                font.pixelSize: 12
+                                font.family: bbtn.primary ? root.uiFontBold : root.uiFont
                             }
                         }
-                        ToggleSwitch {
-                            anchors.right: parent.right; anchors.rightMargin: 16
-                            anchors.verticalCenter: parent.verticalCenter
-                            on: root.bluetoothOn
-                            onToggled: {
-                                root.bluetoothOn = !root.bluetoothOn
-                                root.refreshBluetooth()
-                                root.saveDesktop()
-                            }
+                        MouseArea {
+                            id: bbMa
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            enabled: bbtn.enabledBtn
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: bbtn.clicked()
                         }
                     }
 
-                    Text {
-                        visible: root.btError.length > 0
-                        width: parent.width
-                        text: root.btError
-                        color: "#fbbf24"; font.pixelSize: 12; wrapMode: Text.WordWrap
-                    }
-
-                    Row {
-                        spacing: 8
+                    component BtDeviceCard: Rectangle {
+                        id: dcard
+                        property var dev: ({})
+                        readonly property bool connecting: root.btConnectingMac === dev.mac
+                        width: parent ? parent.width : 600
+                        height: 72
+                        radius: 10
+                        color: dcMa.containsMouse ? "#323232" : "#2c2c2c"
+                        border.width: dev.connected ? 1 : 0
+                        border.color: Qt.rgba(0.23, 0.88, 0.51, 0.35)
+                        MouseArea { id: dcMa; anchors.fill: parent; hoverEnabled: true }
                         Rectangle {
-                            width: 160; height: 36; radius: 8
-                            color: (!root.bluetoothOn || root.btScanning) ? "#1c1c1c" : root.accentColor
+                            id: dcIcon
+                            anchors.left: parent.left
+                            anchors.leftMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 44; height: 44; radius: 12
+                            color: dev.connected ? "#173a2a" : "#383838"
                             Text {
                                 anchors.centerIn: parent
-                                text: root.btScanning ? "Поиск…" : "Найти устройства"
-                                color: (!root.bluetoothOn || root.btScanning) ? "#6b7785" : "#06210f"
-                                font.pixelSize: 12; font.bold: true
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: root.bluetoothOn && !root.btScanning
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.btStartScan()
-                            }
-                        }
-                        Rectangle {
-                            width: 120; height: 36; radius: 8; color: "#1c1c1c"
-                            Text { anchors.centerIn: parent; text: "Обновить"; color: "#e8e8e8"; font.pixelSize: 12 }
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: root.refreshBluetooth()
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: "Сопряжённые"
-                        color: "#e8e8e8"; font.pixelSize: 13; font.bold: true; topPadding: 4
-                    }
-                    Text {
-                        visible: root.btPaired.length === 0
-                        text: "Пока нет сопряжённых устройств"
-                        color: "#6b7785"; font.pixelSize: 12
-                    }
-                    Repeater {
-                        model: root.btPaired
-                        delegate: Rectangle {
-                            width: parent.width; height: 64; radius: 8; color: "#2c2c2c"
-                            Column {
-                                anchors.left: parent.left; anchors.leftMargin: 14
-                                anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                                Text { text: modelData.name; color: "#fff"; font.pixelSize: 13; font.family: root.uiFontBold }
-                                Text {
-                                    text: modelData.mac + (modelData.connected ? " · подключено" : " · сопряжено")
-                                    color: modelData.connected ? root.accentColor : "#a0a0a0"
-                                    font.pixelSize: 11
-                                }
-                            }
-                            Row {
-                                anchors.right: parent.right; anchors.rightMargin: 12
-                                anchors.verticalCenter: parent.verticalCenter; spacing: 6
-                                Rectangle {
-                                    width: 100; height: 30; radius: 6
-                                    color: modelData.connected ? "#3f2a15" : "#1a2a24"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: modelData.connected ? "Отключить" : "Подключить"
-                                        color: modelData.connected ? "#fde68a" : root.accentColor
-                                        font.pixelSize: 11; font.bold: true
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent; enabled: !root.btBusy
-                                        onClicked: modelData.connected
-                                                   ? root.btDisconnectDevice(modelData.mac)
-                                                   : root.btConnectDevice(modelData.mac)
-                                    }
-                                }
-                                Rectangle {
-                                    width: 70; height: 30; radius: 6; color: "#3a1515"
-                                    Text { anchors.centerIn: parent; text: "Удалить"; color: "#fca5a5"; font.pixelSize: 11 }
-                                    MouseArea { anchors.fill: parent; onClicked: root.btRemoveDevice(modelData.mac) }
-                                }
-                            }
-                        }
-                    }
-
-                    Text {
-                        text: "Найденные рядом"
-                        color: "#e8e8e8"; font.pixelSize: 13; font.bold: true; topPadding: 6
-                    }
-                    Text {
-                        visible: root.btDevices.length === 0
-                        text: root.bluetoothOn ? "Нажмите «Найти устройства»" : "Включите Bluetooth"
-                        color: "#6b7785"; font.pixelSize: 12
-                    }
-                    Repeater {
-                        model: root.btDevices
-                        delegate: Rectangle {
-                            width: parent.width; height: 56; radius: 8; color: "#2c2c2c"
-                            Column {
-                                anchors.left: parent.left; anchors.leftMargin: 14
-                                anchors.verticalCenter: parent.verticalCenter; spacing: 2
-                                Text { text: modelData.name; color: "#fff"; font.pixelSize: 13 }
-                                Text { text: modelData.mac; color: "#a0a0a0"; font.pixelSize: 11 }
+                                text: dev.glyph || "📶"
+                                font.pixelSize: 20
                             }
                             Rectangle {
-                                anchors.right: parent.right; anchors.rightMargin: 12
+                                visible: dev.connected === true
+                                anchors.right: parent.right
+                                anchors.bottom: parent.bottom
+                                anchors.margins: -2
+                                width: 12; height: 12; radius: 6
+                                color: root.accentColor
+                                border.color: "#2c2c2c"; border.width: 2
+                            }
+                        }
+                        Column {
+                            anchors.left: dcIcon.right
+                            anchors.leftMargin: 14
+                            anchors.right: dcActions.left
+                            anchors.rightMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 3
+                            Text {
+                                width: parent.width
+                                text: dev.name || dev.mac
+                                elide: Text.ElideRight
+                                color: dev.unnamed ? "#a0a0a0" : "#ffffff"
+                                font.pixelSize: 14
+                                font.family: root.uiFontBold
+                            }
+                            Row {
+                                spacing: 8
+                                Text {
+                                    text: dcard.connecting ? "Подключение…"
+                                          : (dev.connected ? "Подключено" : (dev.paired ? "Сопряжено" : dev.kind))
+                                    color: dcard.connecting ? "#fbbf24" : (dev.connected ? root.accentColor : "#a0a0a0")
+                                    font.pixelSize: 12
+                                    font.family: root.uiFont
+                                }
+                                Text {
+                                    visible: dev.paired === true && !dcard.connecting
+                                    text: "· " + dev.kind
+                                    color: "#7a7a7a"; font.pixelSize: 12; font.family: root.uiFont
+                                }
+                                Text {
+                                    text: "· " + dev.mac
+                                    visible: dcard.width > 620
+                                    color: "#6b6b6b"; font.pixelSize: 11; font.family: root.uiFont
+                                }
+                            }
+                        }
+                        Row {
+                            id: dcActions
+                            anchors.right: parent.right
+                            anchors.rightMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 8
+                            Row {
+                                visible: dev.battery !== undefined && dev.battery >= 0
                                 anchors.verticalCenter: parent.verticalCenter
-                                width: 110; height: 30; radius: 6; color: root.accentColor
-                                Text { anchors.centerIn: parent; text: "Подключить"; color: "#06210f"; font.pixelSize: 11; font.bold: true }
-                                MouseArea {
-                                    anchors.fill: parent; enabled: !root.btBusy
-                                    onClicked: root.btConnectDevice(modelData.mac)
+                                spacing: 5
+                                Rectangle {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 22; height: 11; radius: 3
+                                    color: "transparent"
+                                    border.color: "#9a9a9a"; border.width: 1
+                                    Rectangle {
+                                        x: 2; y: 2
+                                        height: parent.height - 4
+                                        width: Math.max(1, (parent.width - 4) * Math.max(0, dev.battery || 0) / 100)
+                                        radius: 1
+                                        color: (dev.battery || 0) <= 20 ? "#f87171" : root.accentColor
+                                    }
+                                }
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: (dev.battery || 0) + "%"
+                                    color: "#cfcfcf"; font.pixelSize: 11; font.family: root.uiFont
+                                }
+                                Item { width: 6; height: 1 }
+                            }
+                            BtButton {
+                                label: dcard.connecting ? "Подключение" : (dev.connected ? "Отключить" : "Подключить")
+                                primary: !dev.connected && !dev.paired && !dcard.connecting
+                                busy: dcard.connecting
+                                enabledBtn: !root.btBusy || dcard.connecting
+                                onClicked: {
+                                    if (dcard.connecting) return
+                                    if (dev.connected) root.btDisconnectDevice(dev.mac)
+                                    else root.btConnectDevice(dev.mac)
+                                }
+                            }
+                            BtButton {
+                                visible: dev.paired === true
+                                label: "Забыть"
+                                danger: true
+                                width: 84
+                                enabledBtn: !dcard.connecting
+                                onClicked: root.btRemoveDevice(dev.mac)
+                            }
+                        }
+                    }
+
+                    // главная карточка
+                    Rectangle {
+                        width: parent.width
+                        height: 128
+                        radius: 14
+                        gradient: Gradient {
+                            orientation: Gradient.Horizontal
+                            GradientStop { position: 0; color: root.bluetoothOn ? "#17304f" : "#2c2c2c" }
+                            GradientStop { position: 1; color: root.bluetoothOn ? "#1d2533" : "#2a2a2a" }
+                        }
+                        border.width: 1
+                        border.color: root.bluetoothOn ? "#2a4a75" : "#363636"
+                        Item {
+                            id: heroIcon
+                            anchors.left: parent.left
+                            anchors.leftMargin: 22
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 76; height: 76
+                            Repeater {
+                                model: 2
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 64; height: 64; radius: 32
+                                    color: "transparent"
+                                    border.width: 2
+                                    border.color: "#60a5fa"
+                                    visible: root.btScanning
+                                    opacity: 0
+                                    SequentialAnimation on scale {
+                                        running: root.btScanning
+                                        loops: Animation.Infinite
+                                        PauseAnimation { duration: index * 700 }
+                                        NumberAnimation { from: 1; to: 1.6; duration: 1400; easing.type: Easing.OutCubic }
+                                    }
+                                    SequentialAnimation on opacity {
+                                        running: root.btScanning
+                                        loops: Animation.Infinite
+                                        PauseAnimation { duration: index * 700 }
+                                        NumberAnimation { from: 0.8; to: 0; duration: 1400; easing.type: Easing.OutCubic }
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                anchors.centerIn: parent
+                                width: 64; height: 64; radius: 32
+                                color: root.bluetoothOn ? "#2563eb" : "#3d3d3d"
+                                Behavior on color { ColorAnimation { duration: 200 } }
+                                BtRune {
+                                    anchors.centerIn: parent
+                                    width: 34; height: 34
+                                    ink: root.bluetoothOn ? "#ffffff" : "#9a9a9a"
+                                }
+                            }
+                        }
+                        Column {
+                            anchors.left: heroIcon.right
+                            anchors.leftMargin: 18
+                            anchors.right: heroToggle.left
+                            anchors.rightMargin: 16
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 4
+                            Text { text: "Bluetooth"; color: "#ffffff"; font.pixelSize: 20; font.family: root.uiFontBold }
+                            Text {
+                                width: parent.width
+                                text: root.btStatus
+                                color: root.bluetoothOn ? "#bfdbfe" : "#a0a0a0"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                width: parent.width
+                                visible: root.bluetoothOn && root.btAdapterMac.length > 0
+                                text: "Этот компьютер виден как «" + (root.btAdapterName || "GT/OS") + "» · " + root.btAdapterMac
+                                color: "#7d93b2"
+                                font.pixelSize: 11
+                                font.family: root.uiFont
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Column {
+                            id: heroToggle
+                            anchors.right: parent.right
+                            anchors.rightMargin: 22
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 6
+                            ToggleSwitch {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                on: root.bluetoothOn
+                                onToggled: {
+                                    root.bluetoothOn = !root.bluetoothOn
+                                    root.refreshBluetooth()
+                                    root.saveDesktop()
+                                }
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: root.bluetoothOn ? "Вкл." : "Выкл."
+                                color: "#a0a0a0"; font.pixelSize: 11; font.family: root.uiFont
+                            }
+                        }
+                    }
+
+                    // предупреждение
+                    Rectangle {
+                        visible: root.btError.length > 0 && !btSec.noAdapter
+                        width: parent.width
+                        height: btErrText.implicitHeight + 24
+                        radius: 10
+                        color: "#33280f"
+                        border.color: "#5c4614"
+                        Text {
+                            anchors.left: parent.left; anchors.leftMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "!"
+                            color: "#fbbf24"; font.pixelSize: 16; font.family: root.uiFontBold
+                        }
+                        Text {
+                            id: btErrText
+                            anchors.left: parent.left; anchors.leftMargin: 34
+                            anchors.right: parent.right; anchors.rightMargin: 14
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.btError
+                            color: "#fde68a"; font.pixelSize: 12; font.family: root.uiFont
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+
+                    // нет адаптера
+                    Rectangle {
+                        visible: root.bluetoothOn && btSec.noAdapter
+                        width: parent.width
+                        height: 150
+                        radius: 12
+                        color: "#2c2c2c"
+                        border.color: "#3a3a3a"
+                        Row {
+                            anchors.fill: parent
+                            anchors.margins: 20
+                            spacing: 18
+                            Rectangle {
+                                width: 56; height: 56; radius: 16
+                                anchors.verticalCenter: parent.verticalCenter
+                                color: "#3a3a3a"
+                                BtRune { anchors.centerIn: parent; width: 28; height: 28; ink: "#8a8a8a" }
+                                Rectangle {
+                                    anchors.centerIn: parent
+                                    width: 44; height: 3; radius: 1.5
+                                    rotation: -45
+                                    color: "#f87171"
+                                }
+                            }
+                            Column {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width - 80
+                                spacing: 6
+                                Text { text: root.btStatus; color: "#ffffff"; font.pixelSize: 15; font.family: root.uiFontBold }
+                                Text {
+                                    width: parent.width
+                                    text: root.btError
+                                    color: "#b0b0b0"; font.pixelSize: 12; font.family: root.uiFont
+                                    wrapMode: Text.WordWrap
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: "Подключите USB‑адаптер Bluetooth и нажмите «Обновить» — GT/OS подхватит его без перезагрузки."
+                                    color: "#7a7a7a"; font.pixelSize: 11; font.family: root.uiFont
+                                    wrapMode: Text.WordWrap
                                 }
                             }
                         }
                     }
 
+                    // действия
+                    Row {
+                        visible: root.bluetoothOn
+                        spacing: 8
+                        BtButton {
+                            label: root.btScanning ? ("Поиск… " + Math.max(0, 12 - root.btScanTicks) + " с") : "Добавить устройство"
+                            primary: !root.btScanning
+                            busy: root.btScanning
+                            enabledBtn: !btSec.noAdapter && !root.btScanning
+                            onClicked: root.btStartScan()
+                        }
+                        BtButton { label: "Обновить"; onClicked: root.refreshBluetooth() }
+                        Rectangle {
+                            visible: !btSec.noAdapter
+                            width: visRow.implicitWidth + 28
+                            height: 34
+                            radius: 8
+                            color: "#333333"
+                            border.color: "#444444"
+                            Row {
+                                id: visRow
+                                anchors.centerIn: parent
+                                spacing: 10
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Виден другим устройствам"
+                                    color: "#ececec"; font.pixelSize: 12; font.family: root.uiFont
+                                }
+                                ToggleSwitch {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    on: root.btDiscoverable
+                                    onToggled: root.btSetDiscoverable(!root.btDiscoverable)
+                                }
+                            }
+                        }
+                    }
+
+                    // мои устройства
+                    Row {
+                        visible: root.bluetoothOn && !btSec.noAdapter
+                        spacing: 8
+                        topPadding: 6
+                        Text { text: "Мои устройства"; color: "#ffffff"; font.pixelSize: 15; font.family: root.uiFontBold }
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: root.btPaired.length > 0
+                            width: pcLab.implicitWidth + 12; height: 18; radius: 9
+                            color: "#3a3a3a"
+                            Text { id: pcLab; anchors.centerIn: parent; text: root.btPaired.length; color: "#d0d0d0"; font.pixelSize: 10; font.family: root.uiFontBold }
+                        }
+                    }
+                    Rectangle {
+                        visible: root.bluetoothOn && !btSec.noAdapter && root.btPaired.length === 0
+                        width: parent.width
+                        height: 62
+                        radius: 10
+                        color: "transparent"
+                        border.color: "#3a3a3a"
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 40
+                            horizontalAlignment: Text.AlignHCenter
+                            text: "Здесь появятся наушники, мыши и клавиатуры после первого подключения"
+                            color: "#8a8a8a"; font.pixelSize: 12; font.family: root.uiFont
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    Repeater {
+                        model: root.bluetoothOn ? root.btPaired : []
+                        delegate: BtDeviceCard { dev: modelData }
+                    }
+
+                    // рядом
+                    Row {
+                        visible: root.bluetoothOn && !btSec.noAdapter
+                        spacing: 10
+                        topPadding: 8
+                        Text { text: "Доступные рядом"; color: "#ffffff"; font.pixelSize: 15; font.family: root.uiFontBold }
+                        Rectangle {
+                            visible: root.btScanning
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 8; height: 8; radius: 4
+                            color: "#60a5fa"
+                            SequentialAnimation on opacity {
+                                running: root.btScanning
+                                loops: Animation.Infinite
+                                NumberAnimation { from: 1; to: 0.2; duration: 600 }
+                                NumberAnimation { from: 0.2; to: 1; duration: 600 }
+                            }
+                        }
+                        Text {
+                            visible: root.btScanning
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "ищем…"
+                            color: "#93c5fd"; font.pixelSize: 12; font.family: root.uiFont
+                        }
+                    }
+                    Rectangle {
+                        visible: root.bluetoothOn && !btSec.noAdapter && root.btDevices.length === 0
+                        width: parent.width
+                        height: 62
+                        radius: 10
+                        color: "transparent"
+                        border.color: "#3a3a3a"
+                        Text {
+                            anchors.centerIn: parent
+                            width: parent.width - 40
+                            horizontalAlignment: Text.AlignHCenter
+                            text: root.btScanning
+                                  ? "Слушаем эфир. Убедитесь, что устройство в режиме сопряжения (обычно — долгое нажатие кнопки питания)."
+                                  : "Нажмите «Добавить устройство», чтобы найти гаджеты поблизости"
+                            color: "#8a8a8a"; font.pixelSize: 12; font.family: root.uiFont
+                            wrapMode: Text.WordWrap
+                        }
+                    }
+                    Repeater {
+                        model: root.bluetoothOn ? root.btDevices : []
+                        delegate: BtDeviceCard { dev: modelData }
+                    }
+
+                    // выключен
+                    Rectangle {
+                        visible: !root.bluetoothOn
+                        width: parent.width
+                        height: 86
+                        radius: 12
+                        color: "#2c2c2c"
+                        Column {
+                            anchors.centerIn: parent
+                            width: parent.width - 48
+                            spacing: 6
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: "Bluetooth выключен"
+                                color: "#ffffff"; font.pixelSize: 14; font.family: root.uiFontBold
+                            }
+                            Text {
+                                width: parent.width
+                                horizontalAlignment: Text.AlignHCenter
+                                text: "Включите переключатель выше, чтобы подключить беспроводные наушники, мышь или клавиатуру."
+                                color: "#9a9a9a"; font.pixelSize: 12; font.family: root.uiFont
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+
+                    Text {
+                        text: "Связанные параметры"
+                        color: "#ffffff"; font.pixelSize: 15; font.family: root.uiFontBold
+                        topPadding: 10
+                    }
                     SettingCard {
                         title: "Мышь и сенсорная панель"
-                        subtitle: "Управление курсором уже настроено"
+                        subtitle: "Скорость указателя и прокрутка"
                     }
                     SettingCard {
                         title: "Клавиатура"
-                        subtitle: "Стандартная раскладка рабочего стола"
+                        subtitle: "Раскладки и сочетания клавиш"
                     }
                 }
             }
@@ -18723,6 +20938,8 @@ Rectangle {
                                         cursorShape: Qt.PointingHandCursor
                                         onClicked: {
                                             root.wallpaperIndex = index
+                                            // иначе refreshDeskWallpaper снова подхватит старый user-wallpaper.jpg
+                                            sys.run("rm -f /var/lib/gtos/user-wallpaper.jpg 2>/dev/null; true")
                                             root.hasCustomWallpaper = false
                                             root.refreshDeskWallpaper()
                                             root.saveDesktop()
@@ -18755,7 +20972,10 @@ Rectangle {
                                 MouseArea {
                                     anchors.fill: parent
                                     cursorShape: Qt.PointingHandCursor
-                                    onClicked: root.themeName = root.themeName === "Тёмная" ? "Светлая" : "Тёмная"
+                                    onClicked: {
+                                        root.themeName = root.themeName === "Тёмная" ? "Светлая" : "Тёмная"
+                                        root.saveDesktop()
+                                    }
                                 }
                             }
                         }
@@ -18776,7 +20996,10 @@ Rectangle {
                                     MouseArea {
                                         anchors.fill: parent
                                         cursorShape: Qt.PointingHandCursor
-                                        onClicked: root.accentColor = modelData
+                                        onClicked: {
+                                            root.accentColor = modelData
+                                            root.saveDesktop()
+                                        }
                                     }
                                 }
                             }
@@ -18799,8 +21022,12 @@ Rectangle {
                             }
                             MouseArea {
                                 anchors.fill: parent
-                                onClicked: root.windowOpacity = Math.max(0.55, Math.min(1.0, mouse.x / width))
+                                onClicked: {
+                                    root.windowOpacity = Math.max(0.55, Math.min(1.0, mouse.x / width))
+                                    root.saveDesktop()
+                                }
                                 onPositionChanged: if (pressed) root.windowOpacity = Math.max(0.55, Math.min(1.0, mouse.x / width))
+                                onReleased: root.saveDesktop()
                             }
                         }
 
@@ -19208,31 +21435,152 @@ Rectangle {
                                   : root.dockEdge === "top" ? "Вверху"
                                   : root.dockEdge === "left" ? "Слева" : "Справа"
                     }
-                    Row {
-                        spacing: 8
-                        Repeater {
-                            model: [
-                                { id: "bottom", name: "Внизу" },
-                                { id: "top", name: "Вверху" },
-                                { id: "left", name: "Слева" },
-                                { id: "right", name: "Справа" }
-                            ]
-                            delegate: Rectangle {
-                                width: 84; height: 32; radius: 4
-                                color: root.dockEdge === modelData.id ? root.accentColor : "#3a3a3a"
-                                Text {
-                                    anchors.centerIn: parent; text: modelData.name
-                                    color: root.dockEdge === modelData.id ? "#06210f" : "#fff"
-                                    font.pixelSize: 12; font.family: root.uiFont
-                                }
-                                MouseArea {
+                    Column {
+                        id: dockEdgePicker
+                        width: parent.width
+                        spacing: 14
+                        readonly property bool edgeVert: root.dockEdge === "left" || root.dockEdge === "right"
+                        readonly property string edgeLabel: root.dockEdge === "bottom" ? "Внизу"
+                                                           : root.dockEdge === "top" ? "Вверху"
+                                                           : root.dockEdge === "left" ? "Слева" : "Справа"
+
+                        // Превью сверху
+                        Item {
+                            width: parent.width
+                            height: 148
+                            Rectangle {
+                                id: edgePreviewScreen
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                width: Math.min(300, parent.width)
+                                height: 140
+                                radius: 14
+                                color: "#0c1210"
+                                border.width: 1
+                                border.color: "#2a3a34"
+                                // рамка «монитора»
+                                Rectangle {
                                     anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        root.dockEdge = modelData.id
-                                        if (modelData.id !== "bottom")
-                                            root.dockAutoHide = false
-                                        root.saveDesktop()
+                                    anchors.margins: 12
+                                    radius: 8
+                                    color: "#15201c"
+                                    clip: true
+
+                                    // намёк на рабочий стол
+                                    Rectangle {
+                                        id: edgeDeskHint
+                                        width: 36; height: 36; radius: 10
+                                        x: Math.round((parent.width - width) / 2)
+                                        y: Math.round((parent.height - height) / 2)
+                                             + (root.dockEdge === "bottom" ? -8
+                                                : root.dockEdge === "top" ? 8 : 0)
+                                        color: Qt.rgba(0.23, 0.88, 0.51, 0.10)
+                                        border.color: Qt.rgba(0.23, 0.88, 0.51, 0.18)
+                                        Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                                    }
+
+                                    // мини-панель — x/y/w/h с анимацией смены края
+                                    Rectangle {
+                                        id: edgePreviewBar
+                                        radius: 5
+                                        color: root.accentColor
+                                        readonly property real thick: 11
+                                        readonly property real longH: parent.width * 0.78
+                                        readonly property real longV: parent.height * 0.78
+                                        width: dockEdgePicker.edgeVert ? thick : longH
+                                        height: dockEdgePicker.edgeVert ? longV : thick
+                                        x: root.dockEdge === "left" ? 5
+                                           : root.dockEdge === "right" ? parent.width - width - 5
+                                           : Math.round((parent.width - width) / 2)
+                                        y: root.dockEdge === "top" ? 5
+                                           : root.dockEdge === "bottom" ? parent.height - height - 5
+                                           : Math.round((parent.height - height) / 2)
+                                        Behavior on width { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                                        Behavior on height { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                                        Behavior on x { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+                                        Behavior on y { NumberAnimation { duration: 320; easing.type: Easing.OutCubic } }
+
+                                        Row {
+                                            visible: !dockEdgePicker.edgeVert
+                                            anchors.centerIn: parent
+                                            spacing: 5
+                                            Repeater {
+                                                model: 4
+                                                Rectangle {
+                                                    width: 5; height: 5; radius: 2.5
+                                                    color: Qt.rgba(0.02, 0.13, 0.06, 0.55)
+                                                }
+                                            }
+                                        }
+                                        Column {
+                                            visible: dockEdgePicker.edgeVert
+                                            anchors.centerIn: parent
+                                            spacing: 5
+                                            Repeater {
+                                                model: 4
+                                                Rectangle {
+                                                    width: 5; height: 5; radius: 2.5
+                                                    color: Qt.rgba(0.02, 0.13, 0.06, 0.55)
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        id: edgePreviewLabel
+                                        width: implicitWidth
+                                        height: implicitHeight
+                                        x: Math.round((parent.width - width) / 2)
+                                        y: Math.round((parent.height - height) / 2)
+                                             + (root.dockEdge === "bottom" ? -12
+                                                : root.dockEdge === "top" ? 12 : 0)
+                                        text: dockEdgePicker.edgeLabel
+                                        color: "#7a8a84"
+                                        font.pixelSize: 12
+                                        font.family: root.uiFont
+                                        Behavior on y { NumberAnimation { duration: 300; easing.type: Easing.OutCubic } }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Кнопки под превью — сетка 2×2
+                        Grid {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            columns: 2
+                            rowSpacing: 8
+                            columnSpacing: 8
+                            Repeater {
+                                model: [
+                                    { id: "bottom", name: "Внизу" },
+                                    { id: "top", name: "Вверху" },
+                                    { id: "left", name: "Слева" },
+                                    { id: "right", name: "Справа" }
+                                ]
+                                delegate: Rectangle {
+                                    width: 118; height: 36; radius: 8
+                                    color: root.dockEdge === modelData.id ? root.accentColor
+                                           : (edgeBtnH.containsMouse ? "#323c38" : "#2a3230")
+                                    border.width: 1
+                                    border.color: root.dockEdge === modelData.id ? root.accentColor : "#3a4540"
+                                    Behavior on color { ColorAnimation { duration: 140 } }
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: modelData.name
+                                        color: root.dockEdge === modelData.id ? "#06210f" : "#e8eef2"
+                                        font.pixelSize: 12
+                                        font.family: root.uiFontBold
+                                    }
+                                    MouseArea {
+                                        id: edgeBtnH
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            root.dockEdge = modelData.id
+                                            if (modelData.id !== "bottom")
+                                                root.dockAutoHide = false
+                                            root.saveDesktop()
+                                        }
                                     }
                                 }
                             }
@@ -19548,7 +21896,10 @@ Rectangle {
                                 anchors.rightMargin: 16
                                 anchors.verticalCenter: parent.verticalCenter
                                 on: root.dockShowBrowser
-                                onToggled: root.dockShowBrowser = !root.dockShowBrowser
+                                onToggled: {
+                                    root.dockShowBrowser = !root.dockShowBrowser
+                                    root.saveDesktop()
+                                }
                             }
                         }
                         Rectangle {
@@ -19569,7 +21920,10 @@ Rectangle {
                                 anchors.rightMargin: 16
                                 anchors.verticalCenter: parent.verticalCenter
                                 on: root.dockShowMail
-                                onToggled: root.dockShowMail = !root.dockShowMail
+                                onToggled: {
+                                    root.dockShowMail = !root.dockShowMail
+                                    root.saveDesktop()
+                                }
                             }
                         }
                 }
@@ -20589,9 +22943,31 @@ Rectangle {
                 Column {
                     width: parent.width
                     spacing: 8
+                        Rectangle {
+                            width: parent.width; height: 72; radius: 8; color: "#2c2c2c"
+                            Column {
+                                anchors.left: parent.left; anchors.leftMargin: 16
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Text { text: "Доступ к камере"; color: "#fff"; font.pixelSize: 14 }
+                                Text {
+                                    text: root.privacyCamera ? "Приложение «Камера» может снимать" : "Съёмка запрещена"
+                                    color: "#a0a0a0"; font.pixelSize: 12
+                                }
+                            }
+                            ToggleSwitch {
+                                anchors.right: parent.right; anchors.rightMargin: 16
+                                anchors.verticalCenter: parent.verticalCenter
+                                on: root.privacyCamera
+                                onToggled: {
+                                    root.privacyCamera = !root.privacyCamera
+                                    root.saveDesktop()
+                                }
+                            }
+                        }
                         SettingCard {
                             title: "Камера и микрофон"
-                            subtitle: "По умолчанию доступ закрыт для всех приложений"
+                            subtitle: "Разрешения по приложениям ниже"
                         }
                         SettingCard {
                             title: "Файлы и папки"
@@ -20757,9 +23133,255 @@ Rectangle {
 
             Component {
                 id: settingsSec_updates
-                UpdateCenterView {
+                Column {
                     width: parent.width
-                    showTitle: false
+                    spacing: 12
+                    UpdateCenterView {
+                        width: parent.width
+                        showTitle: false
+                    }
+                    Rectangle {
+                        width: parent.width; height: 88; radius: 12; color: "#2c2c2c"
+                        Column {
+                            anchors.fill: parent; anchors.margins: 16; spacing: 6
+                            Text { text: "Резервные копии"; color: "#fff"; font.pixelSize: 14; font.bold: true }
+                            Text {
+                                width: parent.width
+                                text: "Расписание: " + (root.backupSchedule === "off" ? "выкл." : root.backupNextHint)
+                                      + " · последний: " + (root.backupLastRun.length ? root.backupLastRun : "ещё не было")
+                                color: "#a0a0a0"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                text: "Открыть GT Recovery ›"
+                                color: root.accentColor; font.pixelSize: 12
+                            }
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.openControlTab("recovery")
+                        }
+                    }
+                }
+            }
+
+            Component {
+                id: settingsSec_displays
+                Column {
+                    width: parent.width
+                    spacing: 10
+                    Component.onCompleted: root.refreshDisplays()
+                    Text { text: "Экраны"; color: "#fff"; font.pixelSize: 22; font.family: root.uiFontBold }
+                    Text {
+                        width: parent.width
+                        text: root.displayStatus.length ? root.displayStatus : "Раскладка мониторов через xrandr"
+                        color: "#a0a0a0"; font.pixelSize: 13; wrapMode: Text.WordWrap
+                    }
+                    Rectangle {
+                        width: 120; height: 34; radius: 8; color: "#3a3a3a"
+                        Text { anchors.centerIn: parent; text: "Обновить"; color: "#fff"; font.pixelSize: 12 }
+                        MouseArea { anchors.fill: parent; onClicked: root.refreshDisplays() }
+                    }
+                    Repeater {
+                        model: root.displayOutputs
+                        delegate: Rectangle {
+                            width: parent.width; height: colD.height + 24; radius: 10; color: "#2c2c2c"
+                            Column {
+                                id: colD
+                                anchors.left: parent.left; anchors.right: parent.right
+                                anchors.margins: 14; anchors.verticalCenter: parent.verticalCenter
+                                spacing: 8
+                                Text {
+                                    text: modelData.name + (modelData.primary ? " · основной" : "")
+                                          + (modelData.connected ? "" : " · отключён")
+                                    color: "#fff"; font.pixelSize: 14; font.bold: true
+                                }
+                                Text {
+                                    visible: modelData.geom.length > 0
+                                    text: modelData.geom
+                                    color: "#8a8a8a"; font.pixelSize: 12
+                                }
+                                Flow {
+                                    width: parent.width; spacing: 6
+                                    visible: modelData.connected
+                                    property var outName: modelData.name
+                                    property var modes: modelData.modes
+                                    Repeater {
+                                        model: parent.modes
+                                        delegate: Rectangle {
+                                            width: ml.implicitWidth + 16; height: 28; radius: 6; color: "#3a3a3a"
+                                            Text { id: ml; anchors.centerIn: parent; text: modelData; color: "#e8e8e8"; font.pixelSize: 11 }
+                                            MouseArea { anchors.fill: parent; onClicked: root.displaySetMode(parent.parent.outName, modelData) }
+                                        }
+                                    }
+                                }
+                                Row {
+                                    spacing: 6; visible: modelData.connected
+                                    property string outName: modelData.name
+                                    Repeater {
+                                        model: [
+                                            { id: "left", t: "Слева" }, { id: "right", t: "Справа" },
+                                            { id: "above", t: "Сверху" }, { id: "below", t: "Снизу" },
+                                            { id: "same", t: "Дублировать" }, { id: "off", t: "Выкл." }
+                                        ]
+                                        delegate: Rectangle {
+                                            width: tl.implicitWidth + 16; height: 28; radius: 6
+                                            color: modelData.id === "off" ? "#3a1515" : "#243028"
+                                            Text { id: tl; anchors.centerIn: parent; text: modelData.t; color: "#e8e8e8"; font.pixelSize: 11 }
+                                            MouseArea { anchors.fill: parent; onClicked: root.displayArrange(parent.parent.outName, modelData.id) }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        visible: root.displayOutputs.length === 0
+                        width: parent.width
+                        text: "В QEMU обычно один виртуальный дисплей. На реальном ПК здесь появятся HDMI/DP/eDP."
+                        color: "#6b7785"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                    }
+                    SettingCard {
+                        title: "Масштаб интерфейса"
+                        subtitle: "Сейчас " + Math.round(root.uiScale * 100) + "% — в разделе Питание / экран"
+                        showChevron: true
+                        onActivated: root.settingsSection = "power"
+                    }
+                }
+            }
+
+            Component {
+                id: settingsSec_printers
+                Column {
+                    width: parent.width
+                    spacing: 10
+                    Component.onCompleted: root.refreshPrinters()
+                    Text { text: "Принтеры"; color: "#fff"; font.pixelSize: 22; font.family: root.uiFontBold }
+                    Text {
+                        width: parent.width
+                        text: root.printerStatus
+                        color: "#a0a0a0"; font.pixelSize: 13; wrapMode: Text.WordWrap
+                    }
+                    Row {
+                        spacing: 8
+                        Rectangle {
+                            width: 120; height: 34; radius: 8; color: root.accentColor
+                            Text { anchors.centerIn: parent; text: "Обнаружить"; color: "#06210f"; font.pixelSize: 12; font.bold: true }
+                            MouseArea { anchors.fill: parent; onClicked: root.printerDiscoverAdd() }
+                        }
+                        Rectangle {
+                            width: 100; height: 34; radius: 8; color: "#3a3a3a"
+                            Text { anchors.centerIn: parent; text: "Обновить"; color: "#fff"; font.pixelSize: 12 }
+                            MouseArea { anchors.fill: parent; onClicked: root.refreshPrinters() }
+                        }
+                    }
+                    Repeater {
+                        model: root.printerList
+                        delegate: Rectangle {
+                            width: parent.width; height: 72; radius: 10; color: "#2c2c2c"
+                            border.width: root.printerSelected === modelData.name ? 1 : 0
+                            border.color: root.accentColor
+                            Column {
+                                anchors.left: parent.left; anchors.leftMargin: 16
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 2
+                                Text { text: modelData.name; color: "#fff"; font.pixelSize: 14 }
+                                Text { text: modelData.state; color: "#8a8a8a"; font.pixelSize: 11 }
+                            }
+                            Row {
+                                anchors.right: parent.right; anchors.rightMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 6
+                                Rectangle {
+                                    width: 88; height: 30; radius: 6; color: "#3a3a3a"
+                                    Text { anchors.centerIn: parent; text: "По умолч."; color: "#e8e8e8"; font.pixelSize: 11 }
+                                    MouseArea { anchors.fill: parent; onClicked: root.printerSetDefault(modelData.name) }
+                                }
+                                Rectangle {
+                                    width: 72; height: 30; radius: 6; color: root.accentColor
+                                    Text { anchors.centerIn: parent; text: "Тест"; color: "#06210f"; font.pixelSize: 11; font.bold: true }
+                                    MouseArea { anchors.fill: parent; onClicked: root.printerTestPage(modelData.name) }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        visible: root.printerList.length === 0
+                        width: parent.width
+                        text: "CUPS уже в образе. Подключите принтер и нажмите «Обнаружить» — или печатайте из приложений через lp."
+                        color: "#6b7785"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                    }
+                }
+            }
+
+            Component {
+                id: settingsSec_vpn
+                Column {
+                    width: parent.width
+                    spacing: 10
+                    Component.onCompleted: root.refreshVpn()
+                    Text { text: "VPN · WireGuard"; color: "#fff"; font.pixelSize: 22; font.family: root.uiFontBold }
+                    Text {
+                        width: parent.width
+                        text: "Статус: " + root.vpnStatus
+                        color: "#a0a0a0"; font.pixelSize: 13
+                    }
+                    Rectangle {
+                        width: parent.width; height: 180; radius: 10; color: "#1a1a1a"
+                        border.width: 1; border.color: "#3a3a3a"
+                        Flickable {
+                            anchors.fill: parent; anchors.margins: 10
+                            contentHeight: vpnEdit.implicitHeight
+                            clip: true
+                            TextEdit {
+                                id: vpnEdit
+                                width: parent.width
+                                wrapMode: TextEdit.Wrap
+                                color: "#e8eef2"
+                                font.pixelSize: 12
+                                font.family: "Cascadia Mono, monospace"
+                                selectByMouse: true
+                                text: root.vpnConfText.length ? root.vpnConfText
+                                      : "[Interface]\nPrivateKey = \nAddress = 10.0.0.2/32\nDNS = 1.1.1.1\n\n[Peer]\nPublicKey = \nEndpoint = vpn.example.com:51820\nAllowedIPs = 0.0.0.0/0\n"
+                                onTextChanged: root.vpnConfText = text
+                            }
+                        }
+                    }
+                    Row {
+                        spacing: 8
+                        Rectangle {
+                            width: 140; height: 36; radius: 8; color: "#3a3a3a"
+                            Text { anchors.centerIn: parent; text: "Сохранить"; color: "#fff"; font.pixelSize: 13 }
+                            MouseArea { anchors.fill: parent; onClicked: root.vpnSaveConf(vpnEdit.text) }
+                        }
+                        Rectangle {
+                            width: 160; height: 36; radius: 8
+                            color: root.vpnUp ? "#3a1515" : root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.vpnUp ? "Отключить" : "Подключить"
+                                color: root.vpnUp ? "#fecaca" : "#06210f"
+                                font.pixelSize: 13; font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    root.vpnConfText = vpnEdit.text
+                                    root.vpnToggle()
+                                }
+                            }
+                        }
+                        Rectangle {
+                            width: 100; height: 36; radius: 8; color: "#3a3a3a"
+                            Text { anchors.centerIn: parent; text: "Статус"; color: "#fff"; font.pixelSize: 13 }
+                            MouseArea { anchors.fill: parent; onClicked: root.refreshVpn() }
+                        }
+                    }
+                    Text {
+                        width: parent.width
+                        text: "Вставьте конфиг из клиента WireGuard. Файл: /var/lib/gtos/wireguard/wg0.conf"
+                        color: "#6b7785"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                    }
                 }
             }
 
@@ -21881,9 +24503,12 @@ Rectangle {
                         function compFor(sec) {
                             if (sec === "home") return null
                             if (sec === "system") return settingsSec_system
+                            if (sec === "displays") return settingsSec_displays
                             if (sec === "power") return settingsSec_power
                             if (sec === "bluetooth") return settingsSec_bluetooth
+                            if (sec === "printers") return settingsSec_printers
                             if (sec === "network") return settingsSec_network
+                            if (sec === "vpn") return settingsSec_vpn
                             if (sec === "personalize") return settingsSec_personalize
                             if (sec === "taskbar") return settingsSec_taskbar
                             if (sec === "apps") return settingsSec_apps
@@ -24982,412 +27607,1127 @@ Rectangle {
     Component {
         id: notesPage
         Item {
+            id: notesRoot
             property string appTitle: ""
-            function lineCol() {
-                var t = noteEdit.text.slice(0, noteEdit.cursorPosition)
-                var lines = t.split("\n")
-                return { line: lines.length, col: lines[lines.length - 1].length + 1 }
+            readonly property var findHits: root.noteFindMatches()
+            readonly property bool showPreview: root.notePreview
+            readonly property int wordCount: {
+                var t = root.noteText.trim()
+                return t.length ? t.split(/\s+/).length : 0
             }
-            Rectangle {
-                anchors.fill: parent
-                color: "#0c1412"
-                Column {
+            readonly property int lineCount: root.noteText.length ? root.noteText.split("\n").length : 1
+            readonly property var menuDefs: [
+                { id: "file", t: "Файл" },
+                { id: "edit", t: "Правка" },
+                { id: "view", t: "Вид" }
+            ]
+
+            function menuItems(id) {
+                if (id === "file") {
+                    var f = [
+                        { t: "Новая вкладка", k: "Ctrl+N", a: "new" },
+                        { t: "Открыть…", k: "Ctrl+O", a: "open" },
+                        { t: "Сохранить", k: "Ctrl+S", a: "save" },
+                        { t: "Сохранить как…", k: "", a: "saveas" }
+                    ]
+                    if (root.noteRecent.length) {
+                        f.push({ t: "", a: "sep" })
+                        for (var i = 0; i < root.noteRecent.length && i < 5; ++i)
+                            f.push({ t: root.noteBaseName(root.noteRecent[i]), k: "", a: "recent:" + root.noteRecent[i], dim: true })
+                    }
+                    f.push({ t: "", a: "sep" })
+                    f.push({ t: "Закрыть вкладку", k: "Ctrl+W", a: "close" })
+                    return f
+                }
+                if (id === "edit") {
+                    return [
+                        { t: "Отменить", k: "Ctrl+Z", a: "undo" },
+                        { t: "Повторить", k: "Ctrl+Y", a: "redo" },
+                        { t: "", a: "sep" },
+                        { t: "Вырезать", k: "Ctrl+X", a: "cut" },
+                        { t: "Копировать", k: "Ctrl+C", a: "copy" },
+                        { t: "Вставить", k: "Ctrl+V", a: "paste" },
+                        { t: "Выделить всё", k: "Ctrl+A", a: "selall" },
+                        { t: "", a: "sep" },
+                        { t: "Найти", k: "Ctrl+F", a: "find" },
+                        { t: "Заменить", k: "Ctrl+H", a: "replace" },
+                        { t: "Дата и время", k: "F5", a: "date" }
+                    ]
+                }
+                return [
+                    { t: "Перенос по словам", k: "", a: "wrap", check: root.noteWrap },
+                    { t: "Предпросмотр Markdown", k: "Ctrl+M", a: "preview", check: root.notePreview },
+                    { t: "", a: "sep" },
+                    { t: "Крупнее", k: "Ctrl++", a: "zin" },
+                    { t: "Мельче", k: "Ctrl+−", a: "zout" },
+                    { t: "Масштаб 100%", k: "Ctrl+0", a: "zreset" }
+                ]
+            }
+
+            function act(a) {
+                root.noteMenuOpen = ""
+                if (a.indexOf("recent:") === 0) { root.openNote(a.slice(7)); return }
+                if (a === "new") root.newNoteTab()
+                else if (a === "open") root.openNotePicker()
+                else if (a === "save") root.saveNote()
+                else if (a === "saveas") root.saveNoteAs()
+                else if (a === "close") root.closeNoteTab(root.noteTabIndex)
+                else if (a === "undo") noteEdit.undo()
+                else if (a === "redo") noteEdit.redo()
+                else if (a === "cut") noteEdit.cut()
+                else if (a === "copy") noteEdit.copy()
+                else if (a === "paste") noteEdit.paste()
+                else if (a === "selall") noteEdit.selectAll()
+                else if (a === "find") openFind(false)
+                else if (a === "replace") openFind(true)
+                else if (a === "date") noteEdit.insert(noteEdit.cursorPosition, Qt.formatDateTime(new Date(), "dd.MM.yyyy HH:mm"))
+                else if (a === "wrap") root.noteWrap = !root.noteWrap
+                else if (a === "preview") root.notePreview = !root.notePreview
+                else if (a === "zin") root.noteZoom = Math.min(220, root.noteZoom + 10)
+                else if (a === "zout") root.noteZoom = Math.max(60, root.noteZoom - 10)
+                else if (a === "zreset") root.noteZoom = 100
+                if (a !== "find" && a !== "replace" && a !== "open" && a !== "saveas")
+                    noteEdit.forceActiveFocus()
+            }
+
+            function openFind(withReplace) {
+                root.noteFindOpen = true
+                root.noteReplaceOpen = withReplace
+                var sel = noteEdit.selectedText
+                if (sel.length && sel.indexOf("\n") < 0)
+                    root.noteFindText = sel
+                findField.text = root.noteFindText
+                replField.text = root.noteReplaceText
+                findField.forceActiveFocus()
+                findField.selectAll()
+            }
+
+            function closeFind() {
+                root.noteFindOpen = false
+                root.noteReplaceOpen = false
+                root.noteFindHit = -1
+                noteEdit.forceActiveFocus()
+            }
+
+            function gotoHit(dir) {
+                var hits = findHits
+                if (!hits.length) { root.noteFindHit = -1; return }
+                var i = root.noteFindHit
+                if (i < 0 || i >= hits.length) {
+                    i = 0
+                    for (var k = 0; k < hits.length; ++k)
+                        if (hits[k] >= noteEdit.cursorPosition) { i = k; break }
+                    if (dir < 0) i = (i - 1 + hits.length) % hits.length
+                } else {
+                    i = (i + dir + hits.length) % hits.length
+                }
+                root.noteFindHit = i
+                noteEdit.select(hits[i], hits[i] + root.noteFindText.length)
+                noteFlick.ensureVisible(noteEdit.positionToRectangle(hits[i]))
+            }
+
+            function replaceCurrent() {
+                var q = root.noteFindText
+                if (!q.length) return
+                if (noteEdit.selectedText.toLowerCase() === q.toLowerCase()) {
+                    var s = noteEdit.selectionStart
+                    noteEdit.remove(s, noteEdit.selectionEnd)
+                    noteEdit.insert(s, root.noteReplaceText)
+                    noteEdit.cursorPosition = s + root.noteReplaceText.length
+                    root.noteFindHit = -1
+                }
+                gotoHit(1)
+            }
+
+            function wrapSelection(mark) {
+                var s = noteEdit.selectionStart
+                var e = noteEdit.selectionEnd
+                var sel = noteEdit.selectedText
+                noteEdit.remove(s, e)
+                noteEdit.insert(s, mark + sel + mark)
+                if (sel.length)
+                    noteEdit.select(s + mark.length, s + mark.length + sel.length)
+                else
+                    noteEdit.cursorPosition = s + mark.length
+                noteEdit.forceActiveFocus()
+            }
+
+            function prefixLine(pfx) {
+                var pos = noteEdit.cursorPosition
+                var start = root.noteText.lastIndexOf("\n", pos - 1) + 1
+                if (root.noteText.slice(start, start + pfx.length) === pfx) {
+                    noteEdit.remove(start, start + pfx.length)
+                    noteEdit.cursorPosition = Math.max(start, pos - pfx.length)
+                } else {
+                    noteEdit.insert(start, pfx)
+                    noteEdit.cursorPosition = pos + pfx.length
+                }
+                noteEdit.forceActiveFocus()
+            }
+
+            function langInput(field, e) {
+                var ch = root.mapLangKey(e)
+                if (ch !== null) {
+                    field.insert(field.cursorPosition, ch)
+                    e.accepted = true
+                }
+            }
+
+            component NoteTool: Rectangle {
+                id: ntool
+                property string label: ""
+                property string hint: ""
+                property bool active: false
+                property bool bold: false
+                property bool italic: false
+                property bool strike: false
+                property bool enabledTool: true
+                signal clicked()
+                width: Math.max(30, ntLab.implicitWidth + 16)
+                height: 28
+                radius: 7
+                color: active ? Qt.rgba(0.23, 0.88, 0.51, 0.22)
+                              : (ntMa.containsMouse && enabledTool ? Qt.rgba(1, 1, 1, 0.07) : "transparent")
+                border.width: active ? 1 : 0
+                border.color: Qt.rgba(0.23, 0.88, 0.51, 0.45)
+                opacity: enabledTool ? 1 : 0.35
+                Text {
+                    id: ntLab
+                    anchors.centerIn: parent
+                    text: ntool.label
+                    color: ntool.active ? "#3be182" : "#dfe7ec"
+                    font.pixelSize: 13
+                    font.family: ntool.bold ? root.uiFontBold : root.uiFont
+                    font.italic: ntool.italic
+                    font.strikeout: ntool.strike
+                }
+                MouseArea {
+                    id: ntMa
                     anchors.fill: parent
-                    spacing: 0
+                    hoverEnabled: true
+                    enabled: ntool.enabledTool
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: ntool.clicked()
+                }
+                Rectangle {
+                    visible: ntMa.containsMouse && ntool.hint.length > 0
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 6
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: ntHint.implicitWidth + 14
+                    height: 22
+                    radius: 6
+                    z: 80
+                    color: "#1b2622"
+                    border.color: "#2a3a34"
+                    Text {
+                        id: ntHint
+                        anchors.centerIn: parent
+                        text: ntool.hint
+                        color: "#c5d0d8"
+                        font.pixelSize: 11
+                        font.family: root.uiFont
+                    }
+                }
+            }
 
-                    // вкладки — стиль GT/OS
-                    Rectangle {
-                        width: parent.width
-                        height: 38
-                        color: "#121a18"
-                        border.width: 1
-                        border.color: "#1e3a32"
-                        Row {
-                            anchors.fill: parent
-                            anchors.leftMargin: 8
-                            spacing: 4
-                            Repeater {
-                                model: root.noteTabs
-                                delegate: Rectangle {
-                                    width: Math.min(168, tabLab.implicitWidth + 44)
-                                    height: 28
+            component NoteSep: Rectangle { width: 1; height: 18; color: "#24332e"; anchors.verticalCenter: parent ? parent.verticalCenter : undefined }
+
+            Rectangle { anchors.fill: parent; color: "#0c1412" }
+
+            // вкладки
+            Rectangle {
+                id: noteTabsBar
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 40
+                color: "#101816"
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#1e2e29" }
+                Flickable {
+                    anchors.fill: parent
+                    anchors.leftMargin: 8
+                    anchors.rightMargin: 8
+                    contentWidth: tabRow.width
+                    clip: true
+                    interactive: contentWidth > width
+                    Row {
+                        id: tabRow
+                        height: parent.height
+                        spacing: 4
+                        Repeater {
+                            model: root.noteTabs
+                            delegate: Rectangle {
+                                readonly property bool cur: index === root.noteTabIndex
+                                width: Math.min(200, tabLab.implicitWidth + 58)
+                                height: 30
+                                anchors.verticalCenter: parent.verticalCenter
+                                radius: 8
+                                color: cur ? "#1a2a24" : (tabH.containsMouse ? "#151f1c" : "transparent")
+                                border.width: cur ? 1 : 0
+                                border.color: Qt.rgba(0.23, 0.88, 0.51, 0.35)
+                                Rectangle {
+                                    visible: cur
+                                    anchors.bottom: parent.bottom
+                                    anchors.horizontalCenter: parent.horizontalCenter
+                                    width: parent.width - 20; height: 2; radius: 1
+                                    color: "#3be182"
+                                }
+                                Text {
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 10
                                     anchors.verticalCenter: parent.verticalCenter
-                                    radius: 8
-                                    color: index === root.noteTabIndex ? "#1a2a24" : (tabH.containsMouse ? "#16201c" : "transparent")
-                                    border.width: index === root.noteTabIndex ? 1 : 0
-                                    border.color: Qt.rgba(0.23, 0.88, 0.51, 0.35)
-                                    Row {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: 10
-                                        anchors.rightMargin: 6
-                                        spacing: 6
-                                        Text {
-                                            id: tabLab
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: (modelData.dirty ? "● " : "") + modelData.title
-                                            color: index === root.noteTabIndex ? "#e8eef2" : "#9aa7b2"
-                                            font.pixelSize: 12
-                                            font.family: root.uiFont
-                                            elide: Text.ElideRight
-                                            width: Math.min(120, implicitWidth)
-                                        }
-                                        Text {
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: "×"
-                                            color: "#6b7785"
-                                            font.pixelSize: 14
-                                            MouseArea {
-                                                anchors.fill: parent; anchors.margins: -4
-                                                onClicked: root.closeNoteTab(index)
-                                            }
-                                        }
-                                    }
-                                    MouseArea {
-                                        id: tabH
-                                        anchors.fill: parent
-                                        anchors.rightMargin: 22
-                                        hoverEnabled: true
-                                        onClicked: root.switchNoteTab(index)
-                                    }
+                                    text: /\.(md|markdown)$/i.test(modelData.path) ? "M↓" : "≡"
+                                    color: cur ? "#3be182" : "#6b7785"
+                                    font.pixelSize: 11
+                                    font.family: root.uiFontBold
                                 }
-                            }
-                            Rectangle {
-                                width: 28; height: 28; radius: 8
-                                anchors.verticalCenter: parent.verticalCenter
-                                color: addTabH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.16) : "transparent"
-                                Text { anchors.centerIn: parent; text: "+"; color: "#3be182"; font.pixelSize: 16; font.family: root.uiFont }
+                                Text {
+                                    id: tabLab
+                                    anchors.left: parent.left
+                                    anchors.leftMargin: 30
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: modelData.title
+                                    color: cur ? "#eef3f5" : "#9aa7b2"
+                                    font.pixelSize: 12
+                                    font.family: root.uiFont
+                                    elide: Text.ElideRight
+                                    width: Math.min(130, implicitWidth)
+                                }
                                 MouseArea {
-                                    id: addTabH; anchors.fill: parent; hoverEnabled: true
-                                    onClicked: root.newNoteTab()
+                                    id: tabH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onClicked: root.switchNoteTab(index)
                                 }
-                            }
-                        }
-                    }
-
-                    // меню + панель форматирования
-                    Rectangle {
-                        width: parent.width
-                        height: 40
-                        color: "#0e1816"
-                        Row {
-                            anchors.left: parent.left
-                            anchors.leftMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 2
-                            Repeater {
-                                model: [
-                                    { id: "file", t: "Файл" },
-                                    { id: "edit", t: "Изменить" },
-                                    { id: "view", t: "Просмотр" }
-                                ]
-                                delegate: Item {
-                                    width: menuLab.implicitWidth + 16
-                                    height: 28
+                                Rectangle {
+                                    anchors.right: parent.right
+                                    anchors.rightMargin: 6
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 18; height: 18; radius: 9
+                                    color: tabX.containsMouse ? Qt.rgba(1, 1, 1, 0.1) : "transparent"
                                     Text {
-                                        id: menuLab
                                         anchors.centerIn: parent
-                                        text: modelData.t
-                                        color: root.noteMenuOpen === modelData.id ? "#3be182" : "#d5dde3"
-                                        font.pixelSize: 13
-                                        font.family: root.uiFont
-                                    }
-                                    Rectangle {
-                                        anchors.fill: parent
-                                        radius: 6
-                                        color: root.noteMenuOpen === modelData.id || mH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.14) : "transparent"
-                                        z: -1
+                                        text: modelData.dirty && !tabX.containsMouse ? "●" : "×"
+                                        color: modelData.dirty && !tabX.containsMouse ? "#3be182" : "#8b97a3"
+                                        font.pixelSize: modelData.dirty && !tabX.containsMouse ? 9 : 14
                                     }
                                     MouseArea {
-                                        id: mH; anchors.fill: parent; hoverEnabled: true
-                                        onClicked: root.noteMenuOpen = root.noteMenuOpen === modelData.id ? "" : modelData.id
+                                        id: tabX
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onClicked: root.closeNoteTab(index)
                                     }
                                 }
                             }
                         }
-                        Row {
-                            anchors.horizontalCenter: parent.horizontalCenter
+                        Rectangle {
+                            width: 30; height: 30; radius: 8
                             anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
-                            Repeater {
-                                model: ["H1", "≡", "B", "I", "S", "A"]
-                                delegate: Rectangle {
-                                    width: 28; height: 26; radius: 6
-                                    color: tbH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.14) : "transparent"
-                                    border.width: 1
-                                    border.color: tbH.containsMouse ? "#2a3a34" : "transparent"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: modelData
-                                        color: "#e8eef2"
-                                        font.pixelSize: modelData === "H1" ? 11 : 13
-                                        font.family: modelData === "B" ? root.uiFontBold : root.uiFont
-                                        font.italic: modelData === "I"
-                                    }
-                                    MouseArea { id: tbH; anchors.fill: parent; hoverEnabled: true }
-                                }
-                            }
-                        }
-                        Row {
-                            anchors.right: parent.right
-                            anchors.rightMargin: 10
-                            anchors.verticalCenter: parent.verticalCenter
-                            spacing: 4
-                            Text { text: "GT"; color: "#3be182"; font.pixelSize: 12; font.family: root.uiFontBold; anchors.verticalCenter: parent.verticalCenter }
-                        }
-
-                        // выпадающее меню Файл
-                        Rectangle {
-                            visible: root.noteMenuOpen === "file"
-                            anchors.left: parent.left
-                            anchors.leftMargin: 8
-                            anchors.top: parent.bottom
-                            anchors.topMargin: -2
-                            width: 220; height: 148; radius: 12; z: 40
-                            color: "#121a18"; border.color: "#2a3a34"; border.width: 1
-                            Column {
-                                anchors.fill: parent; anchors.margins: 6; spacing: 2
-                                Repeater {
-                                    model: [
-                                        { t: "Создать вкладку", a: "new" },
-                                        { t: "Открыть…", a: "open" },
-                                        { t: "Сохранить\tCtrl+S", a: "save" },
-                                        { t: "Сохранить как…", a: "saveas" },
-                                        { t: "sep", a: "sep" },
-                                        { t: "Закрыть вкладку", a: "close" }
-                                    ]
-                                    delegate: Rectangle {
-                                        width: parent.width
-                                        height: modelData.a === "sep" ? 8 : 28
-                                        radius: 4
-                                        color: modelData.a === "sep" ? "transparent" : (fiH.containsMouse ? "#3a3a3a" : "transparent")
-                                        visible: modelData.a !== "sep" || true
-                                        Rectangle {
-                                            visible: modelData.a === "sep"
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            width: parent.width; height: 1; color: "#3a3a3a"
-                                        }
-                                        Text {
-                                            visible: modelData.a !== "sep"
-                                            anchors.left: parent.left; anchors.leftMargin: 10
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: modelData.t; color: "#e8eef2"; font.pixelSize: 12; font.family: root.uiFont
-                                        }
-                                        MouseArea {
-                                            id: fiH; anchors.fill: parent; hoverEnabled: true
-                                            enabled: modelData.a !== "sep"
-                                            onClicked: {
-                                                root.noteMenuOpen = ""
-                                                if (modelData.a === "new") root.newNoteTab()
-                                                else if (modelData.a === "open") {
-                                                    root.notePath = "/home/" + root.currentUser + "/Документы/заметка.txt"
-                                                    root.openNote(root.notePath)
-                                                }
-                                                else if (modelData.a === "save") root.saveNote()
-                                                else if (modelData.a === "saveas") root.saveNoteAs()
-                                                else if (modelData.a === "close") root.closeNoteTab(root.noteTabIndex)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Rectangle {
-                            visible: root.noteMenuOpen === "edit"
-                            anchors.left: parent.left
-                            anchors.leftMargin: 56
-                            anchors.top: parent.bottom
-                            anchors.topMargin: -2
-                            width: 180; height: 100; radius: 12; z: 40
-                            color: "#121a18"; border.color: "#2a3a34"; border.width: 1
-                            Column {
-                                anchors.fill: parent; anchors.margins: 6; spacing: 2
-                                Repeater {
-                                    model: [
-                                        { t: "Вырезать", a: "cut" },
-                                        { t: "Копировать", a: "copy" },
-                                        { t: "Вставить", a: "paste" }
-                                    ]
-                                    delegate: Rectangle {
-                                        width: parent.width; height: 28; radius: 6
-                                        color: edH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.14) : "transparent"
-                                        Text {
-                                            anchors.left: parent.left; anchors.leftMargin: 10
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: modelData.t; color: "#e8eef2"; font.pixelSize: 12; font.family: root.uiFont
-                                        }
-                                        MouseArea {
-                                            id: edH; anchors.fill: parent; hoverEnabled: true
-                                            onClicked: {
-                                                root.noteMenuOpen = ""
-                                                if (modelData.a === "cut") noteEdit.cut()
-                                                else if (modelData.a === "copy") noteEdit.copy()
-                                                else if (modelData.a === "paste") noteEdit.paste()
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        Rectangle {
-                            visible: root.noteMenuOpen === "view"
-                            anchors.left: parent.left
-                            anchors.leftMargin: 120
-                            anchors.top: parent.bottom
-                            anchors.topMargin: -2
-                            width: 180; height: 100; radius: 12; z: 40
-                            color: "#121a18"; border.color: "#2a3a34"; border.width: 1
-                            Column {
-                                anchors.fill: parent; anchors.margins: 6; spacing: 2
-                                Repeater {
-                                    model: [
-                                        { t: "Крупнее", a: "in" },
-                                        { t: "Мельче", a: "out" },
-                                        { t: "100%", a: "reset" }
-                                    ]
-                                    delegate: Rectangle {
-                                        width: parent.width; height: 28; radius: 6
-                                        color: vwH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.14) : "transparent"
-                                        Text {
-                                            anchors.left: parent.left; anchors.leftMargin: 10
-                                            anchors.verticalCenter: parent.verticalCenter
-                                            text: modelData.t; color: "#e8eef2"; font.pixelSize: 12; font.family: root.uiFont
-                                        }
-                                        MouseArea {
-                                            id: vwH; anchors.fill: parent; hoverEnabled: true
-                                            onClicked: {
-                                                root.noteMenuOpen = ""
-                                                if (modelData.a === "in") root.noteZoom = Math.min(200, root.noteZoom + 10)
-                                                else if (modelData.a === "out") root.noteZoom = Math.max(70, root.noteZoom - 10)
-                                                else root.noteZoom = 100
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // редактор
-                    Item {
-                        width: parent.width
-                        height: parent.height - 38 - 40 - 28
-                        MouseArea {
-                            anchors.fill: parent
-                            acceptedButtons: Qt.LeftButton
-                            onClicked: { root.noteMenuOpen = ""; noteEdit.forceActiveFocus() }
-                        }
-                        Rectangle {
-                            anchors.fill: parent
-                            anchors.margins: 10
-                            radius: 12
-                            color: "#0a1210"
-                            border.width: 1
-                            border.color: "#1e3a32"
-                        }
-                        Flickable {
-                            id: noteFlick
-                            anchors.fill: parent
-                            anchors.margins: 22
-                            contentWidth: width
-                            contentHeight: noteEdit.paintedHeight + 40
-                            clip: true
-                            TextEdit {
-                                id: noteEdit
-                                width: noteFlick.width
-                                text: root.noteText
-                                color: "#e8eef2"
-                                selectionColor: "#3be18266"
-                                selectedTextColor: "#06210f"
-                                font.family: root.uiFont
-                                font.pixelSize: Math.round(15 * root.noteZoom / 100)
-                                wrapMode: TextEdit.Wrap
-                                selectByMouse: true
-                                persistentSelection: true
-                                cursorDelegate: Rectangle {
-                                    width: 2; height: Math.round(18 * root.noteZoom / 100)
-                                    color: "#3be182"; visible: noteEdit.cursorVisible
-                                }
-                                onTextChanged: {
-                                    if (text !== root.noteText) {
-                                        root.noteText = text
-                                        root.markNoteDirty()
-                                    }
-                                }
-                                Keys.onPressed: function (e) {
-                                    if ((e.modifiers & Qt.ControlModifier) && e.key === Qt.Key_S) {
-                                        root.saveNote(); e.accepted = true
-                                    } else if ((e.modifiers & Qt.ControlModifier) && e.key === Qt.Key_T) {
-                                        root.newNoteTab(); e.accepted = true
-                                    } else if ((e.modifiers & Qt.ControlModifier) && e.key === Qt.Key_W) {
-                                        root.closeNoteTab(root.noteTabIndex); e.accepted = true
-                                    } else if (e.key === Qt.Key_Escape) {
-                                        root.noteMenuOpen = ""
-                                    } else {
-                                        var ch = root.mapLangKey(e)
-                                        if (ch !== null) {
-                                            noteEdit.insert(noteEdit.cursorPosition, ch)
-                                            e.accepted = true
-                                        }
-                                    }
-                                }
-                                Component.onCompleted: forceActiveFocus()
-                            }
-                        }
-                    }
-
-                    // статусная строка GT
-                    Rectangle {
-                        width: parent.width
-                        height: 28
-                        color: "#121a18"
-                        border.width: 1
-                        border.color: "#1e3a32"
-                        Rectangle {
-                            anchors.left: parent.left
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            width: 3
-                            color: root.accentColor
-                        }
-                        Row {
-                            anchors.fill: parent
-                            anchors.leftMargin: 14
-                            anchors.rightMargin: 12
-                            spacing: 18
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: {
-                                    var t = root.noteText.slice(0, noteEdit.cursorPosition)
-                                    var lines = t.split("\n")
-                                    return "Строка " + lines.length + ", столбец " + (lines[lines.length - 1].length + 1)
-                                }
-                                color: "#c5d0d8"; font.pixelSize: 11; font.family: root.uiFont
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: root.noteText.length + " символов"
-                                color: "#9aa7b2"; font.pixelSize: 11; font.family: root.uiFont
-                            }
-                            Item { width: Math.max(8, parent.width - 520); height: 1 }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: root.noteStyle
-                                color: "#3be182"; font.pixelSize: 11; font.family: root.uiFont
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: root.noteZoom + "%"
-                                color: "#c5d0d8"; font.pixelSize: 11; font.family: root.uiFont
-                            }
-                            Text {
-                                anchors.verticalCenter: parent.verticalCenter
-                                text: "UTF-8"
-                                color: "#9aa7b2"; font.pixelSize: 11; font.family: root.uiFont
+                            color: addTabH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.16) : "transparent"
+                            Text { anchors.centerIn: parent; text: "+"; color: "#3be182"; font.pixelSize: 17; font.family: root.uiFont }
+                            MouseArea {
+                                id: addTabH; anchors.fill: parent; hoverEnabled: true
+                                onClicked: root.newNoteTab()
                             }
                         }
                     }
                 }
             }
+
+            // меню + инструменты
+            Rectangle {
+                id: noteToolbar
+                anchors.top: noteTabsBar.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 44
+                z: 30
+                color: "#0e1715"
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#1a2925" }
+                Row {
+                    id: noteMenuRow
+                    anchors.left: parent.left
+                    anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    Repeater {
+                        model: notesRoot.menuDefs
+                        delegate: Rectangle {
+                            width: mLab.implicitWidth + 18
+                            height: 28
+                            radius: 7
+                            color: root.noteMenuOpen === modelData.id || mH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.14) : "transparent"
+                            Text {
+                                id: mLab
+                                anchors.centerIn: parent
+                                text: modelData.t
+                                color: root.noteMenuOpen === modelData.id ? "#3be182" : "#d5dde3"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                            }
+                            MouseArea {
+                                id: mH; anchors.fill: parent; hoverEnabled: true
+                                onClicked: root.noteMenuOpen = root.noteMenuOpen === modelData.id ? "" : modelData.id
+                                onEntered: if (root.noteMenuOpen.length && root.noteMenuOpen !== modelData.id) root.noteMenuOpen = modelData.id
+                            }
+                        }
+                    }
+                }
+                Row {
+                    anchors.left: noteMenuRow.right
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    NoteSep {}
+                    Item { width: 6; height: 1 }
+                    NoteTool { label: "↶"; hint: "Отменить · Ctrl+Z"; enabledTool: noteEdit.canUndo; onClicked: notesRoot.act("undo") }
+                    NoteTool { label: "↷"; hint: "Повторить · Ctrl+Y"; enabledTool: noteEdit.canRedo; onClicked: notesRoot.act("redo") }
+                    Item { width: 6; height: 1 }
+                    NoteSep {}
+                    Item { width: 6; height: 1 }
+                    NoteTool { label: "H1"; hint: "Заголовок"; bold: true; onClicked: notesRoot.prefixLine("# ") }
+                    NoteTool { label: "•"; hint: "Список"; onClicked: notesRoot.prefixLine("- ") }
+                    NoteTool { label: "☐"; hint: "Задача"; onClicked: notesRoot.prefixLine("- [ ] ") }
+                    NoteTool { label: "B"; hint: "Жирный"; bold: true; onClicked: notesRoot.wrapSelection("**") }
+                    NoteTool { label: "I"; hint: "Курсив"; italic: true; onClicked: notesRoot.wrapSelection("*") }
+                    NoteTool { label: "S"; hint: "Зачёркнутый"; strike: true; onClicked: notesRoot.wrapSelection("~~") }
+                    NoteTool { label: "</>"; hint: "Код"; onClicked: notesRoot.wrapSelection("`") }
+                    Item { width: 6; height: 1 }
+                    NoteSep {}
+                    Item { width: 6; height: 1 }
+                    NoteTool { label: "⌕ Найти"; hint: "Ctrl+F"; active: root.noteFindOpen; onClicked: root.noteFindOpen ? notesRoot.closeFind() : notesRoot.openFind(false) }
+                    NoteTool { label: "↵ Перенос"; hint: "Перенос по словам"; active: root.noteWrap; onClicked: notesRoot.act("wrap") }
+                    NoteTool { label: "◧ Просмотр"; hint: "Markdown рядом · Ctrl+M"; active: root.notePreview; onClicked: notesRoot.act("preview") }
+                }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    visible: notesRoot.width > 980
+                    NoteTool { label: "−"; hint: "Мельче"; onClicked: notesRoot.act("zout") }
+                    Text {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 40
+                        horizontalAlignment: Text.AlignHCenter
+                        text: root.noteZoom + "%"
+                        color: "#9aa7b2"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    NoteTool { label: "+"; hint: "Крупнее"; onClicked: notesRoot.act("zin") }
+                }
+            }
+
+            // поиск и замена
+            Rectangle {
+                id: noteFindBar
+                anchors.top: noteToolbar.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: root.noteFindOpen ? (root.noteReplaceOpen ? 84 : 46) : 0
+                visible: height > 0
+                clip: true
+                color: "#0f1a17"
+                Behavior on height { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#1a2925" }
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.top: parent.top
+                    anchors.topMargin: 8
+                    spacing: 8
+                    Row {
+                        spacing: 8
+                        Rectangle {
+                            width: 300; height: 30; radius: 8
+                            color: "#0a1210"
+                            border.width: 1
+                            border.color: findField.activeFocus ? "#3be182" : "#24332e"
+                            Text {
+                                anchors.left: parent.left; anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "⌕"; color: "#6b7785"; font.pixelSize: 13
+                            }
+                            TextInput {
+                                id: findField
+                                anchors.left: parent.left; anchors.leftMargin: 28
+                                anchors.right: findCount.left; anchors.rightMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.noteFindText
+                                color: "#e8eef2"
+                                selectionColor: "#3be18266"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                                clip: true
+                                selectByMouse: true
+                                onTextEdited: { root.noteFindText = text; root.noteFindHit = -1 }
+                                Keys.onPressed: function (e) {
+                                    if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                                        notesRoot.gotoHit((e.modifiers & Qt.ShiftModifier) ? -1 : 1); e.accepted = true
+                                    } else if (e.key === Qt.Key_Escape) {
+                                        notesRoot.closeFind(); e.accepted = true
+                                    } else {
+                                        notesRoot.langInput(findField, e)
+                                        if (e.accepted) { root.noteFindText = text; root.noteFindHit = -1 }
+                                    }
+                                }
+                                Text {
+                                    visible: !parent.text.length
+                                    text: "Найти в документе"
+                                    color: "#56636d"
+                                    font: parent.font
+                                }
+                            }
+                            Text {
+                                id: findCount
+                                anchors.right: parent.right; anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: !root.noteFindText.length ? ""
+                                      : (notesRoot.findHits.length
+                                         ? ((root.noteFindHit >= 0 ? (root.noteFindHit + 1) : "–") + " из " + notesRoot.findHits.length)
+                                         : "нет")
+                                color: notesRoot.findHits.length || !root.noteFindText.length ? "#8b97a3" : "#f87171"
+                                font.pixelSize: 11
+                                font.family: root.uiFont
+                            }
+                        }
+                        NoteTool { label: "↑"; hint: "Предыдущее · Shift+Enter"; enabledTool: notesRoot.findHits.length > 0; onClicked: notesRoot.gotoHit(-1) }
+                        NoteTool { label: "↓"; hint: "Следующее · Enter"; enabledTool: notesRoot.findHits.length > 0; onClicked: notesRoot.gotoHit(1) }
+                        NoteTool { label: root.noteReplaceOpen ? "Скрыть замену" : "Заменить…"; active: root.noteReplaceOpen; onClicked: root.noteReplaceOpen = !root.noteReplaceOpen }
+                    }
+                    Row {
+                        spacing: 8
+                        visible: root.noteReplaceOpen
+                        Rectangle {
+                            width: 300; height: 30; radius: 8
+                            color: "#0a1210"
+                            border.width: 1
+                            border.color: replField.activeFocus ? "#3be182" : "#24332e"
+                            Text {
+                                anchors.left: parent.left; anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "⇄"; color: "#6b7785"; font.pixelSize: 13
+                            }
+                            TextInput {
+                                id: replField
+                                anchors.left: parent.left; anchors.leftMargin: 28
+                                anchors.right: parent.right; anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: root.noteReplaceText
+                                color: "#e8eef2"
+                                selectionColor: "#3be18266"
+                                font.pixelSize: 13
+                                font.family: root.uiFont
+                                clip: true
+                                selectByMouse: true
+                                onTextEdited: root.noteReplaceText = text
+                                Keys.onPressed: function (e) {
+                                    if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                                        notesRoot.replaceCurrent(); e.accepted = true
+                                    } else if (e.key === Qt.Key_Escape) {
+                                        notesRoot.closeFind(); e.accepted = true
+                                    } else {
+                                        notesRoot.langInput(replField, e)
+                                        if (e.accepted) root.noteReplaceText = text
+                                    }
+                                }
+                                Text {
+                                    visible: !parent.text.length
+                                    text: "Заменить на"
+                                    color: "#56636d"
+                                    font: parent.font
+                                }
+                            }
+                        }
+                        NoteTool { label: "Заменить"; enabledTool: notesRoot.findHits.length > 0; onClicked: notesRoot.replaceCurrent() }
+                        NoteTool {
+                            label: "Заменить все"
+                            enabledTool: notesRoot.findHits.length > 0
+                            onClicked: {
+                                var n = root.noteReplaceAll()
+                                if (n) root.notify("Блокнот", "Заменено: " + n, "ok")
+                            }
+                        }
+                    }
+                }
+                NoteTool {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 10
+                    anchors.top: parent.top
+                    anchors.topMargin: 9
+                    label: "×"
+                    hint: "Закрыть · Esc"
+                    onClicked: notesRoot.closeFind()
+                }
+            }
+
+            // статусная строка
+            Rectangle {
+                id: noteStatus
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 28
+                color: "#101816"
+                Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#1e2e29" }
+                Rectangle { anchors.left: parent.left; width: 3; height: parent.height; color: root.accentColor }
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 16
+                    Text {
+                        text: {
+                            var t = root.noteText.slice(0, noteEdit.cursorPosition)
+                            var lines = t.split("\n")
+                            return "Стр " + lines.length + ", стлб " + (lines[lines.length - 1].length + 1)
+                        }
+                        color: "#c5d0d8"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    Text {
+                        text: noteEdit.selectedText.length ? ("выделено " + noteEdit.selectedText.length) : ""
+                        visible: text.length > 0
+                        color: "#3be182"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    Text {
+                        text: notesRoot.wordCount + " сл. · " + root.noteText.length + " симв. · " + notesRoot.lineCount + " стр."
+                        color: "#8b97a3"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 16
+                    Text {
+                        width: Math.min(260, implicitWidth)
+                        visible: notesRoot.width > 860
+                        text: root.notePath.replace("/home/" + root.currentUser, "~")
+                        elide: Text.ElideMiddle
+                        color: "#6b7785"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    Text {
+                        readonly property bool dirty: root.noteTabs.length > root.noteTabIndex && root.noteTabIndex >= 0 && root.noteTabs[root.noteTabIndex].dirty === true
+                        text: dirty ? "● не сохранено" : "✓ сохранено"
+                        color: dirty ? "#fbbf24" : "#3be182"
+                        font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    Text {
+                        text: root.noteIsMarkdown() ? "Markdown" : "Обычный текст"
+                        color: "#c5d0d8"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    Text { text: root.noteZoom + "%"; color: "#8b97a3"; font.pixelSize: 11; font.family: root.uiFont }
+                    Text { text: "UTF-8"; color: "#8b97a3"; font.pixelSize: 11; font.family: root.uiFont }
+                }
+            }
+
+            // редактор и предпросмотр
+            Item {
+                id: noteArea
+                anchors.top: noteFindBar.bottom
+                anchors.bottom: noteStatus.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.margins: 10
+
+                Rectangle {
+                    id: editorPane
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: notesRoot.showPreview ? (parent.width - 10) / 2 : parent.width
+                    radius: 12
+                    color: "#0a1210"
+                    border.width: 1
+                    border.color: noteEdit.activeFocus ? Qt.rgba(0.23, 0.88, 0.51, 0.35) : "#1b2b26"
+                    Behavior on width { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: { root.noteMenuOpen = ""; noteEdit.forceActiveFocus() }
+                    }
+
+                    Flickable {
+                        id: noteFlick
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        anchors.rightMargin: 8
+                        contentWidth: noteEdit.width
+                        contentHeight: noteEdit.paintedHeight + 40
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        function ensureVisible(r) {
+                            if (contentX >= r.x) contentX = Math.max(0, r.x - 20)
+                            else if (contentX + width <= r.x + r.width) contentX = r.x + r.width - width + 20
+                            if (contentY >= r.y) contentY = Math.max(0, r.y - 10)
+                            else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height + 10
+                        }
+                        TextEdit {
+                            id: noteEdit
+                            width: root.noteWrap ? noteFlick.width - 8 : Math.max(noteFlick.width - 8, implicitWidth + 30)
+                            text: root.noteText
+                            color: "#e8eef2"
+                            selectionColor: "#3be18266"
+                            selectedTextColor: "#ffffff"
+                            font.family: root.uiFont
+                            font.pixelSize: Math.round(15 * root.noteZoom / 100)
+                            wrapMode: root.noteWrap ? TextEdit.Wrap : TextEdit.NoWrap
+                            selectByMouse: true
+                            persistentSelection: true
+                            cursorDelegate: Rectangle {
+                                width: 2; height: Math.round(18 * root.noteZoom / 100)
+                                color: "#3be182"; visible: noteEdit.cursorVisible
+                            }
+                            onCursorRectangleChanged: noteFlick.ensureVisible(cursorRectangle)
+                            onTextChanged: {
+                                if (text !== root.noteText) {
+                                    root.noteText = text
+                                    root.markNoteDirty()
+                                }
+                            }
+                            Keys.onPressed: function (e) {
+                                var ctrl = (e.modifiers & Qt.ControlModifier)
+                                if (ctrl && e.key === Qt.Key_S) {
+                                    root.saveNote(); e.accepted = true
+                                } else if (ctrl && (e.key === Qt.Key_T || e.key === Qt.Key_N)) {
+                                    root.newNoteTab(); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_W) {
+                                    root.closeNoteTab(root.noteTabIndex); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_O) {
+                                    root.openNotePicker(); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_F) {
+                                    notesRoot.openFind(false); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_H) {
+                                    notesRoot.openFind(true); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_M) {
+                                    root.notePreview = !root.notePreview; e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_B) {
+                                    notesRoot.wrapSelection("**"); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_I) {
+                                    notesRoot.wrapSelection("*"); e.accepted = true
+                                } else if (ctrl && (e.key === Qt.Key_Plus || e.key === Qt.Key_Equal)) {
+                                    notesRoot.act("zin"); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_Minus) {
+                                    notesRoot.act("zout"); e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_0) {
+                                    root.noteZoom = 100; e.accepted = true
+                                } else if (ctrl && e.key === Qt.Key_Y) {
+                                    noteEdit.redo(); e.accepted = true
+                                } else if (e.key === Qt.Key_F5) {
+                                    notesRoot.act("date"); e.accepted = true
+                                } else if (e.key === Qt.Key_F3) {
+                                    notesRoot.gotoHit((e.modifiers & Qt.ShiftModifier) ? -1 : 1); e.accepted = true
+                                } else if (e.key === Qt.Key_Escape) {
+                                    if (root.noteMenuOpen.length) root.noteMenuOpen = ""
+                                    else if (root.noteFindOpen) notesRoot.closeFind()
+                                } else if (e.key === Qt.Key_Tab && !ctrl) {
+                                    noteEdit.insert(noteEdit.cursorPosition, "    "); e.accepted = true
+                                } else {
+                                    var ch = root.mapLangKey(e)
+                                    if (ch !== null) {
+                                        noteEdit.insert(noteEdit.cursorPosition, ch)
+                                        e.accepted = true
+                                    }
+                                }
+                            }
+                            Component.onCompleted: forceActiveFocus()
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 8
+                        visible: !root.noteText.length
+                        opacity: 0.85
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Чистый лист"
+                            color: "#5f6f78"
+                            font.pixelSize: 20
+                            font.family: root.uiFontBold
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            horizontalAlignment: Text.AlignHCenter
+                            text: "Начните печатать или откройте файл · Ctrl+O\nДля Markdown используйте # заголовки, **жирный** и списки"
+                            color: "#4b5961"
+                            font.pixelSize: 12
+                            font.family: root.uiFont
+                        }
+                        Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 8
+                            topPadding: 6
+                            Rectangle {
+                                width: 120; height: 30; radius: 8
+                                color: emOpen.containsMouse ? "#4af098" : root.accentColor
+                                Text { anchors.centerIn: parent; text: "Открыть файл"; color: "#06210f"; font.pixelSize: 12; font.family: root.uiFontBold }
+                                MouseArea { id: emOpen; anchors.fill: parent; hoverEnabled: true; onClicked: root.openNotePicker() }
+                            }
+                            Rectangle {
+                                width: 120; height: 30; radius: 8
+                                color: emMd.containsMouse ? "#1f2d28" : "#16211e"
+                                border.color: "#2a3a34"
+                                Text { anchors.centerIn: parent; text: "Шаблон заметки"; color: "#d5dde3"; font.pixelSize: 12; font.family: root.uiFont }
+                                MouseArea {
+                                    id: emMd; anchors.fill: parent; hoverEnabled: true
+                                    onClicked: {
+                                        root.noteText = "# Заметка от " + Qt.formatDateTime(new Date(), "dd.MM.yyyy") + "\n\n## Задачи\n- [ ] \n\n## Мысли\n"
+                                        root.markNoteDirty()
+                                        root.notePreview = true
+                                        noteEdit.cursorPosition = root.noteText.indexOf("- [ ] ") + 6
+                                        noteEdit.forceActiveFocus()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: previewPane
+                    visible: notesRoot.showPreview
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    anchors.bottom: parent.bottom
+                    width: (parent.width - 10) / 2
+                    radius: 12
+                    color: "#f7f8f5"
+                    Rectangle {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.margins: 10
+                        width: pvLab.implicitWidth + 14; height: 20; radius: 10
+                        color: "#e4ebe6"
+                        z: 2
+                        Text { id: pvLab; anchors.centerIn: parent; text: "Предпросмотр"; color: "#4b6358"; font.pixelSize: 10; font.family: root.uiFontBold }
+                    }
+                    Flickable {
+                        anchors.fill: parent
+                        anchors.margins: 22
+                        contentHeight: mdText.paintedHeight + 30
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+                        Text {
+                            id: mdText
+                            width: parent.width
+                            text: root.noteText.length ? root.noteText : "*Пусто — начните печатать слева.*"
+                            textFormat: Text.MarkdownText
+                            wrapMode: Text.WordWrap
+                            color: "#1d2a25"
+                            linkColor: "#15803d"
+                            font.pixelSize: Math.round(14 * root.noteZoom / 100)
+                            font.family: root.uiFont
+                        }
+                    }
+                }
+            }
+
+            // выпадающее меню
+            MouseArea {
+                anchors.fill: parent
+                visible: root.noteMenuOpen.length > 0
+                z: 39
+                onClicked: root.noteMenuOpen = ""
+            }
+            Rectangle {
+                id: noteMenuPop
+                visible: root.noteMenuOpen.length > 0
+                z: 40
+                readonly property var items: root.noteMenuOpen.length ? notesRoot.menuItems(root.noteMenuOpen) : []
+                x: 8 + (root.noteMenuOpen === "edit" ? 62 : (root.noteMenuOpen === "view" ? 136 : 0))
+                y: noteToolbar.y + noteToolbar.height - 4
+                width: 250
+                height: menuCol.height + 12
+                radius: 12
+                color: "#131c1a"
+                border.color: "#2a3a34"
+                border.width: 1
+                Column {
+                    id: menuCol
+                    x: 6; y: 6
+                    width: parent.width - 12
+                    spacing: 1
+                    Repeater {
+                        model: noteMenuPop.items
+                        delegate: Rectangle {
+                            width: menuCol.width
+                            height: modelData.a === "sep" ? 9 : 30
+                            radius: 7
+                            color: modelData.a !== "sep" && miH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.14) : "transparent"
+                            Rectangle {
+                                visible: modelData.a === "sep"
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: 8; width: parent.width - 16; height: 1; color: "#24332e"
+                            }
+                            Text {
+                                visible: modelData.a !== "sep"
+                                anchors.left: parent.left; anchors.leftMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 16
+                                text: modelData.check === true ? "✓" : (modelData.dim ? "◷" : "")
+                                color: modelData.dim ? "#5f6f78" : "#3be182"
+                                font.pixelSize: 12
+                            }
+                            Text {
+                                visible: modelData.a !== "sep"
+                                anchors.left: parent.left; anchors.leftMargin: 30
+                                anchors.right: kLab.left; anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.t
+                                elide: Text.ElideMiddle
+                                color: modelData.dim ? "#aab6bf" : "#e8eef2"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                            }
+                            Text {
+                                id: kLab
+                                visible: modelData.a !== "sep"
+                                anchors.right: parent.right; anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.k || ""
+                                color: "#5f6f78"
+                                font.pixelSize: 11
+                                font.family: root.uiFont
+                            }
+                            MouseArea {
+                                id: miH
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                enabled: modelData.a !== "sep"
+                                onClicked: notesRoot.act(modelData.a)
+                            }
+                        }
+                    }
+                }
+            }
+
+            // окно «Открыть»
+            Rectangle {
+                anchors.fill: parent
+                visible: root.notePickerOpen || root.noteSaveAsOpen
+                z: 60
+                color: Qt.rgba(0, 0, 0, 0.55)
+                MouseArea {
+                    anchors.fill: parent
+                    onClicked: { root.notePickerOpen = false; root.noteSaveAsOpen = false }
+                }
+            }
+            Rectangle {
+                visible: root.notePickerOpen
+                z: 61
+                anchors.centerIn: parent
+                width: Math.min(560, parent.width - 60)
+                height: Math.min(480, parent.height - 60)
+                radius: 16
+                color: "#121a18"
+                border.color: "#2a3a34"
+                MouseArea { anchors.fill: parent }
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 18
+                    spacing: 12
+                    Row {
+                        width: parent.width
+                        Column {
+                            width: parent.width - 40
+                            spacing: 2
+                            Text { text: "Открыть файл"; color: "#f1f5f4"; font.pixelSize: 17; font.family: root.uiFontBold }
+                            Text {
+                                text: root.notePickerFiles.length + " текстовых файлов в домашней папке"
+                                color: "#7c8a94"; font.pixelSize: 11; font.family: root.uiFont
+                            }
+                        }
+                        NoteTool { label: "×"; onClicked: root.notePickerOpen = false }
+                    }
+                    Rectangle {
+                        width: parent.width; height: 34; radius: 9
+                        color: "#0a1210"
+                        border.color: pickPath.activeFocus ? "#3be182" : "#24332e"
+                        TextInput {
+                            id: pickPath
+                            anchors.fill: parent
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            verticalAlignment: TextInput.AlignVCenter
+                            color: "#e8eef2"
+                            font.pixelSize: 12
+                            font.family: root.uiFont
+                            clip: true
+                            selectByMouse: true
+                            Keys.onPressed: function (e) {
+                                if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                                    var p = text.trim().replace(/^~/, "/home/" + root.currentUser)
+                                    if (p.length) { root.openNote(p); root.notePickerOpen = false }
+                                    e.accepted = true
+                                } else if (e.key === Qt.Key_Escape) {
+                                    root.notePickerOpen = false; e.accepted = true
+                                } else notesRoot.langInput(pickPath, e)
+                            }
+                            Text {
+                                visible: !parent.text.length
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: "Фильтр или полный путь, например ~/Документы/план.md"
+                                color: "#56636d"; font: parent.font
+                            }
+                        }
+                    }
+                    ListView {
+                        id: pickList
+                        width: parent.width
+                        height: parent.height - 130
+                        clip: true
+                        spacing: 2
+                        model: {
+                            var q = pickPath.text.trim().toLowerCase()
+                            if (!q.length || q.indexOf("/") >= 0) return root.notePickerFiles
+                            return root.notePickerFiles.filter(function (f) { return f.name.toLowerCase().indexOf(q) >= 0 })
+                        }
+                        delegate: Rectangle {
+                            width: pickList.width
+                            height: 44
+                            radius: 9
+                            color: pkH.containsMouse ? Qt.rgba(0.23, 0.88, 0.51, 0.12) : "transparent"
+                            Rectangle {
+                                anchors.left: parent.left; anchors.leftMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 30; height: 30; radius: 8
+                                color: /\.(md|markdown)$/i.test(modelData.name) ? "#1d3550" : "#1a2a24"
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: (modelData.name.split(".").pop() || "").toUpperCase().slice(0, 3)
+                                    color: /\.(md|markdown)$/i.test(modelData.name) ? "#7cc4ff" : "#3be182"
+                                    font.pixelSize: 9; font.family: root.uiFontBold
+                                }
+                            }
+                            Column {
+                                anchors.left: parent.left; anchors.leftMargin: 48
+                                anchors.right: parent.right; anchors.rightMargin: 10
+                                anchors.verticalCenter: parent.verticalCenter
+                                spacing: 1
+                                Text { width: parent.width; text: modelData.name; elide: Text.ElideRight; color: "#e8eef2"; font.pixelSize: 13; font.family: root.uiFont }
+                                Text { width: parent.width; text: modelData.dir; elide: Text.ElideMiddle; color: "#6b7785"; font.pixelSize: 10; font.family: root.uiFont }
+                            }
+                            MouseArea {
+                                id: pkH
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: { root.openNote(modelData.path); root.notePickerOpen = false }
+                            }
+                        }
+                        Text {
+                            anchors.centerIn: parent
+                            visible: pickList.count === 0
+                            text: "Файлы не найдены"
+                            color: "#5f6f78"; font.pixelSize: 13; font.family: root.uiFont
+                        }
+                    }
+                    Row {
+                        anchors.right: parent.right
+                        spacing: 8
+                        Rectangle {
+                            width: 110; height: 32; radius: 8
+                            color: pkRef.containsMouse ? "#1f2d28" : "#16211e"
+                            border.color: "#2a3a34"
+                            Text { anchors.centerIn: parent; text: "Обновить"; color: "#d5dde3"; font.pixelSize: 12; font.family: root.uiFont }
+                            MouseArea { id: pkRef; anchors.fill: parent; hoverEnabled: true; onClicked: root.refreshNotePicker() }
+                        }
+                    }
+                }
+                onVisibleChanged: if (visible) { pickPath.text = ""; pickPath.forceActiveFocus() }
+            }
+
+            // окно «Сохранить как»
+            Rectangle {
+                visible: root.noteSaveAsOpen
+                z: 61
+                anchors.centerIn: parent
+                width: Math.min(480, parent.width - 60)
+                height: 250
+                radius: 16
+                color: "#121a18"
+                border.color: "#2a3a34"
+                MouseArea { anchors.fill: parent }
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 20
+                    spacing: 12
+                    Text { text: "Сохранить как"; color: "#f1f5f4"; font.pixelSize: 17; font.family: root.uiFontBold }
+                    Text { text: "Папка"; color: "#7c8a94"; font.pixelSize: 11; font.family: root.uiFont }
+                    Row {
+                        spacing: 6
+                        Repeater {
+                            model: [
+                                { t: "Документы", d: "Документы" },
+                                { t: "Рабочий стол", d: "Рабочий стол" },
+                                { t: "Загрузки", d: "Загрузки" },
+                                { t: "Домашняя", d: "" }
+                            ]
+                            delegate: Rectangle {
+                                readonly property string full: "/home/" + root.currentUser + (modelData.d.length ? "/" + modelData.d : "")
+                                readonly property bool sel: root.noteSaveAsDir === full
+                                width: fdLab.implicitWidth + 20; height: 28; radius: 14
+                                color: sel ? Qt.rgba(0.23, 0.88, 0.51, 0.2) : (fdH.containsMouse ? "#1c2925" : "#16211e")
+                                border.color: sel ? "#3be182" : "#2a3a34"
+                                Text { id: fdLab; anchors.centerIn: parent; text: modelData.t; color: sel ? "#3be182" : "#d5dde3"; font.pixelSize: 12; font.family: root.uiFont }
+                                MouseArea { id: fdH; anchors.fill: parent; hoverEnabled: true; onClicked: root.noteSaveAsDir = full }
+                            }
+                        }
+                    }
+                    Text { text: "Имя файла (.txt или .md)"; color: "#7c8a94"; font.pixelSize: 11; font.family: root.uiFont }
+                    Rectangle {
+                        width: parent.width; height: 36; radius: 9
+                        color: "#0a1210"
+                        border.color: saveName.activeFocus ? "#3be182" : "#24332e"
+                        TextInput {
+                            id: saveName
+                            anchors.fill: parent
+                            anchors.leftMargin: 12; anchors.rightMargin: 12
+                            verticalAlignment: TextInput.AlignVCenter
+                            text: root.noteSaveAsName
+                            color: "#e8eef2"
+                            font.pixelSize: 13
+                            font.family: root.uiFont
+                            clip: true
+                            selectByMouse: true
+                            onTextEdited: root.noteSaveAsName = text
+                            Keys.onPressed: function (e) {
+                                if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter) {
+                                    root.noteSaveAsCommit(); e.accepted = true
+                                } else if (e.key === Qt.Key_Escape) {
+                                    root.noteSaveAsOpen = false; e.accepted = true
+                                } else {
+                                    notesRoot.langInput(saveName, e)
+                                    if (e.accepted) root.noteSaveAsName = text
+                                }
+                            }
+                        }
+                    }
+                    Row {
+                        anchors.right: parent.right
+                        spacing: 8
+                        Rectangle {
+                            width: 100; height: 34; radius: 9
+                            color: svCancel.containsMouse ? "#1f2d28" : "#16211e"
+                            border.color: "#2a3a34"
+                            Text { anchors.centerIn: parent; text: "Отмена"; color: "#d5dde3"; font.pixelSize: 12; font.family: root.uiFont }
+                            MouseArea { id: svCancel; anchors.fill: parent; hoverEnabled: true; onClicked: root.noteSaveAsOpen = false }
+                        }
+                        Rectangle {
+                            width: 120; height: 34; radius: 9
+                            color: svOk.containsMouse ? "#4af098" : root.accentColor
+                            Text { anchors.centerIn: parent; text: "Сохранить"; color: "#06210f"; font.pixelSize: 12; font.family: root.uiFontBold }
+                            MouseArea { id: svOk; anchors.fill: parent; hoverEnabled: true; onClicked: root.noteSaveAsCommit() }
+                        }
+                    }
+                }
+                onVisibleChanged: if (visible) {
+                    saveName.text = root.noteSaveAsName
+                    saveName.forceActiveFocus()
+                    var dot = saveName.text.lastIndexOf(".")
+                    saveName.select(0, dot > 0 ? dot : saveName.text.length)
+                }
+            }
+
             Shortcut {
                 sequences: ["Ctrl+S"]
                 onActivated: root.saveNote()
@@ -27263,273 +30603,1305 @@ Rectangle {
     Component {
         id: browserPage
         Item {
+            id: bPage
             property string appTitle: ""
+            clip: true
+
+            // Тонкие line-иконки панели GT Browser (не unicode-символы)
+            component BrowserIcon: Item {
+                id: bico
+                property string name: "back"
+                property color stroke: "#dfe6ea"
+                property real line: 1.7
+                width: 18; height: 18
+                Canvas {
+                    anchors.fill: parent
+                    onPaint: {
+                        var ctx = getContext("2d")
+                        ctx.reset()
+                        var s = bico.stroke
+                        ctx.strokeStyle = s
+                        ctx.fillStyle = s
+                        ctx.lineWidth = bico.line
+                        ctx.lineCap = "round"
+                        ctx.lineJoin = "round"
+                        var n = bico.name
+                        function strokePath(fn) { ctx.beginPath(); fn(); ctx.stroke() }
+                        function fillPath(fn) { ctx.beginPath(); fn(); ctx.fill() }
+                        if (n === "back") {
+                            strokePath(function () { ctx.moveTo(11.5, 3.5); ctx.lineTo(5, 9); ctx.lineTo(11.5, 14.5) })
+                        } else if (n === "forward") {
+                            strokePath(function () { ctx.moveTo(6.5, 3.5); ctx.lineTo(13, 9); ctx.lineTo(6.5, 14.5) })
+                        } else if (n === "reload") {
+                            strokePath(function () {
+                                ctx.arc(9, 9, 5.6, -Math.PI * 0.85, Math.PI * 0.85, false)
+                                ctx.moveTo(13.2, 3.2); ctx.lineTo(14.4, 7.6); ctx.lineTo(10.1, 6.6)
+                            })
+                        } else if (n === "stop") {
+                            strokePath(function () {
+                                ctx.moveTo(5, 5); ctx.lineTo(13, 13)
+                                ctx.moveTo(13, 5); ctx.lineTo(5, 13)
+                            })
+                        } else if (n === "home") {
+                            strokePath(function () {
+                                ctx.moveTo(3, 8.5); ctx.lineTo(9, 3); ctx.lineTo(15, 8.5)
+                                ctx.moveTo(5.2, 7.8); ctx.lineTo(5.2, 15); ctx.lineTo(12.8, 15); ctx.lineTo(12.8, 7.8)
+                                ctx.moveTo(7.6, 15); ctx.lineTo(7.6, 11); ctx.lineTo(10.4, 11); ctx.lineTo(10.4, 15)
+                            })
+                        } else if (n === "download") {
+                            strokePath(function () {
+                                ctx.moveTo(9, 3); ctx.lineTo(9, 11.5)
+                                ctx.moveTo(5.5, 8.2); ctx.lineTo(9, 12); ctx.lineTo(12.5, 8.2)
+                                ctx.moveTo(4, 14.5); ctx.lineTo(14, 14.5)
+                            })
+                        } else if (n === "menu") {
+                            fillPath(function () { ctx.arc(9, 4.2, 1.35, 0, Math.PI * 2) })
+                            fillPath(function () { ctx.arc(9, 9, 1.35, 0, Math.PI * 2) })
+                            fillPath(function () { ctx.arc(9, 13.8, 1.35, 0, Math.PI * 2) })
+                        } else if (n === "plus") {
+                            strokePath(function () {
+                                ctx.moveTo(4, 9); ctx.lineTo(14, 9)
+                                ctx.moveTo(9, 4); ctx.lineTo(9, 14)
+                            })
+                        } else if (n === "minus") {
+                            strokePath(function () { ctx.moveTo(4, 9); ctx.lineTo(14, 9) })
+                        } else if (n === "close") {
+                            strokePath(function () {
+                                ctx.moveTo(5, 5); ctx.lineTo(13, 13)
+                                ctx.moveTo(13, 5); ctx.lineTo(5, 13)
+                            })
+                        } else if (n === "search") {
+                            strokePath(function () {
+                                ctx.arc(7.6, 7.6, 4.4, 0, Math.PI * 2)
+                                ctx.moveTo(10.8, 10.8); ctx.lineTo(14.4, 14.4)
+                            })
+                        } else if (n === "lock") {
+                            strokePath(function () {
+                                ctx.moveTo(6.2, 8); ctx.lineTo(6.2, 6.2)
+                                ctx.arc(9, 6.2, 2.8, Math.PI, 0, false)
+                                ctx.lineTo(11.8, 8)
+                            })
+                            fillPath(function () {
+                                ctx.moveTo(5, 8); ctx.lineTo(13, 8); ctx.lineTo(13, 14.5)
+                                ctx.quadraticCurveTo(13, 15.5, 12, 15.5); ctx.lineTo(6, 15.5)
+                                ctx.quadraticCurveTo(5, 15.5, 5, 14.5); ctx.closePath()
+                            })
+                        } else if (n === "info") {
+                            strokePath(function () { ctx.arc(9, 9, 6.2, 0, Math.PI * 2) })
+                            fillPath(function () { ctx.arc(9, 5.7, 1.05, 0, Math.PI * 2) })
+                            strokePath(function () { ctx.moveTo(9, 8.2); ctx.lineTo(9, 13) })
+                        } else if (n === "star") {
+                            strokePath(function () {
+                                ctx.moveTo(9, 2.4); ctx.lineTo(10.7, 6.8); ctx.lineTo(15.4, 7.1)
+                                ctx.lineTo(11.7, 10.2); ctx.lineTo(12.9, 14.8); ctx.lineTo(9, 12.4)
+                                ctx.lineTo(5.1, 14.8); ctx.lineTo(6.3, 10.2); ctx.lineTo(2.6, 7.1)
+                                ctx.lineTo(7.3, 6.8); ctx.closePath()
+                            })
+                        } else if (n === "starfill") {
+                            fillPath(function () {
+                                ctx.moveTo(9, 2.4); ctx.lineTo(10.7, 6.8); ctx.lineTo(15.4, 7.1)
+                                ctx.lineTo(11.7, 10.2); ctx.lineTo(12.9, 14.8); ctx.lineTo(9, 12.4)
+                                ctx.lineTo(5.1, 14.8); ctx.lineTo(6.3, 10.2); ctx.lineTo(2.6, 7.1)
+                                ctx.lineTo(7.3, 6.8); ctx.closePath()
+                            })
+                        } else if (n === "reset") {
+                            strokePath(function () {
+                                ctx.arc(9, 9, 5.2, -Math.PI * 0.2, Math.PI * 1.15, false)
+                                ctx.moveTo(13.8, 4.2); ctx.lineTo(14.2, 8.2); ctx.lineTo(10.4, 7.2)
+                            })
+                        } else if (n === "check") {
+                            strokePath(function () {
+                                ctx.moveTo(3.8, 9.2); ctx.lineTo(7.4, 12.8); ctx.lineTo(14.4, 5.2)
+                            })
+                        } else if (n === "alert") {
+                            strokePath(function () {
+                                ctx.moveTo(9, 2.8); ctx.lineTo(15.2, 14.5); ctx.lineTo(2.8, 14.5); ctx.closePath()
+                                ctx.moveTo(9, 7); ctx.lineTo(9, 10.5)
+                            })
+                            fillPath(function () { ctx.arc(9, 12.6, 0.9, 0, Math.PI * 2) })
+                        }
+                    }
+                    Connections {
+                        target: bico
+                        function onNameChanged() { parent.requestPaint() }
+                        function onStrokeChanged() { parent.requestPaint() }
+                        function onLineChanged() { parent.requestPaint() }
+                    }
+                    Component.onCompleted: requestPaint()
+                }
+            }
+
+            component BarBtn: Rectangle {
+                id: bb
+                property string glyph: "back"
+                property bool enabledBtn: true
+                property bool active: false
+                property int glyphSize: 18
+                signal clicked()
+                width: 34; height: 34; radius: 17
+                color: active ? "#1f3a30" : (bbMouse.containsMouse && enabledBtn ? (bbMouse.pressed ? "#2c3840" : "#232d34") : "transparent")
+                opacity: enabledBtn ? 1 : 0.35
+                Behavior on color { ColorAnimation { duration: 120 } }
+                BrowserIcon {
+                    anchors.centerIn: parent
+                    width: bb.glyphSize; height: bb.glyphSize
+                    name: bb.glyph
+                    stroke: bb.active ? root.accentColor : "#f0f4f7"
+                    line: Math.max(2.1, bb.glyphSize / 8.5)
+                }
+                MouseArea {
+                    id: bbMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    enabled: bb.enabledBtn
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: bb.clicked()
+                }
+            }
+
+            component MenuItemRow: Rectangle {
+                id: mir
+                property string label: ""
+                property string hint: ""
+                property bool checked: false
+                signal act()
+                width: parent ? parent.width : 200
+                height: 32
+                radius: 6
+                color: mirMouse.containsMouse ? "#26313a" : "transparent"
+                Text {
+                    anchors.left: parent.left; anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: (mir.checked ? "✓  " : "") + mir.label
+                    color: "#e8eef2"; font.pixelSize: 13; font.family: root.uiFont
+                }
+                Text {
+                    anchors.right: parent.right; anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: mir.hint
+                    color: "#7d8b95"; font.pixelSize: 11; font.family: root.uiFont
+                }
+                MouseArea {
+                    id: mirMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: mir.act()
+                }
+            }
+
+            component MenuSep: Rectangle {
+                width: parent ? parent.width - 16 : 200
+                x: 8
+                height: 1
+                color: "#2a363e"
+            }
+
+            component SiteBadge: Item {
+                id: sb
+                property string url: ""
+                property string icon: ""
+                property string title: ""
+                property int size: 16
+                width: size; height: size
+                Image {
+                    id: sbImg
+                    anchors.fill: parent
+                    sourceSize.width: 64; sourceSize.height: 64
+                    source: sb.icon.length ? sb.icon : root.browserFaviconFor(sb.url)
+                    asynchronous: true
+                    smooth: true
+                    visible: status === Image.Ready
+                }
+                Rectangle {
+                    anchors.fill: parent
+                    radius: width / 2
+                    visible: !sbImg.visible
+                    color: root.isBrowserNewTab(sb.url) ? "#1f3a30" : root.browserTileColor(root.browserHostOf(sb.url) || sb.title)
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.isBrowserNewTab(sb.url) ? "✦"
+                              : String(sb.title || root.browserHostOf(sb.url) || "?").charAt(0).toUpperCase()
+                        color: root.isBrowserNewTab(sb.url) ? root.accentColor : "#ffffff"
+                        font.pixelSize: Math.max(8, sb.size * 0.55)
+                        font.bold: true
+                    }
+                }
+            }
+
             Rectangle {
                 anchors.fill: parent
-                color: "#0c1216"
-                Column {
-                    anchors.fill: parent
-                    anchors.margins: 14
-                    spacing: 8
-                    // Вкладки
-                    Row {
-                        width: parent.width
-                        spacing: 4
-                        Repeater {
-                            model: root.browserTabs
-                            delegate: Rectangle {
-                                width: Math.min(160, (parent.width - 40) / Math.max(1, root.browserTabs.length))
-                                height: 30
-                                radius: 6
-                                color: index === root.browserTab ? "#1c262e" : "#12171c"
-                                border.width: 1
-                                border.color: index === root.browserTab ? root.accentColor : "#243038"
+                color: "#080c0f"
+            }
+
+            // ── вкладки ─────────────────────────────────────────
+            Rectangle {
+                id: tabStrip
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 42
+                color: "#080c0f"
+
+                Row {
+                    id: tabRow
+                    x: 8
+                    anchors.bottom: parent.bottom
+                    spacing: 2
+                    property real tabW: Math.max(64, Math.min(230, (tabStrip.width - 56) / Math.max(1, root.browserTabs.length) - 2))
+
+                    Repeater {
+                        model: root.browserTabs
+                        delegate: Item {
+                            id: tabItem
+                            property bool cur: index === root.browserTab
+                            width: tabRow.tabW
+                            height: 34
+
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: 10
+                                color: tabItem.cur ? "#151c21" : (tabMouse.containsMouse ? "#12181d" : "transparent")
+                                Behavior on color { ColorAnimation { duration: 120 } }
+                                Rectangle {
+                                    anchors.left: parent.left
+                                    anchors.right: parent.right
+                                    anchors.bottom: parent.bottom
+                                    height: 10
+                                    color: parent.color
+                                }
+                            }
+                            Rectangle {
+                                anchors.right: parent.right
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 1; height: 16
+                                color: "#222c33"
+                                visible: !tabItem.cur && !tabMouse.containsMouse && index + 1 !== root.browserTab
+                            }
+                            MouseArea {
+                                id: tabMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                onClicked: function(mouse) {
+                                    if (mouse.button === Qt.MiddleButton)
+                                        root.browserCloseTab(index)
+                                    else
+                                        root.browserSelectTab(index)
+                                }
+                            }
+                            Item {
+                                id: tabIcon
+                                anchors.left: parent.left; anchors.leftMargin: 12
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 16; height: 16
+                                SiteBadge {
+                                    anchors.fill: parent
+                                    size: 16
+                                    url: modelData.url || ""
+                                    icon: modelData.icon || ""
+                                    title: modelData.title || ""
+                                    visible: !modelData.busy
+                                }
+                                Item {
+                                    anchors.fill: parent
+                                    visible: !!modelData.busy
+                                    Rectangle {
+                                        anchors.fill: parent
+                                        radius: 8
+                                        color: "transparent"
+                                        border.width: 2
+                                        border.color: "#2b3a44"
+                                    }
+                                    Item {
+                                        anchors.fill: parent
+                                        Rectangle {
+                                            width: 5; height: 5; radius: 2.5
+                                            x: parent.width / 2 - 2.5; y: 0
+                                            color: root.accentColor
+                                        }
+                                        RotationAnimator on rotation {
+                                            from: 0; to: 360; duration: 900
+                                            loops: Animation.Infinite
+                                            running: !!modelData.busy
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                anchors.left: tabIcon.right; anchors.leftMargin: 8
+                                anchors.right: tabClose.visible ? tabClose.left : parent.right
+                                anchors.rightMargin: 6
+                                anchors.verticalCenter: parent.verticalCenter
+                                text: modelData.title || "Вкладка"
+                                color: tabItem.cur ? "#f4f7f8" : "#9aa7b2"
+                                font.pixelSize: 12
+                                font.family: root.uiFont
+                                elide: Text.ElideRight
+                            }
+                            Rectangle {
+                                id: tabClose
+                                anchors.right: parent.right; anchors.rightMargin: 8
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 20; height: 20; radius: 10
+                                visible: tabItem.cur || tabMouse.containsMouse || closeMouse.containsMouse || tabItem.width > 120
+                                color: closeMouse.containsMouse ? "#2c3840" : "transparent"
                                 Text {
-                                    anchors.left: parent.left; anchors.leftMargin: 8
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    width: parent.width - 28
-                                    text: modelData.title || "Вкладка"
-                                    color: "#e8eef2"; font.pixelSize: 11; elide: Text.ElideRight
+                                    anchors.centerIn: parent
+                                    text: "×"
+                                    color: closeMouse.containsMouse ? "#ffffff" : "#8a98a3"
+                                    font.pixelSize: 15
                                 }
                                 MouseArea {
+                                    id: closeMouse
                                     anchors.fill: parent
-                                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-                                    onClicked: {
-                                        if (mouse.button === Qt.MiddleButton)
-                                            root.browserCloseTab(index)
-                                        else
-                                            root.browserSelectTab(index)
-                                    }
+                                    hoverEnabled: true
+                                    onClicked: root.browserCloseTab(index)
+                                }
+                            }
+                        }
+                    }
+
+                    BarBtn {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 30; height: 30; radius: 15
+                        glyph: "plus"
+                        glyphSize: 16
+                        onClicked: root.browserNewTab()
+                    }
+                }
+            }
+
+            // ── панель инструментов + омнибокс ──────────────────
+            Rectangle {
+                id: toolbar
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: tabStrip.bottom
+                height: 48
+                color: "#151c21"
+
+                Row {
+                    id: navRow
+                    anchors.left: parent.left; anchors.leftMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    BarBtn { glyph: "back"; enabledBtn: root.browserCanBack; onClicked: root.browseBack() }
+                    BarBtn { glyph: "forward"; enabledBtn: root.browserCanForward; onClicked: root.browseForward() }
+                    BarBtn {
+                        glyph: root.browserBusy ? "stop" : "reload"
+                        enabledBtn: !root.isBrowserNewTab(root.browserUrl) || root.browserBusy
+                        onClicked: root.browseReload()
+                    }
+                    BarBtn { glyph: "home"; onClicked: root.browserGoHome() }
+                }
+
+                Row {
+                    id: sideRow
+                    anchors.right: parent.right; anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 2
+                    Item {
+                        width: 34; height: 34
+                        BarBtn {
+                            anchors.fill: parent
+                            glyph: "download"
+                            active: root.browserDlPanelOpen
+                            onClicked: {
+                                root.browserMenuOpen = false
+                                root.browserDlPanelOpen = !root.browserDlPanelOpen
+                            }
+                        }
+                        Rectangle {
+                            visible: root.browserDlActiveCount > 0
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            anchors.bottom: parent.bottom; anchors.bottomMargin: 3
+                            width: 18; height: 3; radius: 1.5
+                            color: "#2b3a44"
+                            Rectangle {
+                                property var firstActive: {
+                                    for (var i = 0; i < root.browserDownloads.length; ++i)
+                                        if (root.browserDownloads[i].state === "downloading")
+                                            return root.browserDownloads[i]
+                                    return null
+                                }
+                                width: parent.width * Math.max(0.15, firstActive ? (firstActive.pct || 0) / 100 : 0)
+                                height: parent.height; radius: 1.5
+                                color: root.accentColor
+                            }
+                        }
+                        Rectangle {
+                            visible: root.browserDlActiveCount > 0
+                            anchors.right: parent.right; anchors.top: parent.top
+                            width: 15; height: 15; radius: 7.5
+                            color: root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: Math.min(9, root.browserDlActiveCount)
+                                color: "#06210f"; font.pixelSize: 9; font.bold: true
+                            }
+                        }
+                    }
+                    BarBtn {
+                        glyph: "menu"
+                        active: root.browserMenuOpen
+                        onClicked: {
+                            root.browserDlPanelOpen = false
+                            root.browserMenuOpen = !root.browserMenuOpen
+                        }
+                    }
+                }
+
+                Rectangle {
+                    id: omni
+                    anchors.left: navRow.right; anchors.leftMargin: 8
+                    anchors.right: sideRow.left; anchors.rightMargin: 8
+                    anchors.verticalCenter: parent.verticalCenter
+                    height: 36
+                    radius: 18
+                    color: urlField.activeFocus ? "#0b1115" : (omniMouse.containsMouse ? "#1e272d" : "#0f161a")
+                    border.width: urlField.activeFocus ? 2 : 1
+                    border.color: urlField.activeFocus ? root.accentColor : "#222c33"
+                    Behavior on color { ColorAnimation { duration: 120 } }
+
+                    property bool secure: /^https:/i.test(root.browserUrl)
+                    property bool blank: root.isBrowserNewTab(root.browserUrl)
+
+                    MouseArea {
+                        id: omniMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        acceptedButtons: Qt.NoButton
+                    }
+
+                    Item {
+                        id: omniIcon
+                        anchors.left: parent.left; anchors.leftMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24; height: 24
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 12
+                            color: omni.secure && !urlField.activeFocus && !omni.blank ? "#1a2e27" : "transparent"
+                        }
+                        // лупа
+                        Item {
+                            anchors.centerIn: parent
+                            width: 14; height: 14
+                            visible: urlField.activeFocus || omni.blank
+                            Rectangle {
+                                width: 10; height: 10; radius: 5
+                                color: "transparent"
+                                border.width: 2; border.color: "#9aa7b2"
+                            }
+                            Rectangle {
+                                x: 8; y: 9
+                                width: 6; height: 2; radius: 1
+                                color: "#9aa7b2"
+                                rotation: 45
+                            }
+                        }
+                        // замок
+                        Item {
+                            anchors.centerIn: parent
+                            width: 10; height: 13
+                            visible: !urlField.activeFocus && !omni.blank && omni.secure
+                            Rectangle {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                y: 0
+                                width: 7; height: 8; radius: 3.5
+                                color: "transparent"
+                                border.width: 1.6; border.color: root.accentColor
+                            }
+                            Rectangle {
+                                anchors.bottom: parent.bottom
+                                width: 10; height: 7; radius: 2
+                                color: root.accentColor
+                            }
+                        }
+                        // «не защищено»
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: 14; height: 14; radius: 7
+                            visible: !urlField.activeFocus && !omni.blank && !omni.secure
+                            color: "transparent"
+                            border.width: 1.5; border.color: "#9aa7b2"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "i"; color: "#9aa7b2"
+                                font.pixelSize: 9; font.bold: true
+                            }
+                        }
+                    }
+
+                    TextInput {
+                        id: urlField
+                        anchors.left: omniIcon.right; anchors.leftMargin: 8
+                        anchors.right: omniTail.left; anchors.rightMargin: 6
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: parent.height
+                        verticalAlignment: TextInput.AlignVCenter
+                        clip: true
+                        selectByMouse: true
+                        color: activeFocus ? "#f4f7f8" : "transparent"
+                        selectionColor: "#2f6d55"
+                        selectedTextColor: "#ffffff"
+                        font.pixelSize: 14
+                        font.family: root.uiFont
+                        text: root.isBrowserNewTab(root.browserUrl) ? "" : root.browserUrl
+                        onActiveFocusChanged: {
+                            if (activeFocus) {
+                                Qt.callLater(selectAll)
+                            } else {
+                                text = Qt.binding(function () {
+                                    return root.isBrowserNewTab(root.browserUrl) ? "" : root.browserUrl
+                                })
+                            }
+                        }
+                        onAccepted: {
+                            var t = text.trim()
+                            if (!t.length)
+                                return
+                            root.browserUrl = t
+                            focus = false
+                            root.browseGo()
+                        }
+                        Keys.onEscapePressed: focus = false
+
+                        Text {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            visible: !urlField.activeFocus && !omni.blank
+                            textFormat: Text.RichText
+                            elide: Text.ElideRight
+                            text: root.browserPrettyUrl(root.browserUrl)
+                            font.pixelSize: 14
+                            font.family: root.uiFont
+                        }
+                        Text {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            visible: !urlField.text.length && (omni.blank || urlField.activeFocus)
+                            text: "Поиск в Google или введите адрес"
+                            color: "#6a7882"
+                            font.pixelSize: 14
+                            font.family: root.uiFont
+                        }
+                    }
+
+                    Row {
+                        id: omniTail
+                        anchors.right: parent.right; anchors.rightMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        Rectangle {
+                            visible: Math.abs(root.browserZoom - 1.0) > 0.01
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: zoomLab.implicitWidth + 16; height: 24; radius: 12
+                            color: zoomMouse.containsMouse ? "#26313a" : "#1b242a"
+                            Text {
+                                id: zoomLab
+                                anchors.centerIn: parent
+                                text: Math.round(root.browserZoom * 100) + "%"
+                                color: "#c5d0d8"; font.pixelSize: 11
+                            }
+                            MouseArea {
+                                id: zoomMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: root.browserSetZoom(1.0)
+                            }
+                        }
+                        BarBtn {
+                            visible: !omni.blank
+                            width: 28; height: 28; radius: 14
+                            glyph: root.isBrowserBookmarked() ? "starfill" : "star"
+                            glyphSize: 16
+                            active: root.isBrowserBookmarked()
+                            onClicked: root.toggleBrowserBookmark()
+                        }
+                    }
+                }
+
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.bottom: parent.bottom
+                    height: 2
+                    width: parent.width * Math.max(0.05, root.browserProgress)
+                    visible: root.browserBusy || root.browserProgress > 0
+                    color: root.accentColor
+                    Behavior on width { NumberAnimation { duration: 200; easing.type: Easing.OutCubic } }
+                }
+            }
+
+            // ── панель закладок ─────────────────────────────────
+            Rectangle {
+                id: bmBar
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: toolbar.bottom
+                height: root.browserShowBookmarks ? 32 : 0
+                visible: height > 0
+                color: "#151c21"
+                clip: true
+                Behavior on height { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+                Flickable {
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    contentWidth: bmRow.width
+                    flickableDirection: Flickable.HorizontalFlick
+                    clip: true
+                    Row {
+                        id: bmRow
+                        height: 32
+                        spacing: 2
+                        Text {
+                            visible: root.browserBookmarks.length === 0
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Нажмите ☆ в адресной строке, чтобы закрепить сайт здесь"
+                            color: "#6a7882"; font.pixelSize: 11; font.family: root.uiFont
+                        }
+                        Repeater {
+                            model: root.browserBookmarks
+                            delegate: Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                height: 26; radius: 13
+                                width: Math.min(180, bmLab.implicitWidth + 40)
+                                color: bmH.containsMouse ? "#232d34" : "transparent"
+                                SiteBadge {
+                                    id: bmIco
+                                    anchors.left: parent.left; anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    size: 14
+                                    url: modelData.url
+                                    title: modelData.title
                                 }
                                 Text {
-                                    anchors.right: parent.right; anchors.rightMargin: 6
+                                    id: bmLab
+                                    anchors.left: bmIco.right; anchors.leftMargin: 7
+                                    anchors.right: parent.right; anchors.rightMargin: 10
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "×"; color: "#888"; font.pixelSize: 14
-                                    MouseArea { anchors.fill: parent; anchors.margins: -4; onClicked: root.browserCloseTab(index) }
+                                    text: modelData.title
+                                    elide: Text.ElideRight
+                                    color: "#c5d0d8"; font.pixelSize: 12; font.family: root.uiFont
                                 }
-                            }
-                        }
-                        Rectangle {
-                            width: 30; height: 30; radius: 6; color: "#1c262e"
-                            Text { anchors.centerIn: parent; text: "+"; color: "#e8eef2"; font.pixelSize: 16 }
-                            MouseArea { anchors.fill: parent; onClicked: root.browserNewTab() }
-                        }
-                    }
-                    Row {
-                        width: parent.width
-                        spacing: 6
-                        Rectangle {
-                            width: 36; height: 36; radius: 8
-                            color: root.browserHistIndex > 0 ? "#1c262e" : "#12171c"
-                            opacity: root.browserHistIndex > 0 ? 1 : 0.45
-                            Text { anchors.centerIn: parent; text: "←"; color: "#e8eef2"; font.pixelSize: 16 }
-                            MouseArea { anchors.fill: parent; enabled: root.browserHistIndex > 0; onClicked: root.browseBack() }
-                        }
-                        Rectangle {
-                            width: 36; height: 36; radius: 8
-                            color: root.browserHistIndex >= 0 && root.browserHistIndex < root.browserHistory.length - 1 ? "#1c262e" : "#12171c"
-                            opacity: root.browserHistIndex >= 0 && root.browserHistIndex < root.browserHistory.length - 1 ? 1 : 0.45
-                            Text { anchors.centerIn: parent; text: "→"; color: "#e8eef2"; font.pixelSize: 16 }
-                            MouseArea {
-                                anchors.fill: parent
-                                enabled: root.browserHistIndex >= 0 && root.browserHistIndex < root.browserHistory.length - 1
-                                onClicked: root.browseForward()
-                            }
-                        }
-                        Rectangle {
-                            width: 36; height: 36; radius: 8; color: "#1c262e"
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.browserBusy ? "…" : "↻"
-                                color: "#e8eef2"; font.pixelSize: 15
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: root.browseReload() }
-                        }
-                        Rectangle {
-                            width: parent.width - 36 * 3 - 92 - 40 - 36
-                            height: 36
-                            radius: 10
-                            color: "#121a20"
-                            border.color: "#243038"
-                            border.width: 1
-                            TextInput {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                color: "#f4f7f8"
-                                font.pixelSize: 14
-                                font.family: root.uiFont
-                                text: root.browserUrl
-                                selectByMouse: true
-                                onTextChanged: root.browserUrl = text
-                                Keys.onReturnPressed: root.browseGo()
-                            }
-                        }
-                        Rectangle {
-                            width: 40; height: 36; radius: 10
-                            color: root.isBrowserBookmarked() ? "#16352e" : "#1c262e"
-                            border.width: 1
-                            border.color: root.isBrowserBookmarked() ? root.accentColor : "#243038"
-                            Text {
-                                anchors.centerIn: parent
-                                text: root.isBrowserBookmarked() ? "★" : "☆"
-                                color: root.isBrowserBookmarked() ? root.accentColor : "#e8eef2"
-                                font.pixelSize: 16
-                            }
-                            MouseArea { anchors.fill: parent; onClicked: root.toggleBrowserBookmark() }
-                        }
-                        Rectangle {
-                            width: 92; height: 36; radius: 10; color: root.accentColor
-                            Text { anchors.centerIn: parent; text: root.browserBusy ? "…" : "Открыть"; color: "#06210f"; font.bold: true; font.pixelSize: 13 }
-                            MouseArea { anchors.fill: parent; onClicked: root.browseGo() }
-                        }
-                    }
-                    // Закладки
-                    Flickable {
-                        width: parent.width
-                        height: 32
-                        contentWidth: bmRow.width + 8
-                        clip: true
-                        Row {
-                            id: bmRow
-                            spacing: 6
-                            Repeater {
-                                model: root.browserBookmarks
-                                delegate: Rectangle {
-                                    height: 28; radius: 14
-                                    width: bmLab.implicitWidth + 20
-                                    color: bmH.containsMouse ? "#1c262e" : "#121a20"
-                                    border.width: 1; border.color: "#243038"
-                                    Text {
-                                        id: bmLab
-                                        anchors.centerIn: parent
-                                        text: modelData.title
-                                        color: "#c5d0d8"; font.pixelSize: 12; font.family: root.uiFont
-                                    }
-                                    MouseArea {
-                                        id: bmH; anchors.fill: parent; hoverEnabled: true
-                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
-                                        onClicked: {
-                                            if (mouse.button === Qt.RightButton)
-                                                root.toggleBrowserBookmark() // won't remove specific - open instead
-                                            else
-                                                root.openBrowserBookmark(modelData.url)
-                                        }
-                                        onPressAndHold: {
-                                            // удалить эту закладку
+                                MouseArea {
+                                    id: bmH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                                    onClicked: function(mouse) {
+                                        if (mouse.button === Qt.RightButton) {
                                             var list = root.browserBookmarks.slice()
                                             list.splice(index, 1)
                                             root.browserBookmarks = list
                                             root.saveDesktop()
+                                            root.notify("Браузер", "Закладка удалена", "ok")
+                                        } else if (mouse.button === Qt.MiddleButton) {
+                                            root.browserNewTab(modelData.url)
+                                        } else {
+                                            root.openBrowserBookmark(modelData.url)
                                         }
                                     }
                                 }
                             }
                         }
                     }
-                    Row {
+                }
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 1
+                    color: "#0a0f12"
+                }
+            }
+
+            // ── содержимое страницы ─────────────────────────────
+            Rectangle {
+                id: content
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: bmBar.bottom
+                anchors.bottom: parent.bottom
+                color: "#ffffff"
+                clip: true
+
+                Loader {
+                    id: webEngineLoader
+                    anchors.fill: parent
+                    active: !root.browserEngineFailed
+                    source: "GtWebEngine.qml"
+                    onLoaded: {
+                        item.shell = root
+                        if (!root.browserEngine)
+                            root.attachBrowserEngine(item)
+                    }
+                    onStatusChanged: {
+                        if (status === Loader.Error) {
+                            console.log("GTOS_BROWSER_ENGINE unavailable — rich-text fallback")
+                            root.browserEngineFailed = true
+                        }
+                    }
+                    Component.onDestruction: {
+                        if (item && root.browserEngine === item)
+                            root.browserEngine = null
+                    }
+                }
+                Flickable {
+                    visible: !root.browserEngine
+                    anchors.fill: parent
+                    anchors.margins: 24
+                    contentWidth: width
+                    contentHeight: pageTxt.paintedHeight + 28
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+                    Text {
+                        id: pageTxt
                         width: parent.width
-                        spacing: 6
+                        wrapMode: Text.Wrap
+                        color: "#202124"
+                        font.pixelSize: 15
+                        font.family: root.uiFont
+                        textFormat: Text.RichText
+                        text: root.browserBody
+                        onLinkActivated: function(link) {
+                            var href = link
+                            if (href.indexOf("http://") !== 0 && href.indexOf("https://") !== 0) {
+                                if (href.indexOf("/") === 0) {
+                                    var base = root.browserUrl.replace(/^(https?:\/\/[^\/]+).*/, "$1")
+                                    href = base + href
+                                } else {
+                                    href = "https://" + href
+                                }
+                            }
+                            root.browserUrl = href
+                            root.browseGo()
+                        }
+                    }
+                }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: 56; height: 56; radius: 28
+                    color: "#eef2f4"
+                    visible: root.browserBusy && !root.browserEngine
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: 28; height: 28; radius: 14
+                        color: "transparent"
+                        border.width: 3; border.color: "#d0d7dc"
                         Rectangle {
-                            width: parent.width - 100
-                            height: 34
-                            radius: 17
-                            color: "#121a20"
-                            border.color: "#243038"
-                            border.width: 1
-                            TextInput {
-                                anchors.fill: parent
-                                anchors.leftMargin: 14
-                                anchors.rightMargin: 14
+                            width: 7; height: 7; radius: 3.5
+                            x: parent.width / 2 - 3.5; y: -2
+                            color: "#0b8457"
+                        }
+                        RotationAnimator on rotation {
+                            from: 0; to: 360; duration: 900
+                            loops: Animation.Infinite
+                            running: root.browserBusy && !root.browserEngine
+                        }
+                    }
+                }
+
+                // ── «Новая вкладка» ─────────────────────────────
+                Rectangle {
+                    id: ntp
+                    anchors.fill: parent
+                    visible: root.isBrowserNewTab(root.browserUrl)
+                    gradient: Gradient {
+                        GradientStop { position: 0.0; color: "#111a20" }
+                        GradientStop { position: 1.0; color: "#090d10" }
+                    }
+                    onVisibleChanged: if (visible) ntpInput.text = ""
+
+                    MouseArea {
+                        anchors.fill: parent
+                        onClicked: ntpInput.forceActiveFocus()
+                    }
+
+                    Rectangle {
+                        width: 520; height: 520; radius: 260
+                        x: parent.width * 0.5 - width / 2
+                        y: -height * 0.55
+                        color: root.accentColor
+                        opacity: 0.05
+                    }
+
+                    Column {
+                        id: ntpCol
+                        width: Math.min(660, parent.width - 48)
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: Math.max(24, parent.height * 0.16)
+                        spacing: 26
+
+                        Row {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            spacing: 14
+                            Rectangle {
+                                width: 46; height: 46; radius: 14
+                                gradient: Gradient {
+                                    GradientStop { position: 0.0; color: root.accentColor }
+                                    GradientStop { position: 1.0; color: "#0e7a52" }
+                                }
+                                Text {
+                                    anchors.centerIn: parent
+                                    text: "GT"
+                                    color: "#04170d"
+                                    font.pixelSize: 17
+                                    font.family: root.uiFontBold
+                                    font.bold: true
+                                }
+                            }
+                            Column {
                                 anchors.verticalCenter: parent.verticalCenter
-                                color: "#f4f7f8"
-                                font.pixelSize: 13
-                                font.family: root.uiFont
-                                text: root.browserSearch
-                                selectByMouse: true
+                                spacing: 0
+                                Text {
+                                    text: "GT Browser"
+                                    color: "#f4f7f8"
+                                    font.pixelSize: 26
+                                    font.family: root.uiFontBold
+                                    font.bold: true
+                                }
+                                Text {
+                                    text: Qt.formatDate(new Date(), "dddd, d MMMM")
+                                    color: "#7d8b95"
+                                    font.pixelSize: 12
+                                    font.family: root.uiFont
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            width: parent.width
+                            height: 50
+                            radius: 25
+                            color: "#151c21"
+                            border.width: ntpInput.activeFocus ? 2 : 1
+                            border.color: ntpInput.activeFocus ? root.accentColor : "#26313a"
+                            Item {
+                                id: ntpGlass
+                                anchors.left: parent.left; anchors.leftMargin: 20
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 16; height: 16
+                                Rectangle {
+                                    width: 12; height: 12; radius: 6
+                                    color: "transparent"
+                                    border.width: 2; border.color: "#9aa7b2"
+                                }
+                                Rectangle {
+                                    x: 9; y: 11
+                                    width: 7; height: 2; radius: 1
+                                    color: "#9aa7b2"
+                                    rotation: 45
+                                }
+                            }
+                            TextInput {
+                                id: ntpInput
+                                anchors.left: ntpGlass.right; anchors.leftMargin: 14
+                                anchors.right: parent.right; anchors.rightMargin: 22
+                                anchors.verticalCenter: parent.verticalCenter
+                                height: parent.height
+                                verticalAlignment: TextInput.AlignVCenter
                                 clip: true
-                                onTextChanged: root.browserSearch = text
-                                Keys.onReturnPressed: root.browseSearchGo()
+                                selectByMouse: true
+                                color: "#f4f7f8"
+                                selectionColor: "#2f6d55"
+                                font.pixelSize: 15
+                                font.family: root.uiFont
+                                onAccepted: {
+                                    var t = text.trim()
+                                    if (!t.length)
+                                        return
+                                    root.browserUrl = t
+                                    text = ""
+                                    focus = false
+                                    root.browseGo()
+                                }
                                 Text {
                                     anchors.fill: parent
                                     verticalAlignment: Text.AlignVCenter
-                                    text: "Поиск в Google…"
+                                    visible: !ntpInput.text.length
+                                    text: "Поиск в Google или введите адрес"
                                     color: "#6a7882"
-                                    font.pixelSize: 13
-                                    visible: !root.browserSearch.length && !parent.activeFocus
+                                    font.pixelSize: 15
+                                    font.family: root.uiFont
                                 }
                             }
                         }
-                        Rectangle {
-                            width: 94; height: 34; radius: 17; color: "#1c262e"
-                            border.width: 1; border.color: "#243038"
-                            Text { anchors.centerIn: parent; text: "Найти"; color: "#e8eef2"; font.pixelSize: 13 }
-                            MouseArea { anchors.fill: parent; onClicked: root.browseSearchGo() }
-                        }
-                    }
-                    Rectangle {
-                        width: parent.width
-                        height: 3
-                        radius: 2
-                        color: "#1c262e"
-                        visible: root.browserBusy || root.browserProgress > 0
-                        Rectangle {
-                            width: parent.width * Math.max(0.05, root.browserProgress)
-                            height: parent.height
-                            radius: 2
-                            color: root.accentColor
-                            Behavior on width { NumberAnimation { duration: 180 } }
-                        }
-                    }
-                    Rectangle {
-                        width: parent.width
-                        height: Math.max(120, parent.height - 168)
-                        radius: 12
-                        color: "#ffffff"
-                        border.width: 1
-                        border.color: "#dadce0"
-                        Flickable {
-                            anchors.fill: parent
-                            anchors.margins: 18
-                            contentWidth: width
-                            contentHeight: pageTxt.paintedHeight + 28
-                            clip: true
-                            boundsBehavior: Flickable.StopAtBounds
-                            Text {
-                                id: pageTxt
-                                width: parent.width
-                                wrapMode: Text.Wrap
-                                color: "#202124"
-                                font.pixelSize: 15
-                                font.family: root.uiFont
-                                textFormat: Text.RichText
-                                text: root.browserBody
-                                onLinkActivated: function(link) {
-                                    var href = link
-                                    if (href.indexOf("http://") !== 0 && href.indexOf("https://") !== 0) {
-                                        if (href.indexOf("/") === 0) {
-                                            var base = root.browserUrl.replace(/^(https?:\/\/[^\/]+).*/, "$1")
-                                            href = base + href
-                                        } else {
-                                            href = "https://" + href
+
+                        Grid {
+                            id: ntpTiles
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            columns: Math.max(1, Math.min(4, Math.floor((ntpCol.width + 12) / 112)))
+                            spacing: 12
+                            Repeater {
+                                model: root.browserShortcuts()
+                                delegate: Rectangle {
+                                    width: 100; height: 100; radius: 14
+                                    color: tileMouse.containsMouse ? "#1a2329" : "transparent"
+                                    Behavior on color { ColorAnimation { duration: 120 } }
+                                    Rectangle {
+                                        id: tileDisc
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        y: 14
+                                        width: 50; height: 50; radius: 25
+                                        color: "#1d262c"
+                                        border.width: 1
+                                        border.color: tileMouse.containsMouse ? "#33424c" : "#232d34"
+                                        SiteBadge {
+                                            anchors.centerIn: parent
+                                            size: 26
+                                            url: modelData.url
+                                            title: modelData.title
                                         }
                                     }
-                                    root.browserUrl = href
-                                    root.browseGo()
+                                    Text {
+                                        anchors.top: tileDisc.bottom; anchors.topMargin: 10
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: parent.width - 12
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: modelData.title
+                                        elide: Text.ElideRight
+                                        color: "#c5d0d8"
+                                        font.pixelSize: 12
+                                        font.family: root.uiFont
+                                    }
+                                    MouseArea {
+                                        id: tileMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        cursorShape: Qt.PointingHandCursor
+                                        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+                                        onClicked: function(mouse) {
+                                            if (mouse.button === Qt.MiddleButton)
+                                                root.browserNewTab(modelData.url)
+                                            else
+                                                root.openBrowserBookmark(modelData.url)
+                                        }
+                                    }
                                 }
                             }
                         }
-                        Rectangle {
-                            anchors.centerIn: parent
-                            width: 64; height: 64; radius: 32
-                            color: "#e8eef2"
-                            visible: root.browserBusy
-                            opacity: 0.92
+                    }
+
+                    Text {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottom: parent.bottom; anchors.bottomMargin: 18
+                        text: "Файлы с сайтов сохраняются в «Загрузки» · ⋮ — масштаб, закладки и загрузки"
+                        color: "#56636c"
+                        font.pixelSize: 11
+                        font.family: root.uiFont
+                    }
+                }
+            }
+
+            // закрытие всплывающих панелей кликом мимо
+            MouseArea {
+                anchors.fill: parent
+                z: 40
+                visible: root.browserMenuOpen || root.browserDlPanelOpen
+                onClicked: {
+                    root.browserMenuOpen = false
+                    root.browserDlPanelOpen = false
+                }
+            }
+
+            // ── меню ⋮ ──────────────────────────────────────────
+            Rectangle {
+                id: bMenu
+                z: 50
+                visible: root.browserMenuOpen
+                anchors.right: parent.right; anchors.rightMargin: 8
+                y: toolbar.y + toolbar.height - 4
+                width: 268
+                height: menuCol.implicitHeight + 12
+                radius: 12
+                color: "#1a2228"
+                border.width: 1
+                border.color: "#2a363e"
+                opacity: visible ? 1 : 0
+                Behavior on opacity { NumberAnimation { duration: 120 } }
+
+                Column {
+                    id: menuCol
+                    x: 6; y: 6
+                    width: parent.width - 12
+                    spacing: 2
+                    MenuItemRow { label: "Новая вкладка"; onAct: root.browserNewTab() }
+                    MenuItemRow {
+                        label: "Закрыть вкладку"
+                        onAct: { root.browserMenuOpen = false; root.browserCloseTab(root.browserTab) }
+                    }
+                    MenuItemRow { label: "Домашняя страница"; onAct: root.browserGoHome() }
+                    Item { width: 1; height: 4 }
+                    MenuSep {}
+                    Item { width: 1; height: 4 }
+                    Item {
+                        width: parent.width
+                        height: 34
+                        Text {
+                            anchors.left: parent.left; anchors.leftMargin: 12
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: "Масштаб"
+                            color: "#e8eef2"; font.pixelSize: 13; font.family: root.uiFont
+                        }
+                        Row {
+                            anchors.right: parent.right; anchors.rightMargin: 6
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            BarBtn { width: 30; height: 30; radius: 15; glyph: "minus"; onClicked: root.browserSetZoom(root.browserZoom - 0.1) }
                             Text {
+                                width: 46
+                                anchors.verticalCenter: parent.verticalCenter
+                                horizontalAlignment: Text.AlignHCenter
+                                text: Math.round(root.browserZoom * 100) + "%"
+                                color: "#e8eef2"; font.pixelSize: 12
+                            }
+                            BarBtn { width: 30; height: 30; radius: 15; glyph: "plus"; onClicked: root.browserSetZoom(root.browserZoom + 0.1) }
+                            BarBtn { width: 30; height: 30; radius: 15; glyph: "reset"; glyphSize: 15; onClicked: root.browserSetZoom(1.0) }
+                        }
+                    }
+                    Item { width: 1; height: 4 }
+                    MenuSep {}
+                    Item { width: 1; height: 4 }
+                    MenuItemRow {
+                        label: "Загрузки"
+                        hint: root.browserDlActiveCount > 0 ? (root.browserDlActiveCount + " активн.") : ""
+                        onAct: { root.browserMenuOpen = false; root.browserDlPanelOpen = true }
+                    }
+                    MenuItemRow {
+                        label: "Открыть папку «Загрузки»"
+                        onAct: { root.browserMenuOpen = false; root.openDownloadsFolder() }
+                    }
+                    MenuItemRow {
+                        label: "Панель закладок"
+                        checked: root.browserShowBookmarks
+                        onAct: root.browserShowBookmarks = !root.browserShowBookmarks
+                    }
+                    MenuItemRow {
+                        visible: !root.isBrowserNewTab(root.browserUrl)
+                        label: root.isBrowserBookmarked() ? "Убрать из закладок" : "Добавить в закладки"
+                        onAct: { root.browserMenuOpen = false; root.toggleBrowserBookmark() }
+                    }
+                    MenuItemRow {
+                        visible: !root.isBrowserNewTab(root.browserUrl)
+                        label: "Копировать адрес"
+                        onAct: {
+                            root.browserMenuOpen = false
+                            root.pushClipboard(root.browserUrl)
+                            root.notify("Браузер", "Адрес скопирован", "ok")
+                        }
+                    }
+                    Item { width: 1; height: 4 }
+                    MenuSep {}
+                    Text {
+                        width: parent.width
+                        topPadding: 8; bottomPadding: 4
+                        leftPadding: 12
+                        text: root.browserEngine ? "Движок Chromium · Qt WebEngine" : "Облегчённый режим (без Chromium)"
+                        color: "#56636c"; font.pixelSize: 10; font.family: root.uiFont
+                    }
+                }
+            }
+
+            // ── всплывающая панель загрузок ─────────────────────
+            Rectangle {
+                id: dlPop
+                z: 50
+                visible: root.browserDlPanelOpen
+                anchors.right: parent.right; anchors.rightMargin: 8
+                y: toolbar.y + toolbar.height - 4
+                width: Math.min(400, parent.width - 16)
+                height: Math.min(parent.height - y - 12, Math.max(150, 96 + root.browserDownloads.length * 56))
+                radius: 12
+                color: "#1a2228"
+                border.width: 1
+                border.color: "#2a363e"
+
+                Item {
+                    id: dlHead
+                    x: 14; y: 10
+                    width: parent.width - 28
+                    height: 30
+                    Text {
+                        anchors.left: parent.left
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "Загрузки"
+                        color: "#f4f7f8"
+                        font.pixelSize: 15
+                        font.family: root.uiFontBold
+                    }
+                    Row {
+                        anchors.right: parent.right
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+                        Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: folderLab.implicitWidth + 20; height: 26; radius: 13
+                            color: folderMouse.containsMouse ? "#2c3840" : "#232d34"
+                            Text {
+                                id: folderLab
                                 anchors.centerIn: parent
-                                text: "…"
-                                color: "#243038"; font.pixelSize: 28; font.bold: true
+                                text: "Открыть папку"
+                                color: "#c5d0d8"; font.pixelSize: 11; font.family: root.uiFont
+                            }
+                            MouseArea {
+                                id: folderMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: root.openDownloadsFolder()
                             }
                         }
+                        BarBtn { width: 30; height: 30; radius: 15; glyph: "close"; glyphSize: 14; onClicked: root.browserDlPanelOpen = false }
+                    }
+                }
+
+                Column {
+                    visible: root.browserDownloads.length === 0
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    y: dlHead.y + dlHead.height + 18
+                    spacing: 6
+                    BrowserIcon {
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        width: 28; height: 28
+                        name: "download"
+                        stroke: "#3b4a54"
+                        line: 2.4
+                    }
+                    Text {
+                        width: dlPop.width - 48
+                        horizontalAlignment: Text.AlignHCenter
+                        text: "Пока пусто. Файлы и приложения с сайтов сохраняются в «Загрузки»."
+                        color: "#7d8b95"; font.pixelSize: 12; wrapMode: Text.WordWrap
+                        font.family: root.uiFont
+                    }
+                }
+
+                Flickable {
+                    id: dlFlick
+                    visible: root.browserDownloads.length > 0
+                    x: 8
+                    y: dlHead.y + dlHead.height + 6
+                    width: parent.width - 16
+                    height: parent.height - y - 44
+                    clip: true
+                    contentHeight: dlCol.height
+                    boundsBehavior: Flickable.StopAtBounds
+                    Column {
+                        id: dlCol
+                        width: parent.width
+                        spacing: 2
+                        Repeater {
+                            model: root.browserDownloads
+                            delegate: Rectangle {
+                                width: dlCol.width
+                                height: 54
+                                radius: 8
+                                color: dlItemH.containsMouse ? "#222c33" : "transparent"
+                                Rectangle {
+                                    id: dlBadge
+                                    anchors.left: parent.left; anchors.leftMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: 34; height: 34; radius: 10
+                                    color: modelData.state === "done" ? "#16352e"
+                                           : (modelData.state === "error" ? "#3a1515" : "#202a31")
+                                    BrowserIcon {
+                                        anchors.centerIn: parent
+                                        width: 18; height: 18
+                                        name: modelData.state === "done" ? "check"
+                                              : (modelData.state === "error" ? "alert" : "download")
+                                        stroke: modelData.state === "done" ? root.accentColor
+                                                : (modelData.state === "error" ? "#fca5a5" : "#c5d0d8")
+                                        line: 2.2
+                                    }
+                                }
+                                Column {
+                                    anchors.left: dlBadge.right; anchors.leftMargin: 10
+                                    anchors.right: dlAct.left; anchors.rightMargin: 10
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    spacing: 3
+                                    Text {
+                                        width: parent.width
+                                        text: modelData.name
+                                        elide: Text.ElideMiddle
+                                        color: "#e8eef2"; font.pixelSize: 12; font.family: root.uiFont
+                                    }
+                                    Text {
+                                        text: modelData.state === "downloading"
+                                              ? ((modelData.pct > 0 ? (modelData.pct + "% · ") : "") + "скачивается…")
+                                              : (modelData.state === "done" ? "Готово · «Загрузки»" : "Ошибка загрузки")
+                                        color: modelData.state === "error" ? "#fca5a5" : "#7d8b95"
+                                        font.pixelSize: 10
+                                        font.family: root.uiFont
+                                    }
+                                    Rectangle {
+                                        visible: modelData.state === "downloading"
+                                        width: parent.width; height: 3; radius: 1.5; color: "#2b3a44"
+                                        Rectangle {
+                                            width: parent.width * Math.max(0.04, (modelData.pct || 0) / 100)
+                                            height: parent.height; radius: 1.5; color: root.accentColor
+                                            Behavior on width { NumberAnimation { duration: 200 } }
+                                        }
+                                    }
+                                }
+                                MouseArea {
+                                    id: dlItemH
+                                    anchors.fill: parent
+                                    hoverEnabled: true
+                                    onDoubleClicked: if (modelData.state === "done") root.openBrowserDownload(modelData)
+                                }
+                                Rectangle {
+                                    id: dlAct
+                                    anchors.right: parent.right; anchors.rightMargin: 8
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    width: modelData.state === "downloading" ? 0 : 78
+                                    height: 28; radius: 14
+                                    visible: modelData.state !== "downloading"
+                                    color: modelData.state === "done"
+                                           ? (dlActMouse.containsMouse ? "#5af09a" : root.accentColor)
+                                           : (dlActMouse.containsMouse ? "#2c3840" : "#232d34")
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: modelData.state === "done" ? "Открыть" : "Повтор"
+                                        color: modelData.state === "done" ? "#06210f" : "#e8eef2"
+                                        font.pixelSize: 11; font.bold: modelData.state === "done"
+                                    }
+                                    MouseArea {
+                                        id: dlActMouse
+                                        anchors.fill: parent
+                                        hoverEnabled: true
+                                        onClicked: {
+                                            if (modelData.state === "done")
+                                                root.openBrowserDownload(modelData)
+                                            else if (modelData.url)
+                                                root.browserStartUrlDownload(modelData.url)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    visible: root.browserDownloads.length > 0
+                    anchors.left: parent.left; anchors.leftMargin: 14
+                    anchors.bottom: parent.bottom; anchors.bottomMargin: 10
+                    width: clearLab.implicitWidth + 24; height: 26; radius: 13
+                    color: clearMouse.containsMouse ? "#2c3840" : "#232d34"
+                    Text {
+                        id: clearLab
+                        anchors.centerIn: parent
+                        text: "Очистить список"
+                        color: "#9aa7b2"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    MouseArea {
+                        id: clearMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: root.clearFinishedBrowserDownloads()
                     }
                 }
             }
@@ -27838,6 +32210,108 @@ Rectangle {
     }
 
     Component {
+        id: cameraPage
+        Item {
+            property string appTitle: ""
+            Component.onCompleted: root.refreshCamera()
+            Rectangle {
+                anchors.fill: parent
+                color: "#0c1014"
+                Column {
+                    anchors.fill: parent
+                    anchors.margins: 18
+                    spacing: 14
+                    Row {
+                        width: parent.width
+                        spacing: 12
+                        Text {
+                            text: "Камера"
+                            color: "#f4f7f8"; font.pixelSize: 22; font.family: root.uiFontBold
+                            anchors.verticalCenter: parent.verticalCenter
+                        }
+                        Item { width: Math.max(8, parent.width - 420); height: 1 }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            text: root.cameraDevice.length ? root.cameraDevice : "Нет /dev/video*"
+                            color: "#7d8b95"; font.pixelSize: 12
+                        }
+                        Rectangle {
+                            width: 110; height: 34; radius: 8; color: "#1c262e"
+                            Text { anchors.centerIn: parent; text: "Обновить"; color: "#e8eef2"; font.pixelSize: 12 }
+                            MouseArea { anchors.fill: parent; onClicked: root.refreshCamera() }
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width
+                        height: Math.max(220, parent.height - 120)
+                        radius: 14
+                        color: "#151c21"
+                        border.width: 1; border.color: "#243038"
+                        clip: true
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 2
+                            source: root.cameraPreview
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            visible: root.cameraPreview.length > 0
+                        }
+                        Column {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            visible: !root.cameraPreview.length
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: root.privacyCamera ? "Нажмите «Снимок»" : "Камера выключена в Конфиденциальности"
+                                color: "#9aa7b2"; font.pixelSize: 14
+                            }
+                            Text {
+                                anchors.horizontalCenter: parent.horizontalCenter
+                                text: "В QEMU камеры часто нет — на реальном ПК появится /dev/video0"
+                                color: "#56636c"; font.pixelSize: 11
+                            }
+                        }
+                    }
+                    Row {
+                        spacing: 10
+                        Rectangle {
+                            width: 140; height: 40; radius: 10
+                            color: root.cameraBusy ? "#243038" : root.accentColor
+                            Text {
+                                anchors.centerIn: parent
+                                text: root.cameraBusy ? "…" : "Снимок"
+                                color: "#06210f"; font.pixelSize: 14; font.bold: true
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                enabled: !root.cameraBusy
+                                onClicked: root.cameraSnap()
+                            }
+                        }
+                        Rectangle {
+                            width: 180; height: 40; radius: 10; color: "#1c262e"
+                            Text { anchors.centerIn: parent; text: "Открыть «Изображения»"; color: "#e8eef2"; font.pixelSize: 12 }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    root.launch("files", "Файлы")
+                                    root.loadFiles("/home/" + root.currentUser + "/Изображения")
+                                }
+                            }
+                        }
+                        Text {
+                            anchors.verticalCenter: parent.verticalCenter
+                            visible: root.cameraLastShot.length > 0
+                            text: root.cameraLastShot.split("/").pop()
+                            color: "#7d8b95"; font.pixelSize: 11
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Component {
         id: calcPage
         Item {
             property string appTitle: ""
@@ -28130,66 +32604,616 @@ Rectangle {
     Component {
         id: drawPage
         Item {
+            id: drawRoot
             property string appTitle: ""
-            Rectangle {
-                anchors.fill: parent
-                color: "#0c1216"
-                Column {
+            focus: true
+            readonly property var tools: [
+                { id: "brush", g: "✎", t: "Кисть", k: "B" },
+                { id: "marker", g: "▌", t: "Маркер", k: "M" },
+                { id: "line", g: "╱", t: "Линия", k: "L" },
+                { id: "rect", g: "▭", t: "Прямоугольник", k: "R" },
+                { id: "ellipse", g: "◯", t: "Эллипс", k: "E" },
+                { id: "eraser", g: "⌫", t: "Ластик", k: "X" }
+            ]
+            readonly property var palette: [
+                "#1f2937", "#ffffff", "#9ca3af", "#ef4444", "#f97316", "#f59e0b",
+                "#facc15", "#84cc16", "#22c55e", "#14b8a6", "#06b6d4", "#3b82f6",
+                "#6366f1", "#a855f7", "#ec4899", "#7c2d12"
+            ]
+            property real cursorX: -1
+            property real cursorY: -1
+
+            function toolName(id) {
+                for (var i = 0; i < tools.length; ++i)
+                    if (tools[i].id === id) return tools[i].t
+                return id
+            }
+
+            function undo() {
+                if (!root.drawShapes.length) return
+                var s = root.drawShapes.slice()
+                var last = s.pop()
+                var r = root.drawRedoStack.slice()
+                r.push(last)
+                root.drawRedoStack = r
+                root.drawShapes = s
+            }
+
+            function redo() {
+                if (!root.drawRedoStack.length) return
+                var r = root.drawRedoStack.slice()
+                var item = r.pop()
+                var s = root.drawShapes.slice()
+                s.push(item)
+                root.drawShapes = s
+                root.drawRedoStack = r
+            }
+
+            function newDoc() {
+                root.drawShapes = []
+                root.drawRedoStack = []
+                root.drawBgPath = ""
+                canvas.full = true
+                canvas.requestPaint()
+            }
+
+            function savePng() {
+                var dir = "/home/" + root.currentUser + "/Изображения"
+                sys.run("mkdir -p " + root.shQuote(dir))
+                var p = dir + "/рисунок_" + Qt.formatDateTime(new Date(), "yyyyMMdd_HHmmss") + ".png"
+                if (canvas.save(p)) {
+                    root.drawLastSaved = p
+                    root.notify("Графика", "Сохранено: ~/Изображения/" + p.split("/").pop(), "ok")
+                } else {
+                    root.notify("Графика", "Не удалось сохранить рисунок", "info")
+                }
+            }
+
+            function openPicker() {
+                var home = "/home/" + root.currentUser
+                var raw = sys.run(
+                    "find " + root.shQuote(home) + " -maxdepth 3 -type f \\( -iname '*.png' -o -iname '*.jpg'"
+                    + " -o -iname '*.jpeg' -o -iname '*.bmp' -o -iname '*.webp' \\) -not -path '*/.*' 2>/dev/null | head -n 120"
+                ).trim()
+                var out = []
+                if (raw.length) {
+                    var lines = raw.split("\n")
+                    for (var i = 0; i < lines.length; ++i) {
+                        var p = lines[i].trim()
+                        if (p.length) out.push({ path: p, name: p.split("/").pop() })
+                    }
+                }
+                root.drawPickerFiles = out
+                root.drawPickerOpen = true
+            }
+
+            function openImage(p) {
+                root.drawPickerOpen = false
+                root.drawShapes = []
+                root.drawRedoStack = []
+                root.drawBgPath = p
+                canvas.loadImage("file://" + p)
+                canvas.full = true
+                canvas.requestPaint()
+            }
+
+            Keys.onPressed: function (e) {
+                var ctrl = (e.modifiers & Qt.ControlModifier)
+                if (ctrl && e.key === Qt.Key_Z) {
+                    if (e.modifiers & Qt.ShiftModifier) redo(); else undo()
+                    e.accepted = true
+                } else if (ctrl && e.key === Qt.Key_Y) { redo(); e.accepted = true }
+                else if (ctrl && e.key === Qt.Key_S) { savePng(); e.accepted = true }
+                else if (ctrl && e.key === Qt.Key_O) { openPicker(); e.accepted = true }
+                else if (ctrl && e.key === Qt.Key_N) { newDoc(); e.accepted = true }
+                else if (e.key === Qt.Key_BracketLeft) { root.drawSize = Math.max(1, root.drawSize - 2); e.accepted = true }
+                else if (e.key === Qt.Key_BracketRight) { root.drawSize = Math.min(60, root.drawSize + 2); e.accepted = true }
+                else if (!ctrl) {
+                    var map = { 66: "brush", 77: "marker", 76: "line", 82: "rect", 69: "ellipse", 88: "eraser" }
+                    if (map[e.key] !== undefined) { root.drawTool = map[e.key]; e.accepted = true }
+                }
+            }
+
+            component DrawBtn: Rectangle {
+                id: dbtn
+                property string label: ""
+                property string hint: ""
+                property bool active: false
+                property bool accent: false
+                property bool enabledBtn: true
+                signal clicked()
+                width: Math.max(34, dbLab.implicitWidth + 18)
+                height: 34
+                radius: 9
+                color: accent ? (dbMa.containsMouse ? "#4af098" : root.accentColor)
+                              : (active ? Qt.rgba(0.39, 0.4, 0.95, 0.28)
+                                        : (dbMa.containsMouse && enabledBtn ? "#222b36" : "#171e27"))
+                border.width: active ? 1 : 0
+                border.color: "#818cf8"
+                opacity: enabledBtn ? 1 : 0.35
+                Text {
+                    id: dbLab
+                    anchors.centerIn: parent
+                    text: dbtn.label
+                    color: dbtn.accent ? "#06210f" : (dbtn.active ? "#c7d2fe" : "#e2e8f0")
+                    font.pixelSize: 13
+                    font.family: dbtn.accent ? root.uiFontBold : root.uiFont
+                }
+                MouseArea {
+                    id: dbMa
                     anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 8
-                    Row {
-                        spacing: 8
-                        Repeater {
-                            model: ["кисть", "линия", "ластик"]
-                            delegate: Rectangle {
-                                width: 88; height: 32; radius: 8
-                                color: root.drawTool === modelData ? root.accentColor : "#1c262e"
-                                Text { anchors.centerIn: parent; text: modelData; color: root.drawTool === modelData ? "#06210f" : "#e8eef2"; font.pixelSize: 12 }
-                                MouseArea { anchors.fill: parent; onClicked: root.drawTool = modelData }
-                            }
-                        }
-                        Rectangle {
-                            width: 100; height: 32; radius: 8; color: "#7f1d1d"
-                            Text { anchors.centerIn: parent; text: "Очистить"; color: "#fecaca"; font.pixelSize: 12 }
-                            MouseArea { anchors.fill: parent; onClicked: { root.drawStrokes = []; canvas.requestPaint() } }
+                    hoverEnabled: true
+                    enabled: dbtn.enabledBtn
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: dbtn.clicked()
+                }
+                Rectangle {
+                    visible: dbMa.containsMouse && dbtn.hint.length > 0
+                    anchors.top: parent.bottom
+                    anchors.topMargin: 6
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: dbHint.implicitWidth + 14
+                    height: 22
+                    radius: 6
+                    z: 80
+                    color: "#1e2633"
+                    border.color: "#334155"
+                    Text { id: dbHint; anchors.centerIn: parent; text: dbtn.hint; color: "#cbd5e1"; font.pixelSize: 11; font.family: root.uiFont }
+                }
+            }
+
+            Rectangle { anchors.fill: parent; color: "#0d1117" }
+
+            // панель инструментов
+            Rectangle {
+                id: drawBar
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 54
+                z: 20
+                color: "#121821"
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#1f2937" }
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    Repeater {
+                        model: drawRoot.tools
+                        delegate: DrawBtn {
+                            label: modelData.g
+                            hint: modelData.t + " · " + modelData.k
+                            active: root.drawTool === modelData.id
+                            onClicked: root.drawTool = modelData.id
                         }
                     }
-                    Canvas {
-                        id: canvas
-                        width: parent.width
-                        height: parent.height - 44
-                        property real lx: -1
-                        property real ly: -1
-                        onPaint: {
-                            var ctx = getContext("2d")
-                            ctx.fillStyle = "#111827"
-                            ctx.fillRect(0, 0, width, height)
-                            ctx.lineCap = "round"
-                            for (var i = 0; i < root.drawStrokes.length; ++i) {
-                                var s = root.drawStrokes[i]
-                                ctx.strokeStyle = s.erase ? "#111827" : root.accentColor
-                                ctx.lineWidth = s.erase ? 18 : 3
-                                ctx.beginPath()
-                                ctx.moveTo(s.x0, s.y0)
-                                ctx.lineTo(s.x1, s.y1)
-                                ctx.stroke()
+                    Item { width: 10; height: 1 }
+                    Rectangle { width: 1; height: 24; color: "#273244"; anchors.verticalCenter: parent.verticalCenter }
+                    Item { width: 10; height: 1 }
+                    // толщина
+                    Column {
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 4
+                        Text { text: "Толщина " + root.drawSize + " px"; color: "#94a3b8"; font.pixelSize: 10; font.family: root.uiFont }
+                        Rectangle {
+                            id: sizeTrack
+                            width: 120; height: 6; radius: 3
+                            color: "#273244"
+                            Rectangle {
+                                width: parent.width * (root.drawSize - 1) / 59
+                                height: parent.height; radius: 3
+                                color: "#818cf8"
+                            }
+                            Rectangle {
+                                x: parent.width * (root.drawSize - 1) / 59 - 7
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 14; height: 14; radius: 7
+                                color: "#e0e7ff"
+                                border.color: "#818cf8"; border.width: 2
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -8
+                                function setFrom(mx) { root.drawSize = Math.max(1, Math.min(60, Math.round(1 + 59 * (mx - 8) / sizeTrack.width))) }
+                                onPressed: function (m) { setFrom(m.x) }
+                                onPositionChanged: function (m) { if (pressed) setFrom(m.x) }
                             }
                         }
-                        MouseArea {
-                            anchors.fill: parent
-                            onPressed: { canvas.lx = mouse.x; canvas.ly = mouse.y }
-                            onPositionChanged: {
-                                if (!pressed) return
-                                var arr = root.drawStrokes.slice()
-                                arr.push({ x0: canvas.lx, y0: canvas.ly, x1: mouse.x, y1: mouse.y, erase: root.drawTool === "ластик" })
-                                root.drawStrokes = arr
-                                canvas.lx = mouse.x; canvas.ly = mouse.y
-                                canvas.requestPaint()
+                    }
+                    Item { width: 8; height: 1 }
+                    Rectangle {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 34; height: 34; radius: 9
+                        color: "#171e27"
+                        Rectangle {
+                            anchors.centerIn: parent
+                            width: Math.max(3, Math.min(28, root.drawSize))
+                            height: width; radius: width / 2
+                            color: root.drawTool === "eraser" ? "#e5e7eb" : root.drawColor
+                            opacity: root.drawTool === "marker" ? 0.45 : 1
+                            border.color: "#475569"; border.width: 1
+                        }
+                    }
+                    Item { width: 4; height: 1 }
+                    DrawBtn {
+                        label: root.drawFill ? "◼ Заливка" : "◻ Контур"
+                        hint: "Для прямоугольника и эллипса"
+                        active: root.drawFill
+                        enabledBtn: root.drawTool === "rect" || root.drawTool === "ellipse"
+                        onClicked: root.drawFill = !root.drawFill
+                    }
+                }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 12
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 4
+                    DrawBtn { label: "↶"; hint: "Отменить · Ctrl+Z"; enabledBtn: root.drawShapes.length > 0; onClicked: drawRoot.undo() }
+                    DrawBtn { label: "↷"; hint: "Повторить · Ctrl+Y"; enabledBtn: root.drawRedoStack.length > 0; onClicked: drawRoot.redo() }
+                    Item { width: 6; height: 1 }
+                    DrawBtn { label: "Новый"; hint: "Ctrl+N"; onClicked: drawRoot.newDoc() }
+                    DrawBtn { label: "Открыть"; hint: "Картинка как основа · Ctrl+O"; onClicked: drawRoot.openPicker() }
+                    DrawBtn { label: "Сохранить PNG"; hint: "В ~/Изображения · Ctrl+S"; accent: true; onClicked: drawRoot.savePng() }
+                }
+            }
+
+            // палитра
+            Rectangle {
+                id: drawPal
+                anchors.top: drawBar.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 40
+                color: "#10161e"
+                Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: "#1a2230" }
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    Rectangle {
+                        width: 28; height: 28; radius: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        color: root.drawColor
+                        border.color: "#e2e8f0"; border.width: 2
+                    }
+                    Item { width: 6; height: 1 }
+                    Repeater {
+                        model: drawRoot.palette
+                        delegate: Rectangle {
+                            readonly property bool sel: Qt.colorEqual(root.drawColor, modelData)
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: sel ? 24 : 20; height: width; radius: width / 2
+                            color: modelData
+                            border.width: sel ? 2 : 1
+                            border.color: sel ? "#e0e7ff" : "#334155"
+                            Behavior on width { NumberAnimation { duration: 90 } }
+                            MouseArea {
+                                anchors.fill: parent
+                                anchors.margins: -3
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    root.drawColor = modelData
+                                    if (root.drawTool === "eraser") root.drawTool = "brush"
+                                }
                             }
                         }
                     }
                 }
+                Row {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 6
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: "Бумага"; color: "#64748b"; font.pixelSize: 11; font.family: root.uiFont }
+                    Repeater {
+                        model: ["#ffffff", "#fdf6e3", "#111827"]
+                        delegate: Rectangle {
+                            anchors.verticalCenter: parent.verticalCenter
+                            width: 22; height: 22; radius: 6
+                            color: modelData
+                            border.width: root.drawPaper === modelData ? 2 : 1
+                            border.color: root.drawPaper === modelData ? "#818cf8" : "#334155"
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: { root.drawPaper = modelData; canvas.full = true; canvas.requestPaint() }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // строка состояния
+            Rectangle {
+                id: drawStatus
+                anchors.bottom: parent.bottom
+                anchors.left: parent.left
+                anchors.right: parent.right
+                height: 26
+                color: "#121821"
+                Rectangle { anchors.top: parent.top; width: parent.width; height: 1; color: "#1f2937" }
+                Row {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    spacing: 18
+                    Text { text: drawRoot.toolName(root.drawTool) + " · " + root.drawSize + " px"; color: "#c7d2fe"; font.pixelSize: 11; font.family: root.uiFont }
+                    Text {
+                        text: drawRoot.cursorX >= 0 ? (Math.round(drawRoot.cursorX) + ", " + Math.round(drawRoot.cursorY)) : "—"
+                        color: "#94a3b8"; font.pixelSize: 11; font.family: root.uiFont
+                    }
+                    Text { text: Math.round(canvas.width) + " × " + Math.round(canvas.height); color: "#64748b"; font.pixelSize: 11; font.family: root.uiFont }
+                    Text { text: root.drawShapes.length + " объектов"; color: "#64748b"; font.pixelSize: 11; font.family: root.uiFont }
+                }
+                Text {
+                    anchors.right: parent.right
+                    anchors.rightMargin: 14
+                    anchors.verticalCenter: parent.verticalCenter
+                    text: root.drawBgPath.length ? ("основа: " + root.drawBgPath.split("/").pop()) : "[ ] — толщина · B M L R E X — инструменты"
+                    color: "#64748b"; font.pixelSize: 11; font.family: root.uiFont
+                }
+            }
+
+            // холст
+            Item {
+                id: drawArea
+                anchors.top: drawPal.bottom
+                anchors.bottom: drawStatus.top
+                anchors.left: parent.left
+                anchors.right: parent.right
+                Rectangle {
+                    id: paperFrame
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    radius: 6
+                    color: root.drawPaper
+                    border.color: "#273244"
+                    clip: true
+
+                    Canvas {
+                        id: canvas
+                        anchors.fill: parent
+                        renderStrategy: Canvas.Cooperative
+                        property bool full: true
+                        property var live: null
+                        property var seg: null
+
+                        function paintShape(ctx, s) {
+                            ctx.save()
+                            ctx.globalAlpha = s.tool === "marker" ? 0.35 : 1
+                            ctx.lineCap = s.tool === "marker" ? "square" : "round"
+                            ctx.lineJoin = "round"
+                            ctx.lineWidth = s.size
+                            var col = s.tool === "eraser" ? root.drawPaper : s.color
+                            ctx.strokeStyle = col
+                            ctx.fillStyle = col
+                            var p = s.pts
+                            if (s.tool === "brush" || s.tool === "marker" || s.tool === "eraser") {
+                                if (p.length <= 2) {
+                                    ctx.beginPath()
+                                    ctx.arc(p[0], p[1], s.size / 2, 0, Math.PI * 2)
+                                    ctx.fill()
+                                } else {
+                                    ctx.beginPath()
+                                    ctx.moveTo(p[0], p[1])
+                                    for (var i = 2; i + 1 < p.length; i += 2)
+                                        ctx.lineTo(p[i], p[i + 1])
+                                    ctx.stroke()
+                                }
+                            } else if (p.length >= 4) {
+                                var x0 = p[0], y0 = p[1], x1 = p[2], y1 = p[3]
+                                if (s.tool === "line") {
+                                    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke()
+                                } else {
+                                    var x = Math.min(x0, x1), y = Math.min(y0, y1)
+                                    var w = Math.abs(x1 - x0), h = Math.abs(y1 - y0)
+                                    ctx.beginPath()
+                                    if (s.tool === "rect") ctx.rect(x, y, w, h)
+                                    else ctx.ellipse(x, y, w, h)
+                                    if (s.fill) ctx.fill(); else ctx.stroke()
+                                }
+                            }
+                            ctx.restore()
+                        }
+
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            if (!full && seg) {
+                                paintShape(ctx, seg)
+                                seg = null
+                                return
+                            }
+                            ctx.reset()
+                            ctx.fillStyle = root.drawPaper
+                            ctx.fillRect(0, 0, width, height)
+                            if (root.drawBgPath.length) {
+                                var src = "file://" + root.drawBgPath
+                                if (isImageLoaded(src)) {
+                                    var img = ctx.createImageData(src)
+                                    var iw = img.width, ih = img.height
+                                    if (iw > 0 && ih > 0) {
+                                        var k = Math.min(width / iw, height / ih, 1)
+                                        var dw = iw * k, dh = ih * k
+                                        ctx.drawImage(src, (width - dw) / 2, (height - dh) / 2, dw, dh)
+                                    }
+                                }
+                            }
+                            for (var i = 0; i < root.drawShapes.length; ++i)
+                                paintShape(ctx, root.drawShapes[i])
+                            if (live)
+                                paintShape(ctx, live)
+                            full = false
+                        }
+                        onImageLoaded: { full = true; requestPaint() }
+                        onWidthChanged: { full = true; requestPaint() }
+                        onHeightChanged: { full = true; requestPaint() }
+
+                        Connections {
+                            target: root
+                            function onDrawShapesChanged() { canvas.full = true; canvas.requestPaint() }
+                        }
+
+                        MouseArea {
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.CrossCursor
+                            onPressed: function (m) {
+                                drawRoot.forceActiveFocus()
+                                canvas.live = {
+                                    tool: root.drawTool, color: String(root.drawColor), size: root.drawSize,
+                                    fill: root.drawFill, pts: [m.x, m.y]
+                                }
+                                if (root.drawTool === "brush" || root.drawTool === "eraser") {
+                                    canvas.seg = { tool: root.drawTool, color: String(root.drawColor), size: root.drawSize, pts: [m.x, m.y] }
+                                    canvas.requestPaint()
+                                }
+                            }
+                            onPositionChanged: function (m) {
+                                drawRoot.cursorX = m.x
+                                drawRoot.cursorY = m.y
+                                if (!pressed || !canvas.live) return
+                                var lv = canvas.live
+                                var p = lv.pts
+                                if (lv.tool === "brush" || lv.tool === "eraser") {
+                                    var lx = p[p.length - 2], ly = p[p.length - 1]
+                                    if (Math.abs(m.x - lx) + Math.abs(m.y - ly) < 1.5) return
+                                    p.push(m.x, m.y)
+                                    canvas.seg = { tool: lv.tool, color: lv.color, size: lv.size, pts: [lx, ly, m.x, m.y] }
+                                    canvas.requestPaint()
+                                } else if (lv.tool === "marker") {
+                                    p.push(m.x, m.y)
+                                    canvas.full = true
+                                    canvas.requestPaint()
+                                } else {
+                                    lv.pts = [p[0], p[1], m.x, m.y]
+                                    canvas.full = true
+                                    canvas.requestPaint()
+                                }
+                            }
+                            onReleased: {
+                                if (!canvas.live) return
+                                var lv = canvas.live
+                                canvas.live = null
+                                var arr = root.drawShapes.slice()
+                                arr.push(lv)
+                                root.drawRedoStack = []
+                                root.drawShapes = arr
+                            }
+                            onExited: { drawRoot.cursorX = -1; drawRoot.cursorY = -1 }
+                        }
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 6
+                        visible: root.drawShapes.length === 0 && !canvas.live && !root.drawBgPath.length
+                        opacity: 0.55
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Рисуйте здесь"
+                            color: "#94a3b8"
+                            font.pixelSize: 22
+                            font.family: root.uiFontBold
+                        }
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: "Кисть, фигуры, палитра сверху · Ctrl+S сохраняет PNG"
+                            color: "#a3adbb"
+                            font.pixelSize: 12
+                            font.family: root.uiFont
+                        }
+                    }
+                }
+            }
+
+            // выбор картинки
+            Rectangle {
+                anchors.fill: parent
+                visible: root.drawPickerOpen
+                z: 60
+                color: Qt.rgba(0, 0, 0, 0.55)
+                MouseArea { anchors.fill: parent; onClicked: root.drawPickerOpen = false }
+                Rectangle {
+                    anchors.centerIn: parent
+                    width: Math.min(640, parent.width - 60)
+                    height: Math.min(470, parent.height - 60)
+                    radius: 16
+                    color: "#121821"
+                    border.color: "#273244"
+                    MouseArea { anchors.fill: parent }
+                    Column {
+                        anchors.fill: parent
+                        anchors.margins: 18
+                        spacing: 12
+                        Row {
+                            width: parent.width
+                            Column {
+                                width: parent.width - 40
+                                spacing: 2
+                                Text { text: "Открыть изображение"; color: "#f1f5f9"; font.pixelSize: 17; font.family: root.uiFontBold }
+                                Text { text: "Картинка станет основой, поверх можно рисовать"; color: "#7c8a9c"; font.pixelSize: 11; font.family: root.uiFont }
+                            }
+                            DrawBtn { label: "×"; onClicked: root.drawPickerOpen = false }
+                        }
+                        GridView {
+                            id: drawGrid
+                            width: parent.width
+                            height: parent.height - 60
+                            clip: true
+                            cellWidth: Math.floor(width / 4)
+                            cellHeight: cellWidth * 0.82
+                            model: root.drawPickerFiles
+                            delegate: Item {
+                                width: drawGrid.cellWidth
+                                height: drawGrid.cellHeight
+                                Rectangle {
+                                    anchors.fill: parent
+                                    anchors.margins: 5
+                                    radius: 10
+                                    color: dgH.containsMouse ? "#1e293b" : "#171e27"
+                                    border.color: dgH.containsMouse ? "#818cf8" : "#222b36"
+                                    Image {
+                                        anchors.top: parent.top
+                                        anchors.left: parent.left
+                                        anchors.right: parent.right
+                                        anchors.bottom: dgName.top
+                                        anchors.margins: 6
+                                        source: "file://" + modelData.path
+                                        sourceSize.width: 220
+                                        fillMode: Image.PreserveAspectCrop
+                                        asynchronous: true
+                                        clip: true
+                                    }
+                                    Text {
+                                        id: dgName
+                                        anchors.bottom: parent.bottom
+                                        anchors.bottomMargin: 6
+                                        anchors.horizontalCenter: parent.horizontalCenter
+                                        width: parent.width - 12
+                                        horizontalAlignment: Text.AlignHCenter
+                                        text: modelData.name
+                                        elide: Text.ElideMiddle
+                                        color: "#cbd5e1"; font.pixelSize: 10; font.family: root.uiFont
+                                    }
+                                    MouseArea { id: dgH; anchors.fill: parent; hoverEnabled: true; onClicked: drawRoot.openImage(modelData.path) }
+                                }
+                            }
+                            Text {
+                                anchors.centerIn: parent
+                                visible: drawGrid.count === 0
+                                text: "В домашней папке нет картинок"
+                                color: "#64748b"; font.pixelSize: 13; font.family: root.uiFont
+                            }
+                        }
+                    }
+                }
+            }
+
+            Component.onCompleted: {
+                if (root.drawBgPath.length)
+                    canvas.loadImage("file://" + root.drawBgPath)
+                forceActiveFocus()
             }
         }
     }
@@ -33563,7 +38587,7 @@ Rectangle {
                         Column {
                             id: owCol; width: parent.width; spacing: 4
                             Repeater {
-                                model: root.allLauncherApps()
+                                model: root.openWithAppList()
                                 delegate: Rectangle {
                                     width: owCol.width; height: 44; radius: 8
                                     color: owAppH.containsMouse ? "#24302a" : "transparent"
