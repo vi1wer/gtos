@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="GT/OS — настольная операционная система от Glukhov Mikhail. Скачайте официальный образ.">
+  <title>Пакет «ежедневный ПК»: экраны, печать, VPN и камера — блог GT/OS</title>
+  <link rel="icon" href="/gtos/static/img/favicon.ico?v=5" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/gtos/static/img/favicon-32.png?v=5">
+  <link rel="icon" type="image/png" sizes="16x16" href="/gtos/static/img/favicon-16.png?v=5">
+  <link rel="shortcut icon" href="/gtos/static/img/favicon.ico?v=5">
+  <link rel="apple-touch-icon" href="/gtos/static/img/gtos-icon-256.png?v=5">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Sora:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/gtos/static/css/site.css?v=home6">
+</head>
+<body class="page-blog">
+  <header class="nav-shell" data-nav>
+    <a class="logo" href="/gtos/" aria-label="GT/OS">
+      <img class="logo-clover" src="/gtos/static/img/gtos-clover.png?v=3" width="48" height="48" alt="">
+      <span class="logo-text">GT/OS</span>
+    </a>
+    <button class="nav-backdrop" type="button" aria-label="Закрыть меню" data-nav-backdrop tabindex="-1"></button>
+    <nav class="nav-links" aria-label="Основное меню">
+      <p class="nav-sheet-label">Навигация</p>
+      <a href="/gtos/" class="">Главная</a>
+      <a href="/gtos/product" class="">Продукт</a>
+      <a href="/gtos/blog" class="is-active">Блог</a>
+      <a href="/gtos/community" class="">Сообщество</a>
+      <a href="/gtos/download" class="">Скачать</a>
+      <a href="/gtos/changes" class="">Изменения</a>
+      <a href="/gtos/developers" class="">Разработчикам</a>
+      <a href="/gtos/support" class="">Поддержка</a>
+      <div class="nav-more " data-nav-more>
+        <button type="button" class="nav-more-btn" data-nav-more-btn aria-expanded="false" aria-haspopup="true">
+          Ещё
+          <svg width="10" height="6" viewBox="0 0 10 6" aria-hidden="true"><path d="M1 1l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+        <p class="nav-sheet-label nav-sheet-label-more">Ещё</p>
+        <div class="nav-more-panel" role="menu">
+          <a href="/gtos/whats-new" role="menuitem" class="">Что нового</a>
+          <a href="/gtos/tips" role="menuitem" class="">Советы</a>
+          <a href="/gtos/requirements" role="menuitem" class="">Требования</a>
+          <a href="/gtos/accessibility" role="menuitem" class="">Доступность</a>
+          <a href="/gtos/privacy" role="menuitem" class="">Конфиденциальность</a>
+          <a href="/gtos/about" role="menuitem" class="">О нас</a>
+        </div>
+      </div>
+      <a class="nav-cta nav-cta-mobile" href="/gtos/download">Скачать GT/OS</a>
+    </nav>
+    <a class="nav-cta nav-cta-desktop" href="/gtos/download">Скачать GT/OS</a>
+    <button class="nav-toggle" type="button" aria-label="Меню" data-nav-toggle>
+      <span></span><span></span>
+    </button>
+  </header>
+
+  <main>
+    
+<article class="blog-page blog-article">
+  <p class="blog-back"><a href="/gtos/blog">← Все посты</a></p>
+
+  <header class="blog-article-head reveal">
+    <p class="blog-kicker"><time datetime="2026-11-18">18 ноября 2026</time> · Glukhov Mikhail</p>
+    <h1>Пакет «ежедневный ПК»: экраны, печать, VPN и камера</h1>
+    <p class="blog-deck">Не Windows 11 и не обещание Adobe — зато закрыли бытовые дыры, из‑за которых GT/OS нельзя было жить как на обычном компьютере.</p>
+    
+    <ul class="blog-tags">
+      
+      <li>1.6.2</li>
+      
+      <li>параметры</li>
+      
+      <li>ежедневный ПК</li>
+      
+    </ul>
+    
+  </header>
+
+  
+  <figure class="blog-article-cover reveal">
+    <img src="/gtos/static/img/gtos-promo-1.6.2.jpg" alt="Пакет «ежедневный ПК»: экраны, печать, VPN и камера">
+  </figure>
+  
+
+  <div class="blog-article-body reveal">
+    <p>После разговора «можно ли вместо Windows» список стопперов был честным: мониторы, принтеры, VPN, камера, гибернация, нормальный офис. Мы не притворились, что за вечер появится 1С и Photoshop. Вместо этого закрыли ежедневный пакет.</p>
+<p>В Параметрах появились Экраны (разрешение и расположение через xrandr), Принтеры на базе CUPS с обнаружением и пробной страницей, VPN на WireGuard с вставкой конфига. В меню приложений — «Камера»: снимок в «Изображения», с выключателем в Конфиденциальности.</p>
+<p>Питание умеет сон и попытку гибернации через swap на диске данных. LibreOffice уходит в установку по умолчанию из магазина, Wine подтягивается при загрузке в фоне. Обновления теперь рядом с карточкой резервных копий и быстрым входом в Recovery.</p>
+<p>Это всё ещё не замена Windows для всего мира. Но для браузера, документов, печати, второго монитора и VPN — уже ближе к «можно жить».</p>
+  </div>
+
+  <footer class="blog-article-foot reveal">
+    <a class="btn btn-primary" href="/gtos/download">Скачать GT/OS 1.6.2</a>
+    <a class="btn btn-quiet" href="/gtos/community">Обсудить в сообществе</a>
+  </footer>
+</article>
+
+  </main>
+
+  <footer class="site-footer site-footer-v2">
+    <div class="footer-inner">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <img class="logo-clover" src="/gtos/static/img/gtos-clover.png?v=2" width="56" height="56" alt="">
+          <div>
+            <strong>GT/OS</strong>
+            <p>Рабочий стол, в котором всё на своих местах — как в Windows, на своём ядре.</p>
+          </div>
+        </div>
+        <div class="footer-cta-wrap">
+          <a class="btn btn-primary" href="/gtos/download">Скачать 1.6.2</a>
+          <a class="btn btn-quiet" href="/gtos/support">Нужна помощь?</a>
+        </div>
+      </div>
+      <div class="footer-cols footer-cols-v2">
+        <div>
+          <h4>Продукт</h4>
+          <a href="/gtos/product">Обзор GT/OS</a>
+          <a href="/gtos/whats-new">Что нового</a>
+          <a href="/gtos/download">Скачать ISO</a>
+          <a href="/gtos/requirements">Системные требования</a>
+          <a href="/gtos/changes">Список изменений</a>
+        </div>
+        <div>
+          <h4>Помощь</h4>
+          <a href="/gtos/support">Центр поддержки</a>
+          <a href="/gtos/tips">Советы и жесты</a>
+          <a href="/gtos/accessibility">Специальные возможности</a>
+          <a href="mailto:mikhail.lososka@gmail.com">Написать на почту</a>
+        </div>
+        <div>
+          <h4>Компания</h4>
+          <a href="/gtos/about">О Glukhov Mikhail</a>
+          <a href="/gtos/privacy">Конфиденциальность</a>
+          <a href="/gtos/blog">Блог</a>
+          <a href="/gtos/community">Сообщество</a>
+          <a href="/gtos/developers">Разработчикам</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p class="footer-copy">© 2026 Glukhov Mikhail · GT/OS 1.6.2</p>
+        <p class="footer-meta">Для ПК · x86_64</p>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/gtos/static/js/site.js"></script>
+</body>
+</html>
